@@ -228,21 +228,23 @@ window.APP_CONFIG = {
     }
   },
 
+  // name = naam in de app, desc = korte omschrijving (één regel), place = waar,
+  // typeLabel = soort, icon = legs | barbell | torso | hold | calf | bolt
   sessions: {
     A: {
-      name: 'Sessie A', short: 'A', icon: 'dumbbell', subtitle: 'Eenbenige kracht', heavy: true,
+      name: 'Onderlichaam & stabiliteit', desc: 'Eenbenige kracht voor heup, knie en enkel', place: 'thuis',
+      typeLabel: 'Kracht', icon: 'legs', heavy: true,
       items: [
         { ex: 'bulgarian', sets: 3 },
         { ex: 'slRdl', sets: 3 },
         { ex: 'slGluteBridge', sets: 3 },
         { ex: 'copenhagen', sets: 3 },
-        { ex: 'bandSideWalk', sets: 3 },
-        { ex: 'calfRaiseSL', sets: [3, 4], phases: ['f2', 'f3'] },
-        { ex: 'seatedCalfRaise', sets: [3, 4], phases: ['f2', 'f3'] }
+        { ex: 'bandSideWalk', sets: 3 }
       ]
     },
     B: {
-      name: 'Sessie B', short: 'B', icon: 'dumbbell', subtitle: 'Fitness, volledig lichaam', heavy: true,
+      name: 'Full body kracht', desc: 'Zware basisoefeningen voor benen, rug en borst', place: 'fitness',
+      typeLabel: 'Kracht', icon: 'barbell', heavy: true,
       items: [
         { ex: 'trapBar', sets: 3 },
         { ex: 'legPress', sets: 3 },
@@ -250,13 +252,12 @@ window.APP_CONFIG = {
         { ex: 'chestRow', sets: 3 },
         { ex: 'dbBench', sets: 3 },
         { ex: 'latPulldown', sets: 3 },
-        { ex: 'pallof', sets: 3 },
-        { ex: 'calfRaiseSL', sets: [3, 4], phases: ['f2', 'f3'] },
-        { ex: 'seatedCalfRaise', sets: [3, 4], phases: ['f2', 'f3'] }
+        { ex: 'pallof', sets: 3 }
       ]
     },
     C: {
-      name: 'Sessie C', short: 'C', icon: 'dumbbell', subtitle: 'Bovenlichaam en core',
+      name: 'Bovenlichaam & core', desc: 'Duwen, trekken en een stabiele romp', place: 'thuis',
+      typeLabel: 'Kracht', icon: 'torso',
       items: [
         { ex: 'pushups', sets: 3 },
         { ex: 'bandRows', sets: 3 },
@@ -267,15 +268,25 @@ window.APP_CONFIG = {
       ]
     },
     ISO: {
-      name: 'Isometrische holds', short: 'ISO', icon: 'hold', subtitle: 'Kuit en achillespees',
+      name: 'Kuit & pees: isometrisch', desc: 'Holds van 45 s die de pees kalmeren', place: 'thuis',
+      typeLabel: 'Kuit & pees', icon: 'hold',
       catchUp: false, // gemiste holds hoef je niet in te halen
       items: [
         { ex: 'calfHoldStanding', sets: 5 },
         { ex: 'calfHoldSeated', sets: 5 }
       ]
     },
+    CALF: {
+      name: 'Kuit & pees: kracht', desc: 'Zware, trage calf raises: 3 s op, 3 s neer', place: 'thuis of fitness',
+      typeLabel: 'Kuit & pees', icon: 'calf', heavy: true,
+      items: [
+        { ex: 'calfRaiseSL', sets: [3, 4] },
+        { ex: 'seatedCalfRaise', sets: [3, 4] }
+      ]
+    },
     PLYO: {
-      name: 'Plyo', short: 'PLY', icon: 'bolt', subtitle: 'Vóór de clubtraining', heavy: true,
+      name: 'Veerkracht & sprint', desc: 'Sprongen en sprints, elke week een stap verder', place: 'vóór de training',
+      typeLabel: 'Veerkracht', icon: 'bolt', heavy: true,
       // Elke week een stap (vanaf de dag dat je fase 2 + 3 kiest)
       steps: [
         { title: 'Pogo hops op twee benen', items: [{ ex: 'pogo', sets: 3 }] },
@@ -288,13 +299,13 @@ window.APP_CONFIG = {
 
   // Standaard weekschema
   week: {
-    1: [{ type: 'session', id: 'A' }],
+    1: [{ type: 'session', id: 'A' }, { type: 'session', id: 'CALF', phases: ['f2', 'f3'] }],
     2: [
       { type: 'session', id: 'ISO' },
       { type: 'session', id: 'PLYO', phases: ['f3'], note: 'Vóór de training' },
       { type: 'training', time: '19:45–21:30' }
     ],
-    3: [{ type: 'session', id: 'B' }],
+    3: [{ type: 'session', id: 'B' }, { type: 'session', id: 'CALF', phases: ['f2', 'f3'] }],
     4: [
       { type: 'session', id: 'ISO' },
       { type: 'session', id: 'PLYO', phases: ['f3'], note: 'Vóór de training' },

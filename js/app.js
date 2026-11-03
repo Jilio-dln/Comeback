@@ -249,7 +249,10 @@
     return s.items.filter(it => !it.phases || it.phases.includes(phaseId));
   }
   const setCount = it => Array.isArray(it.sets) ? it.sets[0] : it.sets;
-  const sessionTitle = key => key === 'PLYO' ? `Plyo · stap ${plyoStep()}` : C.sessions[key].name;
+  const sessionTitle = key => (C.sessions[key] && C.sessions[key].name) || key;
+  // Naam van een opgeslagen workout: altijd de huidige naam uit de config (oude workouts heetten "Sessie A")
+  const woTitle = w => (C.sessions[w.sessionKey] && C.sessions[w.sessionKey].name) || w.title;
+  const sessionDesc = key => key === 'PLYO' ? `Stap ${plyoStep()} van 4: ${C.sessions.PLYO.steps[plyoStep() - 1].title}` : ((C.sessions[key] && (C.sessions[key].desc || C.sessions[key].subtitle)) || '');
   function sessionStats(key) {
     const items = sessionItems(key);
     let sets = 0, secs = 0;
@@ -279,8 +282,8 @@
     if (it.type === 'session') {
       const s = C.sessions[it.id];
       const st = sessionStats(it.id);
-      const sub = it.id === 'PLYO' ? s.steps[plyoStep() - 1].title : s.subtitle;
-      return { icon: s.icon || 'dumbbell', title: sessionTitle(it.id), sub: `${sub} · ${st.exercises} oef. · ${st.sets} sets`, note: it.note, short: s.short || it.id, stats: st, subtitle: sub };
+      const sub = sessionDesc(it.id);
+      return { icon: s.icon || 'dumbbell', title: sessionTitle(it.id), sub: `${s.place ? cap(s.place) + ' · ' : ''}${st.exercises} oefeningen · ±${st.minutes} min`, note: it.note, short: s.short || it.id, stats: st, subtitle: sub };
     }
     if (it.type === 'training') return { icon: 'whistle', title: 'Clubtraining', sub: it.time || '', note: it.note, short: 'TR' };
     if (it.type === 'match') {
@@ -528,7 +531,7 @@
     const s = C.sessions[id] || {};
     const st = sessionStats(id);
     return {
-      name: sessionTitle(id), desc: s.desc || s.subtitle || '', place: s.place || '',
+      name: sessionTitle(id), desc: sessionDesc(id), place: s.place || '',
       type: s.typeLabel || 'Kracht', icon: s.icon || 'dumbbell', ...st
     };
   }
@@ -800,7 +803,7 @@
 
       ${chk || ws.length || acts.length ? `<div class="sheet-section">Gelogd</div>` : ''}
       ${chk ? `<div class="plan-item"><div class="pi-icon">${icon('heart')}</div><div class="pi-body"><strong>Ochtendcheck</strong><span>Links ${chk.left} · rechts ${chk.right}</span></div></div>` : ''}
-      ${ws.map(w => `<div class="plan-item"><div class="pi-icon">${icon('dumbbell')}</div><div class="li-body pi-body" data-action="show-entry" data-store="workouts" data-id="${w.id}"><strong>${esc(w.title)}</strong><span>${sum((w.exercises || []).map(e => e.sets.length))} sets${w.finishedAt ? ' · ' + fmtTime(w.finishedAt) : ''}</span></div></div>`).join('')}
+      ${ws.map(w => `<div class="plan-item"><div class="pi-icon">${icon('dumbbell')}</div><div class="li-body pi-body" data-action="show-entry" data-store="workouts" data-id="${w.id}"><strong>${esc(woTitle(w))}</strong><span>${sum((w.exercises || []).map(e => e.sets.length))} sets${w.finishedAt ? ' · ' + fmtTime(w.finishedAt) : ''}</span></div></div>`).join('')}
       ${acts.map(a => `<div class="plan-item"><div class="pi-icon ${a.type === 'match' ? 'match' : ''}">${icon(a.type === 'match' ? 'ball' : 'whistle')}</div><div class="li-body pi-body" data-action="show-entry" data-store="activities" data-id="${a.id}"><strong>${a.type === 'match' ? 'Match' : 'Clubtraining'}</strong><span>${a.minutes} min · ${esc(a.surface)} · pijn ${a.pain}</span></div></div>`).join('')}
 
       <div class="sheet-section">Toevoegen</div>
@@ -873,7 +876,7 @@
     const cur = draft();
     if (cur) {
       if (cur.sessionKey === key && cur.date === dkey(today())) { S.ui.woView = 'active'; go('workout'); return; }
-      if (!await ask(`Je hebt nog een workout bezig (${cur.title}). Die stoppen en een nieuwe starten?`)) return;
+      if (!await ask(`Je hebt nog een workout bezig (${woTitle(cur)}). Die stoppen en een nieuwe starten?`)) return;
     }
     const w = {
       sessionKey: key, title: sessionTitle(key), phase: currentPhase(),
@@ -910,7 +913,7 @@
         ${sm.maxPain > MAX_PAIN ? 'Je pijn kwam boven 3: vul morgen zeker je ochtendcheck in.' : 'Vergeet morgen je ochtendcheck niet.'}</div></div>` : ''}
 
       ${w ? `<section class="card">
-        <div class="card-head"><div><h3>Bezig: ${esc(w.title)}</h3><p class="muted small">Gestart om ${fmtTime(w.startedAt)} · oefening ${w.current + 1} van ${w.exercises.length}</p></div></div>
+        <div class="card-head"><div><h3>Bezig: ${esc(woTitle(w))}</h3><p class="muted small">Gestart om ${fmtTime(w.startedAt)} · oefening ${w.current + 1} van ${w.exercises.length}</p></div></div>
         <div class="row"><button class="btn ghost" data-action="wo-cancel">${icon('trash')} Stoppen</button><button class="btn primary" data-action="wo-resume">${icon('play')} Ga verder</button></div>
       </section>` : ''}
 
@@ -1012,7 +1015,7 @@
     main.innerHTML = `
       <header class="topbar">
         ${iconBtn('back', 'wo-pause', 'Terug naar overzicht')}
-        <div class="topbar-title"><strong>${esc(w.title)}</strong><small>Gestart om ${fmtTime(w.startedAt)}</small></div>
+        <div class="topbar-title"><strong>${esc(woTitle(w))}</strong><small>Gestart om ${fmtTime(w.startedAt)}</small></div>
         ${iconBtn('dots', 'wo-menu', 'Opties')}
       </header>
       ${warn && w.current === 0 ? warningHtml(warn) : ''}
@@ -1117,7 +1120,7 @@
     rec.id = await DB.put('workouts', rec);
     S.workouts.push(rec);
     const pains = done.map(s => num(s.pain)).filter(v => v != null);
-    S.ui.summary = { title: w.title, sets: done.length, minutes: Math.max(1, Math.round((rec.finishedAt - w.startedAt) / 60000)), maxPain: pains.length ? Math.max(...pains) : null };
+    S.ui.summary = { title: woTitle(w), sets: done.length, minutes: Math.max(1, Math.round((rec.finishedAt - w.startedAt) / 60000)), maxPain: pains.length ? Math.max(...pains) : null };
     S.settings.activeWorkout = null;
     await saveDraft(true);
     stopRest();
@@ -1404,7 +1407,7 @@
       const pains = (w.exercises || []).flatMap(e => e.sets.map(s => num(s.pain))).filter(v => v != null);
       list.push({
         store: 'workouts', id: w.id, date: w.date, ts: w.finishedAt || 0, icon: (C.sessions[w.sessionKey] || {}).icon || 'dumbbell', cls: '',
-        title: w.title, sub: `${relDay(w.date)} · ${(w.exercises || []).length} oef. · ${sets} sets${pains.length ? ` · pijn max ${Math.max(...pains)}` : ''}`, sample: w.sample
+        title: woTitle(w), sub: `${relDay(w.date)} · ${(w.exercises || []).length} oef. · ${sets} sets${pains.length ? ` · pijn max ${Math.max(...pains)}` : ''}`, sample: w.sample
       });
     });
     S.activities.forEach(a => list.push({
@@ -1434,7 +1437,7 @@
         ${rec.note ? `<p class="note">${esc(rec.note)}</p>` : ''}`);
       return;
     }
-    openSheet(`<div class="sheet-head"><div><h3>${esc(rec.title)}</h3><p>${cap(fmtDay(rec.date))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+    openSheet(`<div class="sheet-head"><div><h3>${esc(woTitle(rec))}</h3><p>${cap(fmtDay(rec.date))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="chips" style="margin-bottom:8px">${rec.finishedAt && rec.startedAt ? `<span class="chip dark">${Math.round((rec.finishedAt - rec.startedAt) / 60000)} min</span>` : ''}<span class="chip">${esc(phaseObj(rec.phase).label)}</span></div>
       ${(rec.exercises || []).map(e => `<div class="detail-ex"><strong>${esc(e.name)}</strong><div class="prev-chips">${e.sets.map(s => `<span>${s.label ? esc(s.label) + ' ' : s.side ? s.side + ' ' : ''}${setText(s, e.kind)}${s.pain != null ? ` <i class="${s.pain > MAX_PAIN ? 'hi' : ''}">p${s.pain}</i>` : ''}</span>`).join('')}</div></div>`).join('') || '<p class="empty">Geen sets gelogd.</p>'}`);
   }
@@ -2121,6 +2124,8 @@
   /* ================= Service worker ================= */
   function registerSW() {
     if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+    // Lokaal testen zonder offline-cache (anders zie je oude bestanden); met ?sw=1 toch aan
+    if (location.hostname === 'localhost' && !/[?&]sw=1/.test(location.search)) return;
     navigator.serviceWorker.register('./sw.js').then(reg => {
       const notify = w => w && w.addEventListener('statechange', () => {
         if (w.state === 'installed' && navigator.serviceWorker.controller) toast('Nieuwe versie beschikbaar', { action: 'reload', label: 'Herladen' });
