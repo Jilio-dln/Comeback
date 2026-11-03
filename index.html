@@ -42,5 +42,31 @@
   <script src="js/charts.js"></script>
   <script src="js/sample.js"></script>
   <script src="js/app.js"></script>
+  <script>
+    // Opstartcontrole: blijft "Laden…" staan, dan tonen we welk bestand ontbreekt of faalt
+    (function () {
+      var errors = [];
+      window.addEventListener('error', function (e) {
+        errors.push((e.filename ? e.filename.split('/').slice(-2).join('/') + ': ' : '') + (e.message || 'laadfout'));
+      }, true);
+      setTimeout(function () {
+        if (!document.querySelector('.boot')) return;
+        var files = ['css/styles.css', 'js/config.js', 'js/db.js', 'js/charts.js', 'js/sample.js', 'js/app.js', 'manifest.json', 'sw.js'];
+        Promise.all(files.map(function (f) {
+          return fetch(f, { cache: 'no-store' }).then(function (r) { return f + ': ' + (r.ok ? 'ok' : 'ONTBREEKT (' + r.status + ')'); })
+            .catch(function () { return f + ': niet bereikbaar'; });
+        })).then(function (lines) {
+          var box = document.querySelector('.boot');
+          if (!box) return;
+          box.style.cssText = 'padding:40px 8px;font:14px/1.5 system-ui,sans-serif;text-align:left';
+          box.innerHTML = '<b>De app start niet.</b><br>Controle van de bestanden:<pre style="white-space:pre-wrap;background:rgba(0,0,0,.06);padding:12px;border-radius:12px">' +
+            lines.join('\n') + (errors.length ? '\n\nFouten:\n' + errors.join('\n') : '') +
+            '\n\nIndexedDB: ' + ('indexedDB' in window ? 'ok' : 'niet beschikbaar') + '</pre>' +
+            'Staat er "ONTBREEKT"? Upload dat bestand dan in de juiste map op GitHub.<br>' +
+            '<button onclick="navigator.serviceWorker&&navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.unregister()});return caches.keys()}).then(function(k){return Promise.all((k||[]).map(function(x){return caches.delete(x)}))}).then(function(){location.reload()})" style="margin-top:12px;padding:10px 16px;border-radius:999px;border:0;background:#111;color:#fff;font-weight:700">Cache wissen en herladen</button>';
+        });
+      }, 5000);
+    })();
+  </script>
 </body>
 </html>
