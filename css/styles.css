@@ -221,6 +221,15 @@ a { color: inherit; }
 :root[data-theme="dark"] .hero-also { border-color: rgba(0, 0, 0, .25); }
 .hero-also button { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 8px 0; font-size: 14px; font-weight: 500; }
 .hero-also .ic { width: 18px; height: 18px; }
+.hero-quick { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; margin-top: 8px; }
+.hero-quick button {
+  border: 0; border-radius: var(--radius); min-height: 46px; padding: 0 6px;
+  background: rgba(0, 0, 0, .16); color: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-weight: 600; font-size: 13.5px; white-space: nowrap;
+}
+.hero-quick button:active { transform: scale(.97); }
+.hero-quick .ic { width: 17px; height: 17px; }
 .hero-icon { width: 40px; height: 40px; border-radius: var(--radius); display: grid; place-items: center; background: rgba(0, 0, 0, .14); }
 
 /* ---------- Herstel- en weekkaart ---------- */

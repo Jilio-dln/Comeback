@@ -397,6 +397,19 @@
     saveOverrides(all, `${itemMeta(it).title} overgeslagen`);
   }
 
+  // Voltooid zonder sets in te vullen (bv. gedaan zonder gsm). Telt als afgewerkt.
+  async function markDone(k, id) {
+    if (workoutsOn(k).some(w => w.sessionKey === id)) { toast('Al afgewerkt'); return; }
+    const now = Date.now();
+    const rec = { date: k, sessionKey: id, title: sessionTitle(id), phase: currentPhase(), startedAt: now, finishedAt: now, exercises: [], quick: true, sample: false };
+    rec.id = await DB.put('workouts', rec);
+    S.workouts.push(rec);
+    S.ui.undoDone = rec.id;
+    closeSheet();
+    render({ keepScroll: true });
+    toast(`${sessionTitle(id)} voltooid`, { action: 'undo-done', label: 'Ongedaan' });
+  }
+
   // Verwijderen: weg uit de planning (telt niet als gemist). Terugzetten kan in de kalender.
   function deleteItem(k, key) {
     const it = findItem(k, key);
@@ -631,10 +644,18 @@
     if (it.type === 'session') {
       const s = sessInfo(it.id);
       let btn;
+      const key = itemKey(it);
+      const canMove = C.sessions[it.id].catchUp !== false;
+      // Snelle keuzes onder de grote knop: voltooid zonder sets, overslaan of verplaatsen
+      const quick = `<div class="hero-quick">
+          ${k <= tk ? `<button data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')}Voltooid</button>` : ''}
+          <button data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')}Overslaan</button>
+          ${canMove ? `<button data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')}Verplaats</button>` : ''}
+        </div>`;
       if (done) btn = `<button class="btn line block lg" data-action="cal-open" data-k="${k}">${icon('check')} Afgewerkt</button>`;
-      else if (k === tk) btn = `<button class="btn primary block lg" data-action="start-session" data-key="${it.id}">${icon('play')} Start workout</button>`;
-      else if (k < tk) btn = `<button class="btn primary block lg" data-action="start-session" data-key="${it.id}">${icon('play')} Nu inhalen</button>`;
-      else btn = `<button class="btn line block lg" data-action="cal-open" data-k="${k}">Bekijk of verplaats</button>`;
+      else if (k === tk) btn = `<button class="btn primary block lg" data-action="start-session" data-key="${it.id}">${icon('play')} Start workout</button>${quick}`;
+      else if (k < tk) btn = `<button class="btn primary block lg" data-action="start-session" data-key="${it.id}">${icon('play')} Nu inhalen</button>${quick}`;
+      else btn = `<button class="btn line block lg" data-action="cal-open" data-k="${k}">Bekijk in kalender</button>${quick}`;
       return `<section class="hero">
         <span class="label">${rel} · ${esc(s.type)}${s.place ? ' · ' + esc(s.place) : ''}</span>
         <h2>${esc(s.name)}</h2><p>${esc(s.desc)}</p>
@@ -655,7 +676,7 @@
         <span class="label">${rel} · Match${f ? ' · ' + (f.home ? 'thuis' : 'uit') : ''}</span>
         <h2>${f ? esc(f.opponent) : 'Match'}</h2><p>${f && f.comp ? esc(f.comp) : 'Log na de match je minuten en hoe het voelde.'}</p>
         <div class="hero-stats">${f && f.time ? `<div class="num">${esc(f.time)}</div>` : ''}${f && played(f) ? `<div class="num">${f.gf}–${f.ga}</div>` : ''}</div>
-        ${action}${also}
+        ${action}${done ? '' : `<div class="hero-quick"><button data-action="skip-item" data-k="${k}" data-key="match">${icon('skip')}Niet gespeeld</button></div>`}${also}
       </section>`;
     }
     return `<section class="hero">
@@ -663,7 +684,8 @@
       <h2>Clubtraining</h2><p>Met de ploeg. Noteer na afloop hoe het voelde.</p>
       <div class="hero-stats">${it.time ? `<div class="num">${esc(it.time.split('–')[0])}</div>` : ''}</div>
       ${done ? `<button class="btn line block lg" data-action="cal-open" data-k="${k}">${icon('check')} Gelogd</button>`
-        : `<button class="btn primary block lg" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button>`}
+        : `<button class="btn primary block lg" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button>
+          <div class="hero-quick"><button data-action="skip-item" data-k="${k}" data-key="training">${icon('skip')}Niet gegaan</button></div>`}
       ${also}
     </section>`;
   }
@@ -894,6 +916,7 @@
         if (it.type === 'session') {
           const s = C.sessions[it.id];
           actions = `<button class="btn sm ${k <= tk ? 'primary' : ''}" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Inhalen' : 'Start'}</button>
+            ${k <= tk ? `<button class="btn sm" data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')} Voltooid</button>` : ''}
             ${s.catchUp === false ? '' : `<button class="btn sm" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')} Verplaats</button>`}
             ${s.custom ? `<button class="btn sm" data-action="edit-custom" data-key="${it.id}">${icon('edit')} Aanpassen</button>`
               : it.extra ? '' : `<button class="btn sm" data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')} Overslaan</button>`}
@@ -966,8 +989,8 @@
     Object.keys(C.sessions).forEach(k => { if (C.sessions[k].custom && !cs[k]) delete C.sessions[k]; });
     Object.entries(cs).forEach(([k, v]) => {
       C.sessions[k] = {
-        short: v.name, name: v.name, desc: `Eigen workout · ${v.items.map(it => (C.exercises[it.ex] || {}).name).filter(Boolean).slice(0, 3).join(', ')}${v.items.length > 3 ? '…' : ''}`,
-        place: 'eigen workout', typeLabel: 'Eigen workout', icon: 'dumbbell', custom: true,
+        short: v.name, name: v.name, desc: `${v.items.map(it => (C.exercises[it.ex] || {}).name).filter(Boolean).slice(0, 3).join(', ')}${v.items.length > 3 ? '…' : ''}`,
+        place: '', typeLabel: 'Eigen workout', icon: 'dumbbell', custom: true,
         items: v.items.filter(it => C.exercises[it.ex])
       };
     });
@@ -1308,7 +1331,7 @@
           const off = key === 'PLYO' && currentPhase() !== 'f3';
           return `<div class="list-row">
             <div class="ico">${icon(s.icon)}</div>
-            <div class="body"><b>${esc(s.name)}</b><span>${off ? 'Pas vanaf fase 2 + 3' : `${esc(s.desc)}`}</span><span>${cap(s.place)} · ${s.exercises} oefeningen · ±${s.minutes} min</span></div>
+            <div class="body"><b>${esc(s.name)}</b><span>${off ? 'Pas vanaf fase 2 + 3' : `${esc(s.desc)}`}</span><span>${s.place ? cap(s.place) + ' · ' : ''}${s.exercises} oefeningen · ±${s.minutes} min</span></div>
             <div class="end"><button class="icon-btn" style="background:var(--card-2)" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
           </div>`;
         }).join('')}
@@ -1812,7 +1835,8 @@
       return;
     }
     openSheet(`<div class="sheet-head"><div><h3>${esc(woTitle(rec))}</h3><p>${cap(fmtDay(rec.date))}${rec.finishedAt && rec.startedAt ? ` · ${Math.round((rec.finishedAt - rec.startedAt) / 60000)} min` : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      ${(rec.exercises || []).map(e => `<div class="list-row"><div class="body"><b>${esc(e.name)}</b><span>${e.sets.map(s => `${s.side ? s.side + ' ' : ''}${setText(s, e.kind) || '–'}${s.pain != null ? ` (pijn ${s.pain})` : ''}`).join(' · ')}</span></div></div>`).join('') || '<p class="empty">Geen sets gelogd.</p>'}`);
+      ${(rec.exercises || []).map(e => `<div class="list-row"><div class="body"><b>${esc(e.name)}</b><span>${e.sets.map(s => `${s.side ? s.side + ' ' : ''}${setText(s, e.kind) || '–'}${s.pain != null ? ` (pijn ${s.pain})` : ''}`).join(' · ')}</span></div></div>`).join('') || `<p class="empty">${rec.quick ? 'Als voltooid aangeduid, zonder sets.' : 'Geen sets gelogd.'}</p>`}
+      <button class="btn danger block" data-action="del-entry" data-store="workouts" data-id="${rec.id}">${icon('trash')} Verwijderen</button>`);
   }
 
   async function deleteEntry(store, id) {
@@ -2459,6 +2483,12 @@
     'b-new-toggle': () => { S.ui.builder.adding = true; renderBuilder(); },
     'b-new-add': builderAddNew,
     'b-save': saveBuilder,
+    'mark-done': el => markDone(el.dataset.k, el.dataset.key),
+    'undo-done': async () => {
+      const id = S.ui.undoDone; if (id == null) return;
+      await DB.del('workouts', id); S.workouts = S.workouts.filter(w => w.id !== id); S.ui.undoDone = null;
+      $('#toast').hidden = true; render({ keepScroll: true }); toast('Ongedaan gemaakt');
+    },
     'undo': async () => { if (!S.ui.undo) return; await setSetting('overrides', S.ui.undo); S.ui.undo = null; $('#toast').hidden = true; render({ keepScroll: true }); toast('Ongedaan gemaakt'); },
     'wo-pause': () => { S.ui.woView = 'picker'; render(); },
     'wo-resume': () => { S.ui.woView = 'active'; requestWakeLock(); render(); },
