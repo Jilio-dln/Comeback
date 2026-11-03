@@ -155,22 +155,41 @@
   const inWeek = (k, wk) => weekKey(parseKey(k)) === wk;
 
   /* ================= RBFA-wedstrijden ================= */
-  const fixtures = () => S.settings.fixtures || [];
+  // Een match: { id, date, time, opponent, home (true = thuis), gf, ga (doelpunten voor/tegen),
+  //              comp, src: 'rbfa' | 'manual', key (voor het samenvoegen bij een nieuwe import), edited }
+  const isMine = name => typeof name === 'string' && name.toLowerCase().includes(C.rbfa.team.toLowerCase());
+  const nice = s => String(s || '').replace(/\b([A-ZÀ-Ý][A-ZÀ-Ý.]{3,})\b/g, w => w.charAt(0) + w.slice(1).toLowerCase());
+  const fxKey = f => `${String(f.opponent).toLowerCase().replace(/[^a-z0-9]/g, '')}|${f.home ? 'H' : 'U'}|${String(f.comp || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  // Zet een match uit het oude formaat (home/away/hs/as) om naar het nieuwe
+  function normFx(f) {
+    if (f && 'opponent' in f) return f;
+    const homeMine = isMine(f.home);
+    const n = {
+      id: f.id || newId(), date: f.date, time: f.time || null,
+      opponent: nice(homeMine ? f.away : f.home), home: homeMine,
+      gf: homeMine ? f.hs ?? null : f.as ?? null, ga: homeMine ? f.as ?? null : f.hs ?? null,
+      comp: f.comp || null, src: 'rbfa', edited: false
+    };
+    n.key = fxKey(n);
+    return n;
+  }
+  const fixtures = () => (S.settings.fixtures || []).map(normFx).sort((a, b) => a.date.localeCompare(b.date) || String(a.time || '').localeCompare(String(b.time || '')));
   const fixtureOn = k => fixtures().find(f => f.date === k);
   function fixtureSpan() {
     const f = fixtures();
     if (!f.length) return null;
     return { first: f[0].date, last: f[f.length - 1].date };
   }
-  const isMine = name => name && name.toLowerCase().includes(C.rbfa.team.toLowerCase());
-  const played = f => f.hs != null && f.as != null;
+  const played = f => f.gf != null && f.ga != null;
   function fixtureResult(f) {
     if (!played(f)) return null;
-    const mine = isMine(f.home) ? f.hs : f.as, other = isMine(f.home) ? f.as : f.hs;
-    return mine > other ? 'win' : mine < other ? 'loss' : 'draw';
+    return f.gf > f.ga ? 'win' : f.gf < f.ga ? 'loss' : 'draw';
   }
-  const opponent = f => isMine(f.home) ? f.away : f.home;
-  const nice = s => s.replace(/\b([A-ZÀ-Ý]{2,})\b/g, w => w.length <= 4 ? w : w.charAt(0) + w.slice(1).toLowerCase());
+  const opponent = f => f.opponent;
+  const fxTitle = f => f.home ? `${C.rbfa.teamLabel} – ${f.opponent}` : `${f.opponent} – ${C.rbfa.teamLabel}`;
+  const fxScore = f => played(f) ? (f.home ? `${f.gf} - ${f.ga}` : `${f.ga} - ${f.gf}`) : '';
 
   /* ================= Schema ================= */
   const satMatchWeek = d => (S.settings.satMatchWeeks || []).includes(weekKey(d));
@@ -267,8 +286,8 @@
     if (it.type === 'match') {
       const f = it.fixture;
       if (f) {
-        const score = played(f) ? ` · ${f.hs} - ${f.as}` : '';
-        return { icon: 'ball', title: `${isMine(f.home) ? 'Thuis' : 'Uit'} tegen ${nice(opponent(f))}`, sub: `${f.time || ''}${score}${f.comp ? ' · ' + f.comp : ''}`, note: it.note, short: '⚽', cls: 'match' };
+        const score = played(f) ? ` · ${fxScore(f)}` : "";
+        return { icon: 'ball', title: `${f.home ? 'Thuis' : 'Uit'} tegen ${nice(opponent(f))}`, sub: `${f.time || ''}${score}${f.comp ? ' · ' + f.comp : ''}`, note: it.note, short: '⚽', cls: 'match' };
       }
       return { icon: 'ball', title: 'Match', sub: 'Log je minuten en hoe het voelde', note: it.note, short: '⚽', cls: 'match' };
     }
@@ -504,207 +523,253 @@
     `<header class="sub-head">${iconBtn('back', 'go', 'Terug', `data-to="${back}"`)}<div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right || '<span></span>'}</header>`;
 
   /* ================= Home (vandaag) ================= */
+  // Info over een sessie zoals de gebruiker ze ziet
+  function sessInfo(id) {
+    const s = C.sessions[id] || {};
+    const st = sessionStats(id);
+    return {
+      name: sessionTitle(id), desc: s.desc || s.subtitle || '', place: s.place || '',
+      type: s.typeLabel || 'Kracht', icon: s.icon || 'dumbbell', ...st
+    };
+  }
+  const dayLabel = k => {
+    const diff = daysBetween(today(), parseKey(k));
+    if (diff === 0) return 'Vandaag';
+    if (diff === 1) return 'Morgen';
+    if (diff === -1) return 'Gisteren';
+    const d = parseKey(k);
+    return `${cap(DAY_S[d.getDay()])} ${d.getDate()}`;
+  };
+  const itemType = it => it.type === 'session' ? 'kracht' : it.type === 'rest' ? 'rust' : it.type;
+
+  // Het belangrijkste item van een dag: eerst een open krachtsessie, dan match, training, holds
+  function mainItem(items, k) {
+    const pick = arr => arr.find(it => it.type === 'session' && C.sessions[it.id] && C.sessions[it.id].catchUp !== false)
+      || arr.find(it => it.type === 'match') || arr.find(it => it.type === 'session') || arr.find(it => it.type === 'training');
+    return pick(items.filter(it => !itemDone(it, k))) || pick(items) || items[0];
+  }
+
+  function dayDotsHtml(d) {
+    const k = dkey(d), tk = dkey(today());
+    const types = {};
+    planFor(d).forEach(it => {
+      if (it.type === 'rest') return;
+      const t = itemType(it), done = itemDone(it, k);
+      if (!types[t] || done) types[t] = done ? 'done' : k < tk ? 'missed' : 'planned';
+    });
+    return Object.entries(types).slice(0, 3).map(([t, st]) => `<i class="dot t-${t} ${st === 'done' ? '' : 'planned'}"></i>`).join('');
+  }
+
   function renderToday() {
-    const t = today(), k = dkey(t), ph = phaseObj(currentPhase()), p = profile();
+    const t = today(), tk = dkey(t), p = profile();
+    const k = S.ui.homeDay && S.ui.homeDay >= dkey(addDays(t, -3)) ? S.ui.homeDay : tk;
     const hr = new Date().getHours();
     const greet = hr < 12 ? 'Goeiemorgen' : hr < 18 ? 'Goeiemiddag' : 'Goeienavond';
-    const plan = planFor(t);
-    const warn = morningWarning();
-    const chk = checkFor(k);
-    const base = chk || lastCheck() || { left: 0, right: 0 };
-    const missed = missedItems();
 
-    // Hoofditem voor de hero-kaart: eerste open sessie, anders match, anders iets anders
-    const open = plan.filter(it => !itemDone(it, k));
-    const heroItem = open.find(it => it.type === 'session') || open.find(it => it.type === 'match') || plan.find(it => it.type === 'session') || plan[0];
-    const others = plan.filter(it => it !== heroItem);
-
-    const wk = weekKey(t);
-    const weekActs = S.activities.filter(a => inWeek(a.date, wk));
-    const mins = sum(weekActs.map(a => +a.minutes));
-    const last = lastCheck();
-    const start = startOfWeek(t);
-    let planned = 0, doneCount = 0;
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(start, i), dk = dkey(d);
-      const ss = planFor(d).filter(x => x.type === 'session');
-      planned += ss.length;
-      doneCount += ss.filter(x => itemDone(x, dk)).length;
+    let strip = '';
+    for (let i = -3; i <= 10; i++) {
+      const d = addDays(t, i), dk = dkey(d);
+      strip += `<button class="day ${dk === k ? 'on' : ''}" data-action="home-day" data-k="${dk}" ${dk === tk ? 'id="day-today"' : ''}>${dayLabel(dk)}<span class="day-dots">${dayDotsHtml(d)}</span></button>`;
     }
 
     main.innerHTML = `
-      <header class="greet">
-        <button class="avatar" data-action="go" data-to="profiel" aria-label="Profiel">${esc((p.name || '?').charAt(0).toUpperCase())}</button>
-        <div class="greet-text"><h1>Hallo ${esc(p.name)}!</h1><p>${greet} · ${fmtLong(t)}</p></div>
-        ${iconBtn(isDark() ? 'sun' : 'moon', 'toggle-theme', isDark() ? 'Lichte modus' : 'Donkere modus')}
-        ${iconBtn('menu', 'open-menu', 'Menu')}
+      <header class="page-head">
+        <div><h1>${greet}, ${esc(p.name)}</h1><p>${cap(fmtLong(t))} · ${esc(phaseObj(currentPhase()).label)}</p></div>
+        <button class="avatar" data-action="go" data-to="account" aria-label="Account">${avatarInner()}</button>
       </header>
-
-      ${warn ? warningHtml(warn) : ''}
-      ${heroHtml(heroItem, k)}
-
-      ${missed.length ? `<section class="card">
-        <div class="card-head"><div><h3>Gemist</h3><p class="muted small">Haal in of sla over. "Slim" kiest de beste dag.</p></div><span class="chip warn">${missed.length}</span></div>
-        ${missed.slice(0, 3).map(m => {
-          const mm = itemMeta(m.item), key = itemKey(m.item);
-          return `<div class="plan-item">
-            <div class="pi-icon match">${icon(mm.icon)}</div>
-            <div class="pi-body"><strong>${esc(mm.title)}</strong><span>${cap(fmtDay(m.date))}</span></div>
-            <div class="pi-actions">
-              <button class="btn tiny soft" data-action="smart-move" data-k="${m.date}" data-key="${key}">${icon('magic')} Slim</button>
-              <button class="more-btn" data-action="item-menu" data-k="${m.date}" data-key="${key}" aria-label="Meer opties">${icon('dots')}</button>
-            </div>
-          </div>`;
-        }).join('')}
-        ${missed.length > 3 ? `<p class="muted small" style="margin:4px">+ ${missed.length - 3} andere. Bekijk ze in de kalender.</p>` : ''}
-      </section>` : ''}
-
-      <section class="card tile tile-wide">
-        <div class="left">
-          <div class="tile-head">${icon('flame')} Sessies</div>
-          <div class="v">${doneCount}<small>/ ${planned}</small></div>
-          <span class="muted small">deze week · wk ${isoWeek(t)}</span>
-        </div>
-        <div class="mini-bars">${weekBarsHtml(t)}</div>
-      </section>
-
-      <section class="tile-grid">
-        <button class="card tile" data-action="scroll-check" style="margin:0;text-align:left;color:inherit;font:inherit">
-          <div class="tile-head">${icon('heart')} Ochtend</div>
-          <div class="v">${last ? `${last.left}<small>/ ${last.right}</small>` : '–'}</div>
-          <div class="s">${last ? `links / rechts, ${relDay(last.date)}` : 'nog geen check'}</div>
-        </button>
-        <button class="card tile" data-action="go" data-to="statistieken" style="margin:0;text-align:left;color:inherit;font:inherit">
-          <div class="tile-head">${icon('clock')} Minuten</div>
-          <div class="v">${mins}<small>min</small></div>
-          <div class="s">gespeeld deze week</div>
-        </button>
-      </section>
-
-      <section class="card" id="check-card">
-        <div class="card-head">
-          <div><h3>Ochtendcheck</h3><p class="muted small">Stijfheid bij het opstaan (achillespees en kuit)</p></div>
-          ${chk ? `<span class="chip ok">${icon('check')} Ingevuld</span>` : ''}
-        </div>
-        <div class="check-grid">
-          ${slider('L', 'Links', base.left)}
-          ${slider('R', 'Rechts', base.right)}
-        </div>
-        <div class="scale-hint"><span>0 · niets</span><span>10 · heel stijf</span></div>
-        <button class="btn primary block" data-action="save-check">${chk ? 'Bijwerken' : 'Opslaan'}</button>
-      </section>
-
-      <div class="section-title"><span>Ook vandaag</span><button class="card-link" data-action="open-day" data-k="${k}">Dagplanning ${icon('chevR')}</button></div>
-      <section class="card">
-        ${others.length ? others.map(it => planItemHtml(it, k)).join('') : `<p class="muted small" style="margin-bottom:4px">Niets anders gepland.</p>`}
-        <label class="switch-row">
-          <span><strong>Match op zaterdag deze week</strong><small>Sessie C schuift dan naar donderdag${fixtures().length ? ' (gebeurt automatisch met de RBFA-kalender)' : ''}</small></span>
-          <input type="checkbox" class="switch" data-change="satmatch" ${satMatchWeek(t) ? 'checked' : ''}>
-        </label>
-      </section>
+      <div class="day-strip" id="day-strip">${strip}</div>
+      ${homeHero(k)}
+      ${recoveryCard()}
+      ${weekCard()}
+      ${nextMatchCard()}
     `;
+    const strip$ = $('#day-strip'), on = strip$.querySelector('.day.on');
+    // Toon de gekozen dag, met een stukje van de vorige dag ernaast
+    if (on) strip$.scrollLeft += on.getBoundingClientRect().left - strip$.getBoundingClientRect().left - 44;
   }
 
-  function heroHtml(it, k) {
-    if (!it) return '';
-    const m = itemMeta(it);
-    const key = itemKey(it);
+  function avatarInner() {
+    const photo = S.settings.photo;
+    return photo ? `<img src="${photo}" alt="">` : esc((profile().name || '?').charAt(0).toUpperCase());
+  }
+
+  // De grote oranje kaart: wat je die dag doet
+  function homeHero(k) {
+    const tk = dkey(today());
+    const items = planFor(parseKey(k));
+    const it = mainItem(items, k);
+    const rel = dayLabel(k);
+    const others = items.filter(x => x !== it && x.type !== 'rest');
+    const also = others.length ? `<div class="hero-also">${others.map(o => {
+      const m = itemMeta(o), done = itemDone(o, k);
+      const act = o.type === 'session' ? (k === tk && !done ? `data-action="start-session" data-key="${o.id}"` : `data-action="cal-open" data-k="${k}"`)
+        : `data-action="open-log" data-type="${o.type}" data-date="${k}"`;
+      return `<button ${act}><span>${esc(m.title)}${o.time ? ' · ' + esc(o.time) : ''}</span>${done ? icon('check') : icon('chevR')}</button>`;
+    }).join('')}</div>` : '';
+
+    if (!it || it.type === 'rest') {
+      return `<section class="hero">
+        <span class="label">${rel} · Rust</span>
+        <h2>Rustdag</h2><p>${esc((it && it.note) || 'Herstel hoort bij de training: wandelen, mobiliteit en goed slapen.')}</p>
+        <div class="hero-stats"></div>
+        <button class="btn line block" data-action="cal-open" data-k="${k}">${icon('plus')} Toch iets plannen</button>${also}
+      </section>`;
+    }
     const done = itemDone(it, k);
-    const more = `<button class="btn ghost" style="flex:0 0 50px;padding:0" data-action="item-menu" data-k="${k}" data-key="${key}" aria-label="Plan aanpassen">${icon('dots')}</button>`;
     if (it.type === 'session') {
-      const st = m.stats;
-      return `<section class="hero-card">
-        <div class="hero-art">${icon(m.icon)}</div>
-        <p class="eyebrow">Training van vandaag · ${esc(phaseObj(currentPhase()).label)}</p>
-        <h2>${esc(m.title)}</h2>
-        <p>${esc(m.subtitle)}</p>
-        <div class="chips"><span class="chip">${icon('dumbbell')} ${st.exercises} oefeningen</span><span class="chip">${icon('clock')} ±${st.minutes} min</span>${m.note ? `<span class="chip dark">${esc(m.note)}</span>` : ''}</div>
-        <div class="hero-actions">
-          ${done ? `<span class="hero-done">${icon('check')} Afgewerkt</span><button class="btn ghost" data-action="start-session" data-key="${it.id}">Opnieuw</button>`
-            : `<button class="btn primary" data-action="start-session" data-key="${it.id}">${icon('play')} Start workout</button>${more}`}
+      const s = sessInfo(it.id);
+      let btn;
+      if (done) btn = `<button class="btn line block lg" data-action="cal-open" data-k="${k}">${icon('check')} Afgewerkt</button>`;
+      else if (k === tk) btn = `<button class="btn primary block lg" data-action="start-session" data-key="${it.id}">${icon('play')} Start workout</button>`;
+      else if (k < tk) btn = `<button class="btn primary block lg" data-action="start-session" data-key="${it.id}">${icon('play')} Nu inhalen</button>`;
+      else btn = `<button class="btn line block lg" data-action="cal-open" data-k="${k}">Bekijk of verplaats</button>`;
+      return `<section class="hero">
+        <span class="label">${rel} · ${esc(s.type)}${s.place ? ' · ' + esc(s.place) : ''}</span>
+        <h2>${esc(s.name)}</h2><p>${esc(s.desc)}</p>
+        <div class="hero-stats">
+          <div class="num">${s.minutes}<span class="unit">min</span></div>
+          <div class="num">${s.exercises}<span class="unit">oefeningen</span></div>
         </div>
+        ${btn}${also}
       </section>`;
     }
     if (it.type === 'match') {
       const f = it.fixture;
-      return `<section class="hero-card">
-        <div class="hero-art">${icon('ball')}</div>
-        <p class="eyebrow">Matchdag${f && f.time ? ' · ' + esc(f.time) : ''}</p>
-        <h2>${f ? esc(nice(opponent(f))) : 'Match'}</h2>
-        <p>${f ? `${isMine(f.home) ? 'Thuis' : 'Uit'}${f.comp ? ' · ' + esc(f.comp) : ''}` : 'Log na de match je minuten en hoe het voelde.'}</p>
-        <div class="chips">${f && played(f) ? `<span class="chip dark">${f.hs} - ${f.as}</span>` : ''}<span class="chip">${icon('heart')} pijn achteraf noteren</span></div>
-        <div class="hero-actions">
-          ${done ? `<span class="hero-done">${icon('check')} Gelogd</span>` : `<button class="btn primary" data-action="${f && played(f) ? 'open-minutes' : 'open-log'}" data-type="match" data-date="${k}">${icon('edit')} ${f && played(f) ? 'Minuten importeren' : 'Match loggen'}</button>${more}`}
-        </div>
+      const isPast = k <= tk;
+      const action = done ? `<button class="btn line block lg" data-action="cal-open" data-k="${k}">${icon('check')} Gelogd</button>`
+        : isPast ? `<button class="btn primary block lg" data-action="${f && played(f) ? 'open-minutes' : 'open-log'}" data-type="match" data-date="${k}">${icon('edit')} Minuten invullen</button>`
+          : `<button class="btn line block lg" data-action="cal-open" data-k="${k}">Bekijk in kalender</button>`;
+      return `<section class="hero">
+        <span class="label">${rel} · Match${f ? ' · ' + (f.home ? 'thuis' : 'uit') : ''}</span>
+        <h2>${f ? esc(f.opponent) : 'Match'}</h2><p>${f && f.comp ? esc(f.comp) : 'Log na de match je minuten en hoe het voelde.'}</p>
+        <div class="hero-stats">${f && f.time ? `<div class="num">${esc(f.time)}</div>` : ''}${f && played(f) ? `<div class="num">${f.gf}–${f.ga}</div>` : ''}</div>
+        ${action}${also}
       </section>`;
     }
-    if (it.type === 'training') {
-      return `<section class="hero-card">
-        <div class="hero-art">${icon('whistle')}</div>
-        <p class="eyebrow">Vandaag</p><h2>Clubtraining</h2><p>${esc(it.time || '')}</p>
-        <div class="chips"></div>
-        <div class="hero-actions">${done ? `<span class="hero-done">${icon('check')} Gelogd</span>` : `<button class="btn primary" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button>${more}`}</div>
-      </section>`;
-    }
-    return `<section class="hero-card">
-      <div class="hero-art">${icon('moon')}</div>
-      <p class="eyebrow">Vandaag</p><h2>Rustdag</h2><p>${esc(m.note || 'Herstel is ook training: wandelen, mobiliteit en goed slapen.')}</p>
-      <div class="chips"></div>
-      <div class="hero-actions"><button class="btn ghost" data-action="open-day" data-k="${k}">${icon('plus')} Toch iets plannen</button></div>
+    return `<section class="hero">
+      <span class="label">${rel} · Training</span>
+      <h2>Clubtraining</h2><p>Met de ploeg. Noteer na afloop hoe het voelde.</p>
+      <div class="hero-stats">${it.time ? `<div class="num">${esc(it.time.split('–')[0])}</div>` : ''}</div>
+      ${done ? `<button class="btn line block lg" data-action="cal-open" data-k="${k}">${icon('check')} Gelogd</button>`
+        : `<button class="btn primary block lg" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button>`}
+      ${also}
     </section>`;
   }
 
-  function slider(side, label, v) {
-    return `<div class="slider-block">
-      <div class="slider-top"><span>${label}</span><strong class="score ${level(v)}" id="chk-${side}-v">${v}</strong></div>
-      <input type="range" min="0" max="10" step="1" value="${v}" id="chk-${side}" data-out="chk-${side}-v" data-score aria-label="Stijfheid ${label.toLowerCase()}" style="--p:${v * 10}%">
-    </div>`;
+  function recoveryCard() {
+    const tk = dkey(today());
+    const chk = checkFor(tk), last = lastCheck();
+    const warn = morningWarning();
+    const L = [], R = [];
+    for (let i = 13; i >= 0; i--) { const c = checkFor(dkey(addDays(today(), -i))); L.push(c ? c.left : null); R.push(c ? c.right : null); }
+    const shown = chk || last;
+    let status;
+    if (warn) status = `<p class="status-line warn">Hoger dan gisteren (${esc(warn.join(', '))}). Zet vandaag een stap terug: lichter trainen, geen sprongen.</p>`;
+    else if (chk) status = `<p class="status-line">Niet hoger dan gisteren. Je mag trainen volgens plan.</p>`;
+    else status = `<p class="status-line">Nog niet ingevuld vandaag${last ? ` · laatste: ${relDay(last.date)}` : ''}.</p>`;
+    return `<section class="card">
+      <div class="card-head"><h2>Herstel</h2><span class="label">Stijfheid 0–10</span></div>
+      <div class="split" style="align-items:end">
+        <div class="recovery-nums">
+          <div class="num">${shown ? shown.left : '–'}<span class="unit">links</span></div>
+          <div class="num">${shown ? shown.right : '–'}<span class="unit">rechts</span></div>
+        </div>
+        <div>${Charts.spark([{ color: 'var(--accent)', values: L }, { color: 'var(--muted)', values: R }])}<span class="label" style="display:block;text-align:right;margin-top:4px">14 dagen</span></div>
+      </div>
+      ${status}
+      ${chk ? `<button class="link-btn" style="margin-top:8px" data-action="open-score">Score aanpassen ${icon('chevR')}</button>`
+        : `<button class="btn primary block" style="margin-top:14px" data-action="open-score">${icon('edit')} Vul je score van vandaag in</button>`}
+    </section>`;
   }
 
-  function planItemHtml(it, k, { actions = true } = {}) {
-    const m = itemMeta(it), done = itemDone(it, k), key = itemKey(it);
-    const isPast = k < dkey(today());
-    let btn = '';
-    if (actions) {
-      if (it.type === 'session') {
-        btn = done ? `<span class="play-btn done" aria-label="Gedaan">${icon('check')}</span>`
-          : `<button class="play-btn" data-action="start-session" data-key="${it.id}" aria-label="Start ${esc(m.title)}">${icon('play')}</button>`;
-      } else if (it.type === 'training' || it.type === 'match') {
-        btn = done ? `<span class="play-btn done">${icon('check')}</span>`
-          : `<button class="btn tiny soft" data-action="open-log" data-type="${it.type}" data-date="${k}">Loggen</button>`;
-      }
-      if (it.type !== 'rest' && !done) btn += `<button class="more-btn" data-action="item-menu" data-k="${k}" data-key="${key}" aria-label="Plan aanpassen">${icon('dots')}</button>`;
-    }
-    const status = done ? '' : (isPast && it.type === 'session' && C.sessions[it.id].catchUp !== false ? '<em class="warn">Gemist</em>' : '');
-    return `<div class="plan-item ${done ? 'is-done' : ''}">
-      <div class="pi-icon ${m.cls || ''}">${icon(m.icon)}</div>
-      <div class="pi-body"><strong>${esc(m.title)}</strong><span>${esc(m.sub)}</span>${m.note ? `<em>${esc(m.note)}</em>` : ''}${status}</div>
-      <div class="pi-actions">${btn}</div>
-    </div>`;
-  }
-
-  function weekBarsHtml(t) {
-    const start = startOfWeek(t), tk = dkey(t);
-    let html = '';
+  // Telt wat er deze week gepland en afgewerkt is (holds apart, omdat die dagelijks zijn)
+  function weekCounts() {
+    const start = startOfWeek(today());
+    const c = { kracht: [0, 0], training: [0, 0], match: [0, 0], holds: [0, 0] };
     for (let i = 0; i < 7; i++) {
       const d = addDays(start, i), k = dkey(d);
-      const ss = planFor(d).filter(x => x.type === 'session');
-      const did = workoutsOn(k).length;
-      const val = Math.max(ss.length, did, 0.4);
-      const missed = k < tk && ss.some(x => C.sessions[x.id].catchUp !== false && !itemDone(x, k));
-      const cls = [did ? 'done' : '', missed && !did ? 'missed' : '', k === tk ? 'today' : ''].join(' ');
-      html += `<button class="mini-bar ${cls}" data-action="open-day" data-k="${k}" aria-label="${fmtDay(k)}"><i style="height:${Math.round(val / 3 * 72) + 8}%"></i><span>${DAY_LETTER[d.getDay()]}</span></button>`;
+      planFor(d).forEach(it => {
+        if (it.type === 'rest') return;
+        const bucket = it.type === 'session' ? (C.sessions[it.id] && C.sessions[it.id].catchUp === false ? 'holds' : 'kracht') : it.type;
+        c[bucket][1]++;
+        if (itemDone(it, k)) c[bucket][0]++;
+      });
     }
-    return html;
+    return c;
+  }
+
+  function weekCard() {
+    const c = weekCounts();
+    const done = c.kracht[0] + c.training[0] + c.match[0];
+    const total = c.kracht[1] + c.training[1] + c.match[1];
+    return `<section class="card">
+      <div class="card-head"><h2>Deze week</h2><span class="label">week ${isoWeek(today())}</span></div>
+      <div class="gauge-wrap">${Charts.gauge(done, total)}
+        <div class="gauge-center"><div class="num">${done}<span class="unit">van ${total}</span></div><span class="label">geplande items afgewerkt</span></div>
+      </div>
+      <div class="week-split">
+        <div><b>${c.kracht[0]}/${c.kracht[1]}</b><span>kracht</span></div>
+        <div><b>${c.training[0]}/${c.training[1]}</b><span>trainingen</span></div>
+        <div><b>${c.match[0]}/${c.match[1]}</b><span>matchen</span></div>
+      </div>
+      ${c.holds[1] ? `<p class="status-line">Kuit & pees isometrisch: ${c.holds[0]} van ${c.holds[1]} dagen gedaan.</p>` : ''}
+    </section>`;
+  }
+
+  function nextMatchCard() {
+    const tk = dkey(today());
+    const f = fixtures().find(x => x.date >= tk && !played(x));
+    if (f) {
+      const days = daysBetween(today(), parseKey(f.date));
+      return `<section class="card list-row tap" style="padding:16px" data-action="cal-open" data-k="${f.date}">
+        <div class="ico">${icon('ball')}</div>
+        <div class="body"><span class="label">Volgende match · ${days === 0 ? 'vandaag' : days === 1 ? 'morgen' : `over ${days} dagen`}</span>
+          <b style="font-size:17px;margin-top:2px">${esc(f.opponent)}</b>
+          <span>${f.home ? 'Thuis' : 'Uit'} · ${fmtDay(f.date)}${f.time ? ' · ' + esc(f.time) : ''}</span></div>
+        <div class="end">${icon('chevR')}</div>
+      </section>`;
+    }
+    let next = null;
+    for (let i = 0; i < 14 && !next; i++) { const d = addDays(today(), i); if (planFor(d).some(x => x.type === 'match')) next = dkey(d); }
+    return `<section class="card list-row" style="padding:16px">
+      <div class="ico">${icon('ball')}</div>
+      <div class="body"><span class="label">Volgende match</span>
+        <b style="margin-top:2px">${next ? cap(fmtDay(next)) : 'Geen match gepland'}</b>
+        <span>Tegenstander en uur zie je na het importeren van de RBFA-kalender.</span></div>
+      <div class="end"><button class="btn sm" data-action="open-rbfa">Importeer</button></div>
+    </section>`;
+  }
+
+  // Ochtendscore invullen met grote knoppen (0–10)
+  function openScore() {
+    const chk = checkFor(dkey(today())) || lastCheck() || { left: 0, right: 0 };
+    const pad = (side, v) => `<div class="score-row"><div class="top"><b>${side === 'L' ? 'Links' : 'Rechts'}</b><span class="label">0 = niets · 10 = heel stijf</span></div>
+      <div class="score-pad" data-side="${side}">${Array.from({ length: 11 }, (_, i) => `<button class="${i === v ? 'on' : ''} ${i > MAX_PAIN ? 'hi' : ''}" data-action="score-pick" data-v="${i}">${i}</button>`).join('')}</div></div>`;
+    openSheet(`<div class="sheet-head"><div><h3>Ochtendscore</h3><p>Hoe stijf voelen je achillespees en kuit bij het opstaan?</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${pad('L', chk.left)}${pad('R', chk.right)}
+      <button class="btn primary block lg" data-action="save-check">${icon('check')} Opslaan</button>`);
   }
 
   async function saveCheck() {
     const k = dkey(today());
-    const rec = { date: k, left: +$('#chk-L').value, right: +$('#chk-R').value, savedAt: Date.now(), sample: false };
+    const val = side => { const b = document.querySelector(`.score-pad[data-side="${side}"] .on`); return b ? +b.dataset.v : 0; };
+    const rec = { date: k, left: val('L'), right: val('R'), savedAt: Date.now(), sample: false };
     await DB.put('checks', rec);
     S.checks = S.checks.filter(c => c.date !== k).concat(rec);
+    closeSheet();
     render({ keepScroll: true });
-    toast(morningWarning() ? 'Opgeslagen. Je score is hoger dan gisteren: zet een stap terug.' : 'Ochtendcheck opgeslagen');
+    toast(morningWarning() ? 'Opgeslagen. Je score is hoger dan gisteren: zet een stap terug.' : 'Ochtendscore opgeslagen');
+  }
+
+  // Tijdelijk nog gebruikt door oudere schermen
+  function heroHtml(it, k) { return homeHero(k); }
+
+  function planItemHtml(it, k, { actions = true } = {}) {
+    const m = itemMeta(it), done = itemDone(it, k), key = itemKey(it);
+    let btn = '';
+    if (actions && it.type === 'session' && !done) btn = `<button class="btn sm" data-action="start-session" data-key="${it.id}">${icon('play')} Start</button>`;
+    if (actions && it.type !== 'rest' && !done) btn += `<button class="btn sm" data-action="item-menu" data-k="${k}" data-key="${key}">Wijzig</button>`;
+    return `<div class="list-row"><div class="ico">${icon(m.icon)}</div><div class="body"><b>${esc(m.title)}</b><span>${esc(m.sub)}</span></div><div class="end">${done ? '<span class="tag done">Gedaan</span>' : btn}</div></div>`;
   }
 
   /* ================= Dagdetail (kalender) ================= */
@@ -719,8 +784,8 @@
 
       ${f ? `<div class="plan-item">
         <div class="pi-icon match">${icon('ball')}</div>
-        <div class="pi-body"><strong>${esc(nice(f.home))} – ${esc(nice(f.away))}</strong><span>${esc(f.time || '')}${f.comp ? ' · ' + esc(f.comp) : ''}</span></div>
-        ${played(f) ? `<span class="score-pill ${fixtureResult(f)}">${f.hs} - ${f.as}</span>` : ''}
+        <div class="pi-body"><strong>${esc(fxTitle(f))}</strong><span>${esc(f.time || '')}${f.comp ? ' · ' + esc(f.comp) : ''}</span></div>
+        ${played(f) ? `<span class="score-pill ${fixtureResult(f)}">${fxScore(f)}</span>` : ''}
       </div>
       ${played(f) && !acts.some(a => a.type === 'match') ? `<button class="btn soft block" style="margin:0 0 8px" data-action="open-minutes" data-date="${k}">${icon('paste')} Mijn minuten importeren</button>` : ''}` : ''}
 
@@ -1289,8 +1354,8 @@
       const a = matches.find(m => m.date === f.date);
       return `<div class="list-item">
         <div class="li-icon ${fixtureResult(f) === 'win' ? 'green' : fixtureResult(f) === 'loss' ? 'amber' : ''}">${icon('ball')}</div>
-        <div class="li-body" data-action="open-day" data-k="${f.date}"><strong>${esc(nice(opponent(f)))}</strong><span>${fmtShort(f.date)} · ${isMine(f.home) ? 'thuis' : 'uit'} · ${a ? `${a.minutes} min gespeeld` : 'nog geen minuten'}</span></div>
-        <span class="score-pill ${fixtureResult(f)}">${f.hs} - ${f.as}</span>
+        <div class="li-body" data-action="open-day" data-k="${f.date}"><strong>${esc(nice(opponent(f)))}</strong><span>${fmtShort(f.date)} · ${f.home ? 'thuis' : 'uit'} · ${a ? `${a.minutes} min gespeeld` : 'nog geen minuten'}</span></div>
+        <span class="score-pill ${fixtureResult(f)}">${fxScore(f)}</span>
       </div>`;
     }).join('');
     return `<section class="card">
@@ -1467,8 +1532,8 @@
       <div class="section-title"><span>${esc(C.rbfa.teamLabel)} via RBFA</span></div>
       <section class="card">
         ${fx.length ? `
-          ${next ? `<div class="plan-item"><div class="pi-icon match">${icon('ball')}</div><div class="pi-body" data-action="open-day" data-k="${next.date}" style="cursor:pointer"><strong>Volgende: ${esc(nice(opponent(next)))}</strong><span>${cap(fmtDay(next.date))} · ${esc(next.time || '')} · ${isMine(next.home) ? 'thuis' : 'uit'}</span></div></div>` : ''}
-          ${lastPlayed ? `<div class="plan-item"><div class="pi-icon">${icon('ball')}</div><div class="pi-body" data-action="open-day" data-k="${lastPlayed.date}" style="cursor:pointer"><strong>Laatste: ${esc(nice(opponent(lastPlayed)))}</strong><span>${cap(fmtDay(lastPlayed.date))}</span></div><span class="score-pill ${fixtureResult(lastPlayed)}">${lastPlayed.hs} - ${lastPlayed.as}</span></div>` : ''}
+          ${next ? `<div class="plan-item"><div class="pi-icon match">${icon('ball')}</div><div class="pi-body" data-action="open-day" data-k="${next.date}" style="cursor:pointer"><strong>Volgende: ${esc(nice(opponent(next)))}</strong><span>${cap(fmtDay(next.date))} · ${esc(next.time || '')} · ${next.home ? 'thuis' : 'uit'}</span></div></div>` : ''}
+          ${lastPlayed ? `<div class="plan-item"><div class="pi-icon">${icon('ball')}</div><div class="pi-body" data-action="open-day" data-k="${lastPlayed.date}" style="cursor:pointer"><strong>Laatste: ${esc(nice(opponent(lastPlayed)))}</strong><span>${cap(fmtDay(lastPlayed.date))}</span></div><span class="score-pill ${fixtureResult(lastPlayed)}">${fxScore(lastPlayed)}</span></div>` : ''}
           <p class="muted small" style="margin:4px 4px 12px">${fx.length} matchen in je kalender${S.settings.fixturesAt ? `, bijgewerkt ${relDay(dkey(new Date(S.settings.fixturesAt)))}` : ''}. Matchdagen komen automatisch in je schema.</p>`
           : `<p class="muted small" style="margin-bottom:12px">Zet de kalender van ${esc(C.rbfa.teamLabel)} in de app. Matchdagen komen dan automatisch in je schema, en je importeert na elke match je eigen minuten van het wedstrijdblad.</p>`}
         <div class="row">
@@ -1656,7 +1721,7 @@
   function openMinutes(date) {
     const fx = fixtures().filter(played);
     const f = date ? fixtureOn(date) : null;
-    openSheet(`<div class="sheet-head"><div><h3>Mijn minuten</h3><p>${f ? `${esc(nice(f.home))} – ${esc(nice(f.away))}, ${fmtShort(f.date)}` : 'Van het wedstrijdblad op rbfa.be'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+    openSheet(`<div class="sheet-head"><div><h3>Mijn minuten</h3><p>${f ? `${esc(fxTitle(f))}, ${fmtShort(f.date)}` : 'Van het wedstrijdblad op rbfa.be'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <ol class="steps">
         <li>Open de <a href="${esc(C.rbfa.calendarUrl)}" target="_blank" rel="noopener">kalender</a> en tik op de match${f ? ` van ${fmtShort(f.date)}` : ''}.</li>
         <li>Selecteer alles op de matchpagina en kopieer.</li>
@@ -1916,7 +1981,10 @@
     'close-sheet': closeSheet,
     'toggle-theme': () => setTheme(isDark() ? 'light' : 'dark'),
     'save-check': saveCheck,
-    'scroll-check': () => { const c = $('#check-card'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
+    'open-score': openScore,
+    'score-pick': el => { el.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === el)); },
+    'home-day': el => { S.ui.homeDay = el.dataset.k; render({ keepScroll: true }); },
+    'cal-open': el => openDay(el.dataset.k),
     'start-session': el => startSession(el.dataset.key),
     'open-log': el => openLog(el.dataset.type, el.dataset.date || undefined),
     'open-day': el => openDay(el.dataset.k),
