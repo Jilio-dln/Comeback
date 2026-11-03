@@ -98,6 +98,7 @@ a { color: inherit; }
     calc(var(--safe-bottom) + var(--tabbar-h) + 40px)
     calc(var(--safe-left) + 16px);
 }
+.app.resting { padding-bottom: calc(var(--safe-bottom) + var(--tabbar-h) + 110px); }
 .boot { padding: 40vh 0; text-align: center; color: var(--muted); }
 
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 18px; min-height: 44px; }

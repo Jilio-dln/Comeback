@@ -947,11 +947,12 @@
     const ex = C.exercises[it.ex];
     const e = {
       exId: it.ex, name: ex.name, kind: ex.kind, load: ex.load, perSide: !!ex.perSide,
-      presc: prescription(it, ex), cue: ex.cue || '', rest: ex.rest || C.defaultRest,
+      presc: prescription(it, ex) + (ex.kind === 'reps' && ex.load === 'kg' ? ` · ${C.rpe}` : ''),
+      cue: ex.cue || '', rest: ex.rest || C.defaultRest,
       target: ex.reps || null, repsText: ex.repsText || null, progressAt: ex.progressAt || null,
       duration: Array.isArray(ex.duration) ? ex.duration[0] : (ex.duration || null),
       distance: ex.distance || null, increment: ex.increment || 2.5,
-      setLabels: it.setLabels || null, sets: [], bump: 0
+      setLabels: it.setLabels || null, sets: [], bump: 0, cur: 0
     };
     const prev = lastPerformance(it.ex);
     e.prevReady = !!(prev && progressionReady(e, prev.sets.map(s => ({ ...s, done: true }))));
@@ -979,7 +980,7 @@
     const cur = draft();
     if (cur) {
       if (cur.sessionKey === key && cur.date === dkey(today())) { S.ui.woView = 'active'; go('workout'); return; }
-      if (!await ask(`Je hebt nog een workout bezig (${woTitle(cur)}). Die stoppen en een nieuwe starten?`)) return;
+      if (!await ask(`Je bent nog bezig met ${woTitle(cur)}. Die stoppen zonder opslaan en ${sessionTitle(key)} starten?`, { ok: 'Nieuwe starten', danger: true })) return;
     }
     const w = {
       sessionKey: key, title: sessionTitle(key), phase: currentPhase(),
@@ -994,192 +995,189 @@
     if (currentRoute() === 'workout') render(); else go('workout');
   }
 
+  // Overzicht van alle sessies (hoofdtab, dus geen terugknop)
   function renderWorkout() {
     const w = draft();
     if (w && S.ui.woView !== 'picker') return renderActive(w);
     const t = today(), k = dkey(t);
-    const todays = planFor(t).filter(it => it.type === 'session');
-    const firstOpen = todays.find(it => !itemDone(it, k)) || todays[0];
-    const warn = morningWarning();
+    const todays = planFor(t).filter(it => it.type === 'session' && !itemDone(it, k));
+    const rec = todays.find(it => C.sessions[it.id].catchUp !== false) || todays[0];
     const sm = S.ui.summary;
+    const warn = morningWarning();
 
     main.innerHTML = `
-      <header class="topbar">
-        ${iconBtn('back', 'go', 'Terug', 'data-to="vandaag"')}
-        <div class="topbar-title"></div>
-        ${iconBtn('timer', 'rest-start', 'Rusttimer starten')}
-      </header>
-      <h1 class="page-title">Workout</h1>
-
-      ${sm ? `<div class="alert ok">${icon('check')}<div><strong>Goed gedaan! ${esc(sm.title)} is opgeslagen</strong>
-        ${sm.sets} sets in ${sm.minutes} min · hoogste pijn ${sm.maxPain ?? '–'}/10.
-        ${sm.maxPain > MAX_PAIN ? 'Je pijn kwam boven 3: vul morgen zeker je ochtendcheck in.' : 'Vergeet morgen je ochtendcheck niet.'}</div></div>` : ''}
-
+      ${pageHead('Workout', `${esc(phaseObj(currentPhase()).label)} · ${esc(phaseObj(currentPhase()).title)}`)}
+      ${sm ? `<div class="hint">${icon('check')}<span><b>${esc(sm.title)} opgeslagen.</b> ${sm.sets} sets in ${sm.minutes} min, hoogste pijn ${sm.maxPain ?? 0}/10.${sm.maxPain > MAX_PAIN ? ' Vul morgen zeker je ochtendscore in.' : ''}</span></div>` : ''}
+      ${warn ? `<div class="hint warn">${icon('alert')}<span>Je ochtendscore is hoger dan gisteren. Train vandaag lichter en sla sprongen over.</span></div>` : ''}
       ${w ? `<section class="card">
-        <div class="card-head"><div><h3>Bezig: ${esc(woTitle(w))}</h3><p class="muted small">Gestart om ${fmtTime(w.startedAt)} · oefening ${w.current + 1} van ${w.exercises.length}</p></div></div>
-        <div class="row"><button class="btn ghost" data-action="wo-cancel">${icon('trash')} Stoppen</button><button class="btn primary" data-action="wo-resume">${icon('play')} Ga verder</button></div>
+        <span class="label">Bezig sinds ${fmtTime(w.startedAt)}</span>
+        <h2 style="font-size:20px;font-weight:600;margin:4px 0 2px">${esc(woTitle(w))}</h2>
+        <p class="muted small">Oefening ${w.current + 1} van ${w.exercises.length} · ${w.exercises.flatMap(x => x.sets).filter(s => s.done).length} sets gedaan</p>
+        <div class="row" style="margin-top:14px"><button class="btn" data-action="wo-cancel">Stoppen</button><button class="btn primary" data-action="wo-resume">${icon('play')} Ga verder</button></div>
+      </section>` : rec ? `<section class="hero">
+        <span class="label">Aanbevolen vandaag · ${esc(sessInfo(rec.id).type)}</span>
+        <h2>${esc(sessionTitle(rec.id))}</h2><p>${esc(sessionDesc(rec.id))}</p>
+        <div class="hero-stats"><div class="num">${sessInfo(rec.id).minutes}<span class="unit">min</span></div><div class="num">${sessInfo(rec.id).exercises}<span class="unit">oefeningen</span></div></div>
+        <button class="btn primary block lg" data-action="start-session" data-key="${rec.id}">${icon('play')} Start workout</button>
       </section>` : ''}
-
-      ${warn ? warningHtml(warn) : ''}
-      ${firstOpen && !w ? heroHtml(firstOpen, k) : ''}
-
-      <div class="section-title"><span>Alle sessies</span><span class="muted small">${esc(phaseObj(currentPhase()).label)}</span></div>
+      <div class="section"><span>Alle sessies</span></div>
       <section class="card">
         ${Object.keys(C.sessions).map(key => {
-          const s = C.sessions[key];
-          const st = sessionStats(key);
+          const s = sessInfo(key);
           const off = key === 'PLYO' && currentPhase() !== 'f3';
-          return `<div class="session-row">
-            <div class="pi-icon">${icon(s.icon || 'dumbbell')}</div>
-            <div class="pi-body"><strong>${esc(sessionTitle(key))}</strong><span>${off ? 'Pas vanaf fase 3' : `${st.exercises} oef. · ${st.sets} sets · ±${st.minutes} min`}</span></div>
-            <button class="play-btn" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button>
+          return `<div class="list-row">
+            <div class="ico">${icon(s.icon)}</div>
+            <div class="body"><b>${esc(s.name)}</b><span>${off ? 'Pas vanaf fase 2 + 3' : `${esc(s.desc)}`}</span><span>${cap(s.place)} · ${s.exercises} oefeningen · ±${s.minutes} min</span></div>
+            <div class="end"><button class="icon-btn" style="background:var(--card-2)" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
           </div>`;
         }).join('')}
       </section>
-
-      <div class="alert info">${icon('info')}<div><strong>Pijnregel</strong>${esc(C.painRule.text)} Krachtwerk doe je op ${esc(C.rpe)}.</div></div>
+      <p class="label" style="margin:12px 2px">${esc(C.painRule.text)}</p>
     `;
   }
 
+  // Velden per soort oefening, met de stapgrootte voor de −/+ knoppen
   function fieldsFor(e) {
-    const pain = { f: 'pain', l: 'Pijn', ph: '0', mode: 'numeric' };
+    const pain = { f: 'pain', l: 'Pijn', sub: `max ${MAX_PAIN} van 10`, step: 1, min: 0, max: 10, mode: 'numeric', start: 0 };
     if (e.kind === 'reps') {
-      const f = [{ f: 'reps', l: 'Herh.', ph: e.repsText || (e.target[0] === e.target[1] ? String(e.target[0]) : `${e.target[0]}–${e.target[1]}`), mode: 'numeric' }];
-      if (e.load === 'kg') f.push({ f: 'weight', l: 'kg', ph: '0', mode: 'decimal' });
-      if (e.load === 'bw') f.push({ f: 'weight', l: '+ kg', ph: '–', mode: 'decimal' });
+      const goal = e.repsText || (e.target[0] === e.target[1] ? String(e.target[0]) : `${e.target[0]}–${e.target[1]}`);
+      const f = [{ f: 'reps', l: 'Herhalingen', sub: `doel ${goal}`, step: 1, min: 0, max: 200, mode: 'numeric', start: e.target ? e.target[0] : 10 }];
+      if (e.load === 'kg') f.push({ f: 'weight', l: 'Gewicht', sub: 'kg', step: e.increment >= 2.5 ? 2.5 : 1, min: 0, max: 500, mode: 'decimal', start: 0 });
+      if (e.load === 'bw') f.push({ f: 'weight', l: 'Extra gewicht', sub: 'kg, optioneel', step: 2.5, min: 0, max: 200, mode: 'decimal', start: 0 });
       return f.concat(pain);
     }
-    if (e.kind === 'hold') return [{ f: 'duration', l: 'sec', ph: String(e.duration), mode: 'numeric' }, { f: 'weight', l: 'kg', ph: '–', mode: 'decimal' }, pain];
-    if (e.kind === 'time') return [{ f: 'duration', l: 'sec', ph: String(e.duration), mode: 'numeric' }, pain];
-    return [{ f: 'dist', l: 'meter', ph: String(e.distance), mode: 'numeric' }, pain];
+    if (e.kind === 'hold') return [{ f: 'duration', l: 'Duur', sub: 'seconden', step: 5, min: 0, max: 600, mode: 'numeric', start: e.duration }, { f: 'weight', l: 'Gewicht', sub: 'kg, optioneel', step: 2.5, min: 0, max: 300, mode: 'decimal', start: 0 }, pain];
+    if (e.kind === 'time') return [{ f: 'duration', l: 'Duur', sub: 'seconden', step: 5, min: 0, max: 600, mode: 'numeric', start: e.duration }, pain];
+    return [{ f: 'dist', l: 'Afstand', sub: 'meter', step: 5, min: 0, max: 500, mode: 'numeric', start: e.distance }, pain];
   }
   const hasTimer = e => e.kind === 'hold' || e.kind === 'time';
-
-  function setsHtml(e) {
-    const fields = fieldsFor(e);
-    return e.sets.map((s, i) => `
-      <div class="set-row ${s.done ? 'done' : ''}" style="--cols:${fields.length}">
-        <div class="set-idx"><span>${esc(s.label || s.idx + 1)}</span>${s.side ? `<small>${s.side}</small>` : ''}</div>
-        ${fields.map(fd => `<div class="field"><label>${fd.l}</label><input type="text" inputmode="${fd.mode}" autocomplete="off"
-          data-set="${i}" data-f="${fd.f}" value="${esc(s[fd.f] ?? '')}" placeholder="${esc(fd.ph)}"
-          class="${fd.f === 'pain' && num(s.pain) > MAX_PAIN ? 'pain-high' : ''}" aria-label="${fd.l} set ${s.idx + 1}${s.side ? ' ' + s.side : ''}"></div>`).join('')}
-        <div class="set-actions">
-          ${hasTimer(e) ? `<button class="round-sm" data-action="hold-start" data-i="${i}" aria-label="Timer starten">${icon('timer')}</button>` : ''}
-          <button class="round-sm ${s.done ? 'on' : ''}" data-action="set-done" data-i="${i}" aria-label="Set afvinken">${icon('check')}</button>
-        </div>
-      </div>`).join('');
-  }
+  const sideName = s => s === 'L' ? 'links' : s === 'R' ? 'rechts' : '';
+  const setName = s => `${s.label ? s.label : `Set ${s.idx + 1}`}${s.side ? ' · ' + sideName(s.side) : ''}`;
 
   function setText(s, kind) {
     const w = num(s.weight);
-    if (kind === 'reps') return `${num(s.reps) ?? '–'}${w ? ` × ${fmtNum(w)} kg` : ''}`;
-    if (kind === 'hold' || kind === 'time') return `${num(s.duration) ?? '–'} s${w ? ` · ${fmtNum(w)} kg` : ''}`;
-    return `${num(s.dist) ?? '–'} m`;
+    if (kind === 'reps') return num(s.reps) == null ? '' : `${num(s.reps)}×${w ? ` ${fmtNum(w)} kg` : ''}`;
+    if (kind === 'hold' || kind === 'time') return num(s.duration) == null ? '' : `${num(s.duration)} s${w ? ` · ${fmtNum(w)} kg` : ''}`;
+    return num(s.dist) == null ? '' : `${num(s.dist)} m`;
   }
 
-  function prevHtml(e) {
-    const prev = lastPerformance(e.exId);
-    if (!prev) return e.load === 'kg' ? `<div class="prev"><span class="prev-l">Eerste keer</span>Kies een gewicht waarbij je nog 2–3 herhalingen over hebt (${esc(C.rpe)}).</div>` : '';
-    const chips = prev.sets.map(s => {
-      const p = num(s.pain);
-      return `<span>${s.label ? esc(s.label) + ' ' : s.side ? s.side + ' ' : ''}${setText(s, e.kind)}${p != null ? ` <i class="${p > MAX_PAIN ? 'hi' : ''}">p${p}</i>` : ''}</span>`;
-    }).join('');
-    let tip = '';
-    if (e.prevReady && e.load === 'kg') tip = `<p>Vorige keer haalde je overal ${e.progressAt || e.target[1]} herhalingen met pijn ≤ ${MAX_PAIN}. Het gewicht staat al +${fmtNum(e.bump)} kg hoger ingevuld.</p>`;
-    else if (e.prevReady) tip = `<p>Vorige keer ging het vlot en pijnarm: maak het vandaag iets zwaarder.</p>`;
-    return `<div class="prev"><span class="prev-l">Vorige keer · ${relDay(prev.date)}</span><div class="prev-chips">${chips}</div>${tip}</div>`;
-  }
-
-  function feedbackHtml(e) {
+  // Eén korte regel boven de sets: alleen als het gewicht omhoog mag, of als de pijn te hoog is
+  function hintsHtml(e) {
     let html = '';
-    if (e.sets.some(s => num(s.pain) > MAX_PAIN)) {
-      html += `<div class="alert">${icon('alert')}<div><strong>Pijn boven ${MAX_PAIN}/10</strong>
-        Maak de oefening lichter (minder gewicht, minder herhalingen of een kleinere range) of stop ermee voor vandaag.</div></div>`;
-    }
-    if (progressionReady(e, e.sets)) {
-      const top = e.progressAt || e.target[1];
-      html += `<div class="alert ok">${icon('trend')}<div><strong>Klaar voor meer</strong>
-        Je haalt ${top} herhalingen met pijn ≤ ${MAX_PAIN}. ${e.load === 'kg'
-          ? `Verhoog volgende keer het gewicht met ${fmtNum(e.increment)} kg en begin weer rond ${e.target[0]} herhalingen.`
-          : 'Maak het volgende keer zwaarder: houd een dumbbell vast of kies een moeilijkere variant.'}</div></div>`;
-    }
+    if (e.sets.some(s => num(s.pain) > MAX_PAIN)) html += `<div class="hint warn">${icon('alert')}<span>Pijn boven ${MAX_PAIN}: maak het lichter of stop deze oefening.</span></div>`;
+    if (progressionReady(e, e.sets)) html += `<div class="hint accent">${icon('up')}<span>${e.load === 'kg' ? `Volgende keer mag het gewicht +${fmtNum(e.increment)} kg omhoog.` : 'Volgende keer mag het zwaarder: kies een moeilijkere variant.'}</span></div>`;
+    else if (e.prevReady) html += `<div class="hint accent">${icon('up')}<span>${e.load === 'kg' ? `Gewicht omhoog: vandaag +${fmtNum(e.bump)} kg, al ingevuld.` : 'Vorige keer ging vlot: maak het vandaag iets zwaarder.'}</span></div>`;
     return html;
+  }
+
+  function setLinesHtml(e) {
+    return e.sets.map((s, i) => {
+      const txt = setText(s, e.kind), p = num(s.pain);
+      return `<button class="set-line ${s.done ? 'done' : ''} ${i === e.cur ? 'cur' : ''}" data-action="set-sel" data-i="${i}">
+        <span class="n">${esc(s.label || `${s.idx + 1}`)}${s.side ? ' ' + s.side : ''}</span>
+        <span class="val ${txt ? '' : 'empty-val'}">${txt || (i === e.cur ? 'nu bezig' : '–')}${p != null && txt ? ` · <span class="${p > MAX_PAIN ? 'pain-hi' : 'muted'}">pijn ${p}</span>` : ''}</span>
+        <span class="ok">${s.done ? icon('check') : ''}</span>
+      </button>`;
+    }).join('');
+  }
+
+  function editorHtml(e) {
+    const i = clamp(e.cur || 0, 0, e.sets.length - 1);
+    const s = e.sets[i];
+    const allDone = e.sets.every(x => x.done);
+    const fields = fieldsFor(e);
+    const steppers = fields.map(fd => `<div class="stepper ${fd.f === 'pain' && num(s.pain) > MAX_PAIN ? 'hi' : ''}">
+        <span class="lbl">${fd.l}<small>${fd.sub}</small></span>
+        <button data-action="step" data-f="${fd.f}" data-d="-1" aria-label="${fd.l} min">−</button>
+        <input type="text" inputmode="${fd.mode}" autocomplete="off" data-set="${i}" data-f="${fd.f}" value="${esc(s[fd.f] ?? '')}" placeholder="${esc(String(fd.start ?? ''))}" aria-label="${fd.l}">
+        <button data-action="step" data-f="${fd.f}" data-d="1" aria-label="${fd.l} plus">+</button>
+      </div>`).join('');
+    let buttons;
+    if (s.done) buttons = `<button class="btn primary block lg" data-action="set-next">${allDone ? 'Alle sets klaar' : 'Volgende set'} ${icon('chevR')}</button>
+      <button class="btn ghost block" data-action="set-undo">Markeer als niet gedaan</button>`;
+    else if (hasTimer(e)) buttons = `<button class="btn accent block lg" data-action="hold-start" data-i="${i}">${icon('timer')} Start timer ${num(s.duration) || e.duration} s</button>
+      <button class="btn block" data-action="set-done">${icon('check')} Set klaar zonder timer</button>`;
+    else buttons = `<button class="btn primary block lg" data-action="set-done">${icon('check')} Set klaar</button>`;
+    return `<div class="editor-title"><b>${esc(setName(s))}</b><span class="label">${e.sets.filter(x => x.done).length} van ${e.sets.length} klaar</span></div>
+      ${steppers}${buttons}`;
   }
 
   function renderActive(w) {
     w.current = clamp(w.current, 0, w.exercises.length - 1);
     const e = w.exercises[w.current], n = w.exercises.length;
-    const allSets = w.exercises.flatMap(x => x.sets);
-    const doneSets = allSets.filter(s => s.done).length;
+    if (e.cur == null) e.cur = Math.max(0, e.sets.findIndex(s => !s.done));
     const kindLabel = { reps: 'Herhalingen', hold: 'Isometrische hold', time: 'Op tijd', distance: 'Afstand' }[e.kind];
-    const kindIcon = { reps: 'dumbbell', hold: 'hold', time: 'timer', distance: 'bolt' }[e.kind];
-    const warn = morningWarning();
     const last = w.current === n - 1;
     main.innerHTML = `
-      <header class="topbar">
-        ${iconBtn('back', 'wo-pause', 'Terug naar overzicht')}
-        <div class="topbar-title"><strong>${esc(woTitle(w))}</strong><small>Gestart om ${fmtTime(w.startedAt)}</small></div>
-        ${iconBtn('dots', 'wo-menu', 'Opties')}
-      </header>
-      ${warn && w.current === 0 ? warningHtml(warn) : ''}
-
-      <section class="wo-hero">
-        <div class="hero-art">${icon(kindIcon)}</div>
-        <p class="eyebrow">Oefening ${w.current + 1} van ${n} · ${kindLabel}</p>
-        <h2>${esc(e.name)}</h2>
-        <p class="presc">${esc(e.presc)}</p>
-        ${e.cue ? `<p class="cue">${esc(e.cue)}</p>` : ''}
-        <div class="chips">
-          ${e.kind === 'reps' && e.load === 'kg' ? `<span class="chip dark">${esc(C.rpe)}</span>` : ''}
-          <span class="chip">${icon('timer')} rust ${fmtSec(e.rest)}</span>
-          <span class="chip">${icon('heart')} pijn max ${MAX_PAIN}</span>
-        </div>
-        <div class="progress-line"><i style="width:${allSets.length ? doneSets / allSets.length * 100 : 0}%"></i></div>
-        <div class="wo-progress-top"><span>${doneSets}/${allSets.length} sets</span><span>${Math.round(allSets.length ? doneSets / allSets.length * 100 : 0)}%</span></div>
-      </section>
-
-      <section class="card">
-        ${prevHtml(e)}
-        <div id="ex-feedback">${feedbackHtml(e)}</div>
-        <div class="sets" id="sets">${setsHtml(e)}</div>
-        <div class="ex-tools"><button class="btn ghost small" data-action="wo-add-set">${icon('plus')} Set toevoegen</button></div>
-      </section>
-
-      <div class="wo-controls">
-        <button class="ctrl" data-action="wo-prev" ${w.current === 0 ? 'disabled' : ''}>${icon('arrowL')}Vorige</button>
-        <button class="ctrl main" data-action="rest-start">${icon('timer')}Rust</button>
-        ${last ? `<button class="ctrl" data-action="wo-finish">${icon('check')}Afronden</button>`
-          : `<button class="ctrl" data-action="wo-next">${icon('arrowR')}Volgende</button>`}
+      <header class="sub-head">${iconBtn('back', 'wo-pause', 'Terug naar het overzicht')}
+        <div><h1>${esc(woTitle(w))}</h1><p>Gestart om ${fmtTime(w.startedAt)}</p></div>
+        <button class="link-btn" style="justify-self:end" data-action="wo-finish">Klaar</button></header>
+      <div class="wo-progress">${w.exercises.map((x, i) => `<button class="${i === w.current ? 'cur' : x.sets.every(s => s.done) ? 'done' : ''}" data-action="wo-goto" data-i="${i}" aria-label="Oefening ${i + 1}: ${esc(x.name)}"></button>`).join('')}</div>
+      <span class="label">Oefening ${w.current + 1} van ${n} · ${kindLabel}</span>
+      <h2 class="ex-title" style="margin-top:4px">${esc(e.name)}</h2>
+      <p class="ex-presc">${esc(e.presc)}</p>
+      ${e.cue ? `<p class="ex-cue">${esc(e.cue)}</p>` : ''}
+      <div id="wo-hints" style="margin-top:14px">${hintsHtml(e)}</div>
+      <section class="editor" id="editor">${editorHtml(e)}</section>
+      <section class="card" style="padding:8px 10px"><div class="set-lines" id="set-lines">${setLinesHtml(e)}</div>
+        <button class="btn ghost sm" data-action="wo-add-set">${icon('plus')} Set toevoegen</button></section>
+      <div class="wo-nav">
+        <button class="btn" data-action="wo-prev" ${w.current === 0 ? 'disabled' : ''}>${icon('chevL')} Vorige</button>
+        ${last ? `<button class="btn primary" data-action="wo-finish">${icon('check')} Afronden</button>`
+          : `<button class="btn primary" data-action="wo-next">Volgende ${icon('chevR')}</button>`}
       </div>
-
-      <section class="card overview">
-        <div class="card-head"><h3>Oefeningen</h3><span class="chip">${n}</span></div>
-        <ul>${w.exercises.map((x, i) => `<li class="${i === w.current ? 'cur' : ''}"><button data-action="wo-goto" data-i="${i}">${i + 1}. ${esc(x.name)}</button><span class="muted">${x.sets.filter(s => s.done).length}/${x.sets.length}</span></li>`).join('')}</ul>
-        <button class="btn primary block" style="margin-top:12px" data-action="wo-finish">${icon('check')} Workout afronden</button>
-      </section>
+      <button class="btn ghost block sm" data-action="rest-start">${icon('timer')} Rusttimer (${fmtSec(e.rest)})</button>
     `;
   }
 
+  function curEx() { const w = draft(); return w ? w.exercises[w.current] : null; }
+  function refreshSets() {
+    const e = curEx(); if (!e) return;
+    $('#set-lines').innerHTML = setLinesHtml(e);
+    $('#wo-hints').innerHTML = hintsHtml(e);
+  }
+
   function onSetInput(inp) {
-    const w = draft(); if (!w) return;
-    const e = w.exercises[w.current];
+    const e = curEx(); if (!e) return;
     const s = e.sets[+inp.dataset.set];
     if (!s) return;
     s[inp.dataset.f] = inp.value.trim();
-    if (inp.dataset.f === 'pain') inp.classList.toggle('pain-high', num(inp.value) > MAX_PAIN);
-    $('#ex-feedback').innerHTML = feedbackHtml(e);
+    if (inp.dataset.f === 'pain') inp.closest('.stepper').classList.toggle('hi', num(inp.value) > MAX_PAIN);
+    refreshSets();
     saveDraft();
   }
 
-  function toggleSet(i) {
-    const w = draft(), e = w.exercises[w.current], s = e.sets[i];
-    s.done = !s.done;
-    if (s.done) {
-      if (e.kind === 'reps' && s.reps === '' && e.target && e.target[0] === e.target[1]) s.reps = String(e.target[0]);
-      if (hasTimer(e) && s.duration === '') s.duration = String(e.duration);
-      if (!w.exercises.every(x => x.sets.every(y => y.done))) startRest(e.rest);
-      if (num(s.pain) > MAX_PAIN) toast(`Pijn ${num(s.pain)}/10: maak de volgende set lichter of stop`);
+  // −/+ knoppen: groot genoeg voor één duim
+  function stepField(f, dir) {
+    const e = curEx(); if (!e) return;
+    const s = e.sets[e.cur];
+    const fd = fieldsFor(e).find(x => x.f === f);
+    const cur = num(s[f]);
+    let v = cur == null ? (fd.start ?? 0) : cur + dir * fd.step;
+    v = clamp(Math.round(v * 100) / 100, fd.min, fd.max);
+    s[f] = String(v).replace('.', ',');
+    const inp = $(`#editor input[data-f="${f}"]`);
+    if (inp) inp.value = s[f];
+    if (f === 'pain') inp.closest('.stepper').classList.toggle('hi', v > MAX_PAIN);
+    refreshSets();
+    saveDraft();
+  }
+
+  function completeSet() {
+    const w = draft(), e = w.exercises[w.current], s = e.sets[e.cur];
+    s.done = true;
+    if (e.kind === 'reps' && s.reps === '' && e.target) s.reps = String(e.target[0] === e.target[1] ? e.target[0] : e.target[1]);
+    if (hasTimer(e) && s.duration === '') s.duration = String(e.duration);
+    if (e.kind === 'distance' && s.dist === '') s.dist = String(e.distance);
+    // Volgende set alvast invullen met dezelfde waarden (zelfde kant)
+    const next = e.sets.findIndex(x => !x.done);
+    if (next >= 0) {
+      const n = e.sets[next];
+      ['reps', 'weight'].forEach(f => { if (n[f] === '' && s[f] !== '') n[f] = s[f]; });
+      e.cur = next;
     }
+    if (!w.exercises.every(x => x.sets.every(y => y.done))) startRest(e.rest);
+    if (num(s.pain) > MAX_PAIN) toast(`Pijn ${num(s.pain)}/10: maak de volgende set lichter of stop`);
     saveDraft();
     render({ keepScroll: true });
   }
@@ -1194,6 +1192,7 @@
       if (same) s.weight = same.weight;
       e.sets.push(s);
     });
+    e.cur = e.sets.findIndex(x => !x.done);
     saveDraft();
     render({ keepScroll: true });
   }
@@ -1209,14 +1208,14 @@
     const w = draft(); if (!w) return;
     const all = w.exercises.flatMap(x => x.sets);
     const done = all.filter(s => s.done);
-    if (!done.length) { if (!await ask('Je hebt nog geen sets afgevinkt. Toch opslaan als afgewerkte sessie?')) return; }
-    else if (done.length < all.length && !await ask(`${all.length - done.length} sets zijn niet afgevinkt. Workout toch afronden?`)) return;
+    if (!done.length) { if (!await ask('Je hebt nog geen sets afgevinkt. Toch opslaan als afgewerkte sessie?', { ok: 'Opslaan' })) return; }
+    else if (done.length < all.length && !await ask(`${all.length - done.length} van de ${all.length} sets zijn niet afgevinkt. Workout toch afronden?`, { ok: 'Afronden' })) return;
     const clean = s => ({
       idx: s.idx, side: s.side, label: s.label || null,
       reps: num(s.reps), weight: num(s.weight), duration: num(s.duration), dist: num(s.dist), pain: num(s.pain), done: true
     });
     const rec = {
-      date: w.date, sessionKey: w.sessionKey, title: w.title, phase: w.phase,
+      date: w.date, sessionKey: w.sessionKey, title: sessionTitle(w.sessionKey), phase: w.phase,
       startedAt: w.startedAt, finishedAt: Date.now(), sample: false,
       exercises: w.exercises.map(x => ({ exId: x.exId, name: x.name, kind: x.kind, load: x.load, perSide: x.perSide, sets: x.sets.filter(s => s.done).map(clean) })).filter(x => x.sets.length)
     };
@@ -1230,11 +1229,11 @@
     releaseWakeLock();
     S.ui.woView = 'picker';
     render();
-    toast('Workout opgeslagen 💪');
+    toast('Workout opgeslagen');
   }
 
   async function cancelWorkout() {
-    if (!await ask('Deze workout stoppen zonder op te slaan?')) return;
+    if (!await ask('Deze workout stoppen? Wat je ingevuld hebt, wordt niet bewaard.', { ok: 'Stoppen', danger: true })) return;
     S.settings.activeWorkout = null;
     await saveDraft(true);
     stopRest();
@@ -1245,31 +1244,30 @@
 
   /* ---------- Rusttimer ---------- */
   const rest = { endAt: 0, total: 0, iv: null };
-  const RING_S = 2 * Math.PI * 19;
   function startRest(sec = C.defaultRest) {
     rest.total = sec;
     rest.endAt = Date.now() + sec * 1000;
     const el = $('#rest-timer');
     el.innerHTML = `<div class="rest-inner">
-      <svg class="rest-ring" viewBox="0 0 44 44"><circle class="ring-bg" cx="22" cy="22" r="19"/><circle class="ring-fg" id="rest-ring" cx="22" cy="22" r="19" stroke-dasharray="${RING_S}" stroke-dashoffset="0"/></svg>
-      <div class="rest-txt"><small>Rust</small><strong id="rest-time">${fmtClock(sec)}</strong></div>
+      <div class="rest-txt"><small>Rust</small><strong id="rest-time">${fmtClock(sec)}</strong><div class="rest-bar"><i id="rest-bar"></i></div></div>
       <button class="chip-btn" data-action="rest-adj" data-d="-15">−15</button>
       <button class="chip-btn" data-action="rest-adj" data-d="15">+15</button>
-      <button class="round-sm" data-action="rest-skip" aria-label="Rust overslaan">${icon('x')}</button>
+      <button class="chip-btn" data-action="rest-skip">Stop</button>
     </div>`;
     el.hidden = false;
+    main.classList.add('resting');
     clearInterval(rest.iv);
     rest.iv = setInterval(tickRest, 250);
     tickRest();
   }
   function tickRest() {
     const rem = rest.endAt - Date.now();
-    if (rem <= 0) { stopRest(); signal(2); toast('Rust voorbij: volgende set!'); return; }
-    const t = $('#rest-time'), ring = $('#rest-ring');
+    if (rem <= 0) { stopRest(); signal(2); toast('Rust voorbij: volgende set'); return; }
+    const t = $('#rest-time'), bar = $('#rest-bar');
     if (t) t.textContent = fmtClock(Math.ceil(rem / 1000));
-    if (ring) ring.setAttribute('stroke-dashoffset', String(RING_S * (1 - rem / (rest.total * 1000))));
+    if (bar) bar.style.width = `${100 * (1 - rem / (rest.total * 1000))}%`;
   }
-  function stopRest() { clearInterval(rest.iv); rest.iv = null; $('#rest-timer').hidden = true; }
+  function stopRest() { clearInterval(rest.iv); rest.iv = null; $('#rest-timer').hidden = true; main.classList.remove('resting'); }
 
   /* ---------- Hold-timer (isometrisch / op tijd) ---------- */
   let hold = null;
@@ -1278,20 +1276,19 @@
     const dur = num(s.duration) || e.duration || 45;
     stopRest();
     hold = { i, dur, phase: 'lead', endAt: Date.now() + 3000, startAt: 0, iv: null };
-    const side = s.side === 'L' ? 'links' : s.side === 'R' ? 'rechts' : '';
     const ov = document.createElement('div');
     ov.className = 'hold-overlay';
     ov.id = 'hold';
     ov.innerHTML = `
       <p class="hold-label">${esc(e.name)}</p>
-      <p class="hold-sub">Set ${s.idx + 1}${side ? ' · ' + side : ''} · pijn max ${MAX_PAIN}/10</p>
-      <div class="hold-center"><div class="hold-time" id="hold-time">00:03</div><div class="hold-phase" id="hold-phase">Klaar maken…</div></div>
+      <p class="hold-sub">${esc(setName(s))} · pijn max ${MAX_PAIN}/10</p>
+      <div class="hold-center"><div class="hold-time" id="hold-time">00:03</div><div class="hold-phase" id="hold-phase">Klaar maken</div></div>
       <div class="hold-track"><i id="hold-bar"></i></div>
       <div class="hold-meta"><span id="hold-el">00:00</span><span id="hold-tot">${fmtClock(dur)}</span></div>
-      <div class="wo-controls">
-        <button class="ctrl" data-action="hold-cancel">${icon('x')}Stoppen</button>
-        <button class="ctrl main" data-action="hold-done">${icon('check')}Klaar</button>
-        <button class="ctrl" data-action="hold-add">${icon('plus')}+10 s</button>
+      <div class="hold-controls">
+        <button class="btn" data-action="hold-cancel">${icon('x')}Stoppen</button>
+        <button class="btn primary" data-action="hold-done">${icon('check')}Klaar</button>
+        <button class="btn" data-action="hold-add">${icon('plus')}10 s</button>
       </div>`;
     document.body.appendChild(ov);
     hold.iv = setInterval(tickHold, 100);
@@ -1309,20 +1306,17 @@
     if (hold.phase === 'hold' && rem <= 0) { completeHold(hold.dur); return; }
     $('#hold-time').textContent = fmtClock(Math.ceil(rem / 1000));
     if (hold.phase === 'hold') {
-      const el = Math.floor((now - hold.startAt) / 1000);
       $('#hold-bar').style.width = `${Math.min(100, (now - hold.startAt) / (hold.dur * 10))}%`;
-      $('#hold-el').textContent = fmtClock(el);
+      $('#hold-el').textContent = fmtClock(Math.floor((now - hold.startAt) / 1000));
     }
   }
   function completeHold(seconds) {
-    const w = draft(), e = w.exercises[w.current], s = e.sets[hold.i];
+    const w = draft(), e = w.exercises[w.current];
+    e.cur = hold.i;
+    e.sets[hold.i].duration = String(seconds);
     closeHold();
-    s.duration = String(seconds);
-    s.done = true;
     signal(3);
-    saveDraft();
-    render({ keepScroll: true });
-    if (!w.exercises.every(x => x.sets.every(y => y.done))) startRest(e.rest);
+    completeSet();
   }
   function closeHold() {
     if (hold) clearInterval(hold.iv);
@@ -2119,7 +2113,11 @@
     'wo-next': () => gotoExercise(draft().current + 1),
     'wo-finish': () => { closeSheet(); finishWorkout(); },
     'wo-add-set': addSet,
-    'set-done': el => toggleSet(+el.dataset.i),
+    'set-done': completeSet,
+    'set-sel': el => { const e = curEx(); e.cur = +el.dataset.i; saveDraft(); render({ keepScroll: true }); },
+    'set-next': () => { const e = curEx(); const n = e.sets.findIndex(s => !s.done); if (n >= 0) { e.cur = n; render({ keepScroll: true }); } else if (draft().current < draft().exercises.length - 1) gotoExercise(draft().current + 1); else finishWorkout(); },
+    'set-undo': () => { const e = curEx(); e.sets[e.cur].done = false; saveDraft(); render({ keepScroll: true }); },
+    'step': el => stepField(el.dataset.f, +el.dataset.d),
     'hold-start': el => startHold(+el.dataset.i),
     'hold-cancel': closeHold,
     'hold-add': () => { if (!hold) return; hold.dur += 10; hold.endAt += 10000; const t = $('#hold-tot'); if (t) t.textContent = fmtClock(hold.dur); },
