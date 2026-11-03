@@ -43,7 +43,7 @@ window.APP_CONFIG = {
     height: 188,
     weight: 82,
     position: 'Spits',
-    team: 'Seniorenploeg',
+    team: 'KFC Lint',
     complaints: 'Terugkerende klachten aan achillespees en kuit, links en rechts'
   },
 

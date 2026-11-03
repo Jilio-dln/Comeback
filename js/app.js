@@ -158,7 +158,8 @@
   // Een match: { id, date, time, opponent, home (true = thuis), gf, ga (doelpunten voor/tegen),
   //              comp, src: 'rbfa' | 'manual', key (voor het samenvoegen bij een nieuwe import), edited }
   const isMine = name => typeof name === 'string' && name.toLowerCase().includes(C.rbfa.team.toLowerCase());
-  const nice = s => String(s || '').replace(/\b([A-ZÀ-Ý][A-ZÀ-Ý.]{3,})\b/g, w => w.charAt(0) + w.slice(1).toLowerCase());
+  // HOOFDLETTERNAMEN netjes maken ("SV AARTSELAAR" → "SV Aartselaar"); afkortingen zoals KFC en K.VV blijven
+  const nice = s => String(s || '').replace(/(^|[\s-])([A-ZÀ-Ý]{4,})(?=$|[\s-])/g, (m, pre, w) => pre + w.charAt(0) + w.slice(1).toLowerCase());
   const fxKey = f => `${String(f.opponent).toLowerCase().replace(/[^a-z0-9]/g, '')}|${f.home ? 'H' : 'U'}|${String(f.comp || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -479,9 +480,9 @@
     kalender: { label: 'Kalender', icon: 'calendar', render: () => renderCalendarPage() },
     workout: { label: 'Workout', icon: 'dumbbell', render: () => renderWorkout() },
     statistieken: { label: 'Stats', icon: 'chart', render: () => renderStats() },
-    account: { label: 'Account', icon: 'user', render: () => renderProfile() }
+    account: { label: 'Account', icon: 'user', render: () => renderAccount() }
   };
-  const SUBS = {};
+  const SUBS = { matchen: { parent: 'account', render: () => renderMatches() } };
   const ALIASES = { profiel: 'account' };
   let lastRoute = null;
   const currentRoute = () => {
@@ -1547,192 +1548,253 @@
     toast('Verwijderd');
   }
 
-  /* ================= Profiel ================= */
-  function renderProfile() {
+  /* ================= Account ================= */
+  function renderAccount() {
     const p = profile(), ph = currentPhase(), crit = S.settings.criteria || {};
     const critDone = C.criteria.filter(c => crit[c.id]).length;
-    const ed = S.ui.editProfile;
     const since = S.settings.phaseSince;
     const sampleCount = ['checks', 'workouts', 'activities'].reduce((n, s) => n + S[s].filter(x => x.sample).length, 0);
     const fx = fixtures();
-    const tk = dkey(today());
-    const next = fx.find(f => f.date >= tk && !played(f));
-    const lastPlayed = fx.filter(played).pop();
     const theme = themePref();
+    const field = (name, label, value, attrs = '') => `<label class="field"><span>${label}</span><input class="input" data-change="profile" name="${name}" value="${esc(value ?? '')}" ${attrs}></label>`;
 
     main.innerHTML = `
-      <header class="topbar">
-        ${iconBtn('back', 'go', 'Terug', 'data-to="vandaag"')}
-        <div class="topbar-title"></div>
-        <button class="icon-btn ${ed ? 'on' : ''}" data-action="toggle-edit" aria-label="Gegevens bewerken">${icon(ed ? 'x' : 'edit')}</button>
-      </header>
-      <h1 class="page-title">Profiel</h1>
-
+      ${pageHead('Account')}
       <section class="card">
-        ${ed ? `<form id="profile-form">
-          <div class="form-grid">
-            <div class="full"><label class="flabel" for="pf-name">Naam</label><input class="input" id="pf-name" name="name" value="${esc(p.name)}" required></div>
-            <div><label class="flabel" for="pf-age">Leeftijd</label><input class="input" id="pf-age" name="age" inputmode="numeric" value="${esc(p.age)}"></div>
-            <div><label class="flabel" for="pf-pos">Positie</label><input class="input" id="pf-pos" name="position" value="${esc(p.position)}"></div>
-            <div><label class="flabel" for="pf-h">Lengte (cm)</label><input class="input" id="pf-h" name="height" inputmode="numeric" value="${esc(p.height)}"></div>
-            <div><label class="flabel" for="pf-w">Gewicht (kg)</label><input class="input" id="pf-w" name="weight" inputmode="decimal" value="${esc(fmtNum(num(p.weight)))}"></div>
-            <div class="full"><label class="flabel" for="pf-team">Ploeg</label><input class="input" id="pf-team" name="team" value="${esc(p.team)}"></div>
-            <div class="full"><label class="flabel" for="pf-rbfa">Naam op het wedstrijdblad (RBFA)</label><input class="input" id="pf-rbfa" name="rbfaName" value="${esc(p.rbfaName)}"></div>
-            <div class="full"><label class="flabel" for="pf-c">Klachten</label><textarea class="input" id="pf-c" name="complaints" rows="2">${esc(p.complaints)}</textarea></div>
-          </div>
-          <button class="btn primary block" type="submit" style="margin-top:14px">${icon('check')} Opslaan</button>
-        </form>` : `
-          <div class="profile-top">
-            <div class="avatar lg">${esc((p.name || '?').charAt(0).toUpperCase())}</div>
-            <div><h2>${esc(p.name)}</h2><p class="muted">${esc(p.position)} · ${esc(p.team)}</p></div>
-          </div>
-          <div class="kv-grid">
-            <div class="kv"><span>Leeftijd</span><strong>${esc(p.age)}</strong></div>
-            <div class="kv"><span>Lengte</span><strong>${esc(p.height)}<small> cm</small></strong></div>
-            <div class="kv"><span>Gewicht</span><strong>${esc(fmtNum(num(p.weight)))}<small> kg</small></strong></div>
-          </div>
-          <p class="note">${icon('heart')}<span>${esc(p.complaints)}</span></p>`}
-      </section>
-
-      <div class="section-title"><span>Weergave</span></div>
-      <section class="card">
-        <div class="seg" role="radiogroup" aria-label="Thema">
-          ${[['auto', 'Automatisch'], ['light', 'Licht'], ['dark', 'Donker']].map(([v, l]) => `<label><input type="radio" name="theme" value="${v}" data-change="theme" ${theme === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
+        <div class="profile-top">
+          <button class="photo-btn" data-action="pick-photo" aria-label="Profielfoto kiezen"><span class="avatar lg">${avatarInner()}</span><em>${icon('camera')}</em></button>
+          <div><b>${esc(p.name)}</b><span class="muted small">${esc(p.position)} · ${esc(p.team)}</span>
+            ${S.settings.photo ? `<button class="link-btn" style="display:block" data-action="remove-photo">Foto verwijderen</button>` : ''}</div>
         </div>
-        <p class="muted small" style="margin:8px 4px 0">Automatisch volgt de instelling van je gsm.</p>
+        <input type="file" id="photo-file" accept="image/*" hidden data-change="photo">
+        <div class="form-grid">
+          <div class="full">${field('name', 'Naam', p.name, 'autocomplete="name"')}</div>
+          ${field('age', 'Leeftijd', p.age, 'inputmode="numeric"')}
+          ${field('position', 'Positie', p.position)}
+          ${field('height', 'Lengte (cm)', p.height, 'inputmode="numeric"')}
+          ${field('weight', 'Gewicht (kg)', fmtNum(num(p.weight)), 'inputmode="decimal"')}
+          <div class="full">${field('team', 'Ploeg', p.team)}</div>
+          <div class="full">${field('rbfaName', 'Naam op het wedstrijdblad', p.rbfaName)}</div>
+          <label class="field full"><span>Klachten</span><textarea class="input" rows="2" data-change="profile" name="complaints">${esc(p.complaints)}</textarea></label>
+        </div>
+        <p class="saved-note">Wijzigingen worden meteen bewaard.</p>
       </section>
 
-      <div class="section-title"><span>Herstelfase</span></div>
-      <section class="card">
-        ${C.phases.map(f => `<label class="phase-opt ${f.id === ph ? 'on' : ''}">
-          <input type="radio" name="phase" value="${f.id}" data-change="phase" ${f.id === ph ? 'checked' : ''}>
-          <div class="po-body"><strong>${esc(f.label)} · ${esc(f.title)}</strong><span>Standaard vanaf ${fmtFull(f.start)}</span><p>${esc(f.summary)}</p></div>
-          <span class="radio-dot"></span>
-        </label>`).join('')}
-        <p class="muted small" style="margin:6px 4px 0">Je wisselt zelf van fase; de app doet dat niet automatisch.${since ? ` Huidige fase actief sinds ${fmtFull(since)}.` : ''}</p>
-        ${ph === 'f3' ? `<label class="flabel" for="plyo-step" style="margin-top:14px">Plyo-stap (elke week een stap)</label>
-          <select class="select" id="plyo-step" data-change="plyo-step">
-            <option value="auto" ${!S.settings.plyoStep || S.settings.plyoStep === 'auto' ? 'selected' : ''}>Automatisch (nu stap ${plyoStep()})</option>
-            ${C.sessions.PLYO.steps.map((s, i) => `<option value="${i + 1}" ${String(S.settings.plyoStep) === String(i + 1) ? 'selected' : ''}>Stap ${i + 1}: ${esc(s.title)}</option>`).join('')}
-          </select>` : ''}
-      </section>
+      <div class="section"><span>Weergave</span></div>
+      <div class="seg" role="radiogroup" aria-label="Thema">
+        ${[['auto', 'Automatisch'], ['light', 'Licht'], ['dark', 'Donker']].map(([v, l]) => `<label><input type="radio" name="theme" value="${v}" data-change="theme" ${theme === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
+      </div>
 
-      <div class="alert info">${icon('info')}<div><strong>Pijnregel</strong>${esc(C.painRule.text)} Is je ochtendscore hoger dan gisteren, dan zet je een stap terug.</div></div>
+      <div class="section"><span>Herstelfase</span></div>
+      ${C.phases.map(f => `<label class="opt ${f.id === ph ? 'on' : ''}">
+        <input type="radio" name="phase" value="${f.id}" data-change="phase" ${f.id === ph ? 'checked' : ''}>
+        <div class="body"><b>${esc(f.label)} · ${esc(f.title)}</b><span>Standaard vanaf ${fmtFull(f.start)}</span><p>${esc(f.summary)}</p></div>
+        <span class="mark"></span>
+      </label>`).join('')}
+      <p class="label" style="margin:6px 2px 0">Je wisselt zelf van fase.${since ? ` Huidige fase actief sinds ${fmtFull(since)}.` : ''}</p>
+      ${ph === 'f3' ? `<label class="field" style="margin-top:12px"><span>Stap voor veerkracht & sprint</span>
+        <select class="select" data-change="plyo-step">
+          <option value="auto" ${!S.settings.plyoStep || S.settings.plyoStep === 'auto' ? 'selected' : ''}>Automatisch (nu stap ${plyoStep()})</option>
+          ${C.sessions.PLYO.steps.map((s, i) => `<option value="${i + 1}" ${String(S.settings.plyoStep) === String(i + 1) ? 'selected' : ''}>Stap ${i + 1}: ${esc(s.title)}</option>`).join('')}
+        </select></label>` : ''}
 
-      <div class="section-title"><span>Klaar om volledig te spelen</span><span class="muted small">${critDone}/${C.criteria.length}</span></div>
+      <div class="section"><span>Klaar om volledig te spelen</span><span>${critDone} van ${C.criteria.length}</span></div>
       <section class="card">
-        <div class="progress-bar"><i style="width:${(critDone / C.criteria.length) * 100}%"></i></div>
-        ${C.criteria.map(c => `<label class="crit ${crit[c.id] ? 'on' : ''}">
+        <div class="progress"><i style="width:${(critDone / C.criteria.length) * 100}%"></i></div>
+        ${C.criteria.map(c => `<label class="check ${crit[c.id] ? 'on' : ''}">
           <input type="checkbox" data-change="crit" value="${c.id}" ${crit[c.id] ? 'checked' : ''}>
           <span class="box">${icon('check')}</span>
-          <span class="crit-t">${esc(c.text)}${crit[c.id] ? `<small>Gehaald op ${fmtFull(crit[c.id])}</small>` : ''}</span>
+          <span class="t">${esc(c.text)}${crit[c.id] ? `<small>Gehaald op ${fmtFull(crit[c.id])}</small>` : ''}</span>
         </label>`).join('')}
       </section>
 
-      <div class="section-title"><span>${esc(C.rbfa.teamLabel)} via RBFA</span></div>
+      <div class="section"><span>Matchen</span></div>
       <section class="card">
-        ${fx.length ? `
-          ${next ? `<div class="plan-item"><div class="pi-icon match">${icon('ball')}</div><div class="pi-body" data-action="open-day" data-k="${next.date}" style="cursor:pointer"><strong>Volgende: ${esc(nice(opponent(next)))}</strong><span>${cap(fmtDay(next.date))} · ${esc(next.time || '')} · ${next.home ? 'thuis' : 'uit'}</span></div></div>` : ''}
-          ${lastPlayed ? `<div class="plan-item"><div class="pi-icon">${icon('ball')}</div><div class="pi-body" data-action="open-day" data-k="${lastPlayed.date}" style="cursor:pointer"><strong>Laatste: ${esc(nice(opponent(lastPlayed)))}</strong><span>${cap(fmtDay(lastPlayed.date))}</span></div><span class="score-pill ${fixtureResult(lastPlayed)}">${fxScore(lastPlayed)}</span></div>` : ''}
-          <p class="muted small" style="margin:4px 4px 12px">${fx.length} matchen in je kalender${S.settings.fixturesAt ? `, bijgewerkt ${relDay(dkey(new Date(S.settings.fixturesAt)))}` : ''}. Matchdagen komen automatisch in je schema.</p>`
-          : `<p class="muted small" style="margin-bottom:12px">Zet de kalender van ${esc(C.rbfa.teamLabel)} in de app. Matchdagen komen dan automatisch in je schema, en je importeert na elke match je eigen minuten van het wedstrijdblad.</p>`}
-        <div class="row">
-          <button class="btn primary" data-action="open-rbfa">${icon('calendar')} ${fx.length ? 'Bijwerken' : 'Kalender'}</button>
-          <button class="btn ghost" data-action="open-minutes">${icon('clock')} Minuten</button>
-        </div>
+        <div class="list-row tap" data-action="go" data-to="matchen"><div class="ico">${icon('list')}</div><div class="body"><b>Matchen beheren</b><span>${fx.length ? `${fx.length} matchen · datum, uur, tegenstander en uitslag aanpassen` : 'Nog geen matchen. Importeer of voeg toe.'}</span></div><div class="end">${icon('chevR')}</div></div>
+        <div class="list-row tap" data-action="open-rbfa"><div class="ico">${icon('download')}</div><div class="body"><b>RBFA-kalender importeren</b><span>${S.settings.fixturesAt ? `Laatst bijgewerkt ${relDay(dkey(new Date(S.settings.fixturesAt)))}` : `Alle matchen van ${esc(C.rbfa.teamLabel)} in één keer`}</span></div><div class="end">${icon('chevR')}</div></div>
+        <div class="list-row tap" data-action="open-minutes"><div class="ico">${icon('clock')}</div><div class="body"><b>Mijn minuten van een match</b><span>Van het wedstrijdblad op rbfa.be</span></div><div class="end">${icon('chevR')}</div></div>
       </section>
 
-      <div class="section-title"><span>Matchen en trainingen</span></div>
+      <div class="section"><span>Data</span></div>
       <section class="card">
-        <div class="row">
-          <button class="btn primary" data-action="open-log" data-type="match">${icon('ball')} Match</button>
-          <button class="btn ghost" data-action="open-log" data-type="training">${icon('whistle')} Training</button>
-        </div>
-      </section>
-
-      <div class="section-title"><span>Back-up</span></div>
-      <section class="card">
-        <p class="muted small" style="margin-bottom:12px">Je data staat alleen op dit toestel. Maak geregeld een back-up als JSON-bestand.</p>
-        <div class="row">
-          <button class="btn primary" data-action="export">${icon('download')} Exporteren</button>
-          <button class="btn ghost" data-action="import">${icon('upload')} Importeren</button>
-        </div>
+        <p class="small muted" style="margin-bottom:12px">Je gegevens staan alleen op deze gsm. Maak geregeld een back-up.</p>
+        <div class="row"><button class="btn" data-action="export">${icon('download')} Exporteren</button><button class="btn" data-action="import">${icon('upload')} Importeren</button></div>
         <input type="file" id="import-file" accept="application/json,.json" hidden data-change="import">
+        <div class="divider"></div>
+        ${sampleCount ? `<button class="btn block" data-action="clear-sample">${icon('trash')} Voorbeelddata wissen (${sampleCount})</button>`
+          : `<button class="btn block" data-action="load-sample">Voorbeelddata laden</button>`}
+        <button class="btn danger block" style="margin-top:8px" data-action="clear-all">Alles wissen</button>
       </section>
 
-      <div class="section-title"><span>Voorbeelddata</span></div>
-      <section class="card">
-        <p class="muted small" style="margin-bottom:12px">${sampleCount
-          ? `Er staan ${sampleCount} voorbeeldrecords in de app, zodat je kan zien hoe de statistieken eruitzien. Je eigen data blijft staan als je ze wist.`
-          : 'Er staat geen voorbeelddata meer in de app.'}</p>
-        ${sampleCount
-          ? `<button class="btn danger block" data-action="clear-sample">${icon('trash')} Voorbeelddata wissen</button>`
-          : `<button class="btn ghost block" data-action="load-sample">${icon('flask')} Voorbeelddata opnieuw laden</button>`}
-        <button class="btn ghost block" style="margin-top:8px" data-action="clear-all">Alle data wissen</button>
-      </section>
-
-      <p class="footer-note">${esc(C.appName)} v${APP_VERSION} · werkt offline · data lokaal op je toestel</p>
+      <p class="footer-note">${esc(C.appName)} v${APP_VERSION} · werkt offline</p>
     `;
   }
 
-  async function saveProfile(form) {
-    const f = new FormData(form);
-    const p = {
-      name: (f.get('name') || '').trim() || C.profile.name,
-      age: num(f.get('age')) ?? '', position: (f.get('position') || '').trim(),
-      height: num(f.get('height')) ?? '', weight: num(f.get('weight')) ?? '',
-      team: (f.get('team') || '').trim(), complaints: (f.get('complaints') || '').trim(),
-      rbfaName: (f.get('rbfaName') || '').trim() || C.rbfa.player
-    };
+  async function saveProfileField(el) {
+    const p = { ...profile() };
+    let v = el.value.trim();
+    if (['age', 'height'].includes(el.name)) v = num(v) ?? '';
+    if (el.name === 'weight') v = num(v) ?? '';
+    if (el.name === 'name' && !v) v = C.profile.name;
+    if (el.name === 'rbfaName' && !v) v = C.rbfa.player;
+    p[el.name] = v;
     await setSetting('profile', p);
-    S.ui.editProfile = false;
+    toast('Opgeslagen');
+    if (el.name === 'name') { const a = $('.profile-top b'); if (a) a.textContent = v; }
+  }
+
+  // Profielfoto: verkleind tot 320 px en lokaal bewaard
+  function savePhoto(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = async () => {
+        const size = 320, c = document.createElement('canvas');
+        c.width = c.height = size;
+        const s = Math.min(img.width, img.height);
+        c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+        await setSetting('photo', c.toDataURL('image/jpeg', 0.85));
+        render({ keepScroll: true });
+        toast('Profielfoto bewaard');
+      };
+      img.onerror = () => toast('Deze afbeelding kan niet gelezen worden');
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /* ---------- Matchen beheren ---------- */
+  function renderMatches() {
+    const tk = dkey(today());
+    const fx = fixtures();
+    const upcoming = fx.filter(f => f.date >= tk && !played(f));
+    const past = fx.filter(f => !(f.date >= tk && !played(f))).reverse();
+    const row = f => `<div class="list-row tap" data-action="edit-match" data-id="${f.id}">
+      <div class="ico">${icon('ball')}</div>
+      <div class="body"><b>${esc(f.opponent)}</b><span>${cap(fmtDay(f.date))}${f.time ? ' · ' + esc(f.time) : ''} · ${f.home ? 'thuis' : 'uit'}${f.edited || f.src === 'manual' ? ' · aangepast' : ''}</span></div>
+      <div class="end">${played(f) ? `<span class="tag ${fixtureResult(f) === 'win' ? 'done' : ''}">${f.gf}–${f.ga}</span>` : ''}${icon('chevR')}</div>
+    </div>`;
+    main.innerHTML = `
+      ${subHead('Matchen', 'account', `${fx.length} matchen`)}
+      <p class="label" style="margin:0 2px 12px">Tik op een match om datum, uur, tegenstander, thuis of uit en de uitslag aan te passen. Wat je aanpast, blijft staan bij een nieuwe RBFA-import.</p>
+      <div class="section"><span>Komend</span><span>${upcoming.length}</span></div>
+      <section class="card">${upcoming.map(row).join('') || '<p class="empty">Geen komende matchen.</p>'}</section>
+      <div class="section"><span>Gespeeld</span><span>${past.length}</span></div>
+      <section class="card">${past.map(row).join('') || '<p class="empty">Nog geen gespeelde matchen.</p>'}</section>
+      <div class="row" style="margin-top:12px"><button class="btn" data-action="open-rbfa">${icon('download')} RBFA-import</button><button class="btn primary" data-action="edit-match" data-id="">${icon('plus')} Match toevoegen</button></div>
+    `;
+  }
+
+  function openMatchEdit(id) {
+    const f = id ? fixtures().find(x => x.id === id) : null;
+    const v = f || { date: dkey(today()), time: '', opponent: '', home: true, gf: null, ga: null, comp: '' };
+    openSheet(`<form id="match-form" data-id="${f ? f.id : ''}">
+      <div class="sheet-head"><div><h3>${f ? 'Match aanpassen' : 'Match toevoegen'}</h3>${f && f.src === 'rbfa' ? '<p>Geïmporteerd van RBFA. Je aanpassing blijft staan bij een nieuwe import.</p>' : ''}</div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <label class="field"><span>Tegenstander</span><input class="input" name="opponent" value="${esc(v.opponent)}" required></label>
+      <div class="form-grid">
+        <label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${v.date}" required></label>
+        <label class="field"><span>Uur</span><input class="input" type="time" name="time" value="${esc(v.time || '')}"></label>
+      </div>
+      <div class="seg">${radio('home', '1', 'Thuis', v.home ? '1' : '0')}${radio('home', '0', 'Uit', v.home ? '1' : '0')}</div>
+      <div class="form-grid">
+        <label class="field"><span>Goals ${esc(C.rbfa.teamLabel)}</span><input class="input" name="gf" inputmode="numeric" value="${v.gf ?? ''}" placeholder="–"></label>
+        <label class="field"><span>Goals tegenstander</span><input class="input" name="ga" inputmode="numeric" value="${v.ga ?? ''}" placeholder="–"></label>
+      </div>
+      <label class="field"><span>Competitie (optioneel)</span><input class="input" name="comp" value="${esc(v.comp || '')}"></label>
+      <button class="btn primary block lg" type="submit">${icon('check')} Opslaan</button>
+      ${f ? `<button class="btn danger block" type="button" data-action="delete-match" data-id="${f.id}">${icon('trash')} Verwijderen</button>` : ''}
+    </form>`);
+  }
+
+  async function saveMatch(form) {
+    const d = new FormData(form);
+    const id = form.dataset.id;
+    const list = fixtures();
+    const cur = id ? list.find(x => x.id === id) : null;
+    const gf = num(d.get('gf')), ga = num(d.get('ga'));
+    const vals = {
+      date: d.get('date'), time: d.get('time') || null, opponent: (d.get('opponent') || '').trim() || 'Onbekend',
+      home: d.get('home') === '1', gf: gf == null || ga == null ? null : gf, ga: gf == null || ga == null ? null : ga,
+      comp: (d.get('comp') || '').trim() || null
+    };
+    if (cur) Object.assign(cur, vals, { edited: true });
+    else { const n = { id: newId(), ...vals, src: 'manual', edited: true }; n.key = fxKey(n); list.push(n); }
+    await setSetting('fixtures', list);
+    closeSheet();
     render({ keepScroll: true });
-    toast('Gegevens opgeslagen');
+    toast(cur ? 'Match aangepast' : 'Match toegevoegd');
+  }
+
+  async function deleteMatch(id) {
+    const f = fixtures().find(x => x.id === id);
+    if (!f || !await ask(`${f.opponent} op ${fmtDay(f.date)} verwijderen?`, { ok: 'Verwijderen', danger: true })) return;
+    if (f.src === 'rbfa') await setSetting('fixturesDeleted', [...new Set([...(S.settings.fixturesDeleted || []), f.key])]);
+    await setSetting('fixtures', fixtures().filter(x => x.id !== id));
+    closeSheet();
+    render({ keepScroll: true });
+    toast('Match verwijderd');
   }
 
   /* ================= RBFA: kalender en minuten (kopiëren en plakken) ================= */
   const MONTHS_RE = MONTH.join('|');
+  const normDash = s => s.replace(/[‐-―−]/g, '-').replace(/ /g, ' ');
+  const TIME_RE = /(\d{1,2})\s*[:.uh]\s*(\d{2})/i;
+  const toTime = s => { const m = String(s).match(TIME_RE); return m && +m[1] < 24 && +m[2] < 60 ? `${pad(+m[1])}:${m[2]}` : null; };
   const isScore = l => /^\d{1,2}\s*-\s*\d{1,2}$/.test(l);
-  const isTime = l => /^\d{1,2}:\d{2}$/.test(l);
+  const isTime = l => /^-?\s*\d{1,2}\s*[:.uh]\s*\d{2}$/i.test(l);
   const isRef = l => /^\(ref/i.test(l);
+  const isStatus = l => /^(afgelast|uitgesteld|ff|forfait|gestaakt)/i.test(l);
   const isNoise = l => isScore(l) || isTime(l) || isRef(l) || /^strafschoppen$/i.test(l);
+  const DAYS_RE = '(?:maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|ma|di|wo|do|vr|za|zo)\\.?';
+  const HEAD_TXT = new RegExp(`^${DAYS_RE},?\\s+(\\d{1,2})\\s+(${MONTHS_RE})(?:\\s+(\\d{4}))?(?:\\s*-?\\s*(\\d{1,2}\\s*[:.uh]\\s*\\d{2}))?$`, 'i');
+  const HEAD_NUM = new RegExp(`^(?:${DAYS_RE},?\\s+)?(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?(?:\\s*-?\\s*(\\d{1,2}\\s*[:.uh]\\s*\\d{2}))?$`, 'i');
+
+  // Herkent een datumregel zoals "ZONDAG 08 NOVEMBER - 12:30", "zaterdag, 31 oktober 2026" of "za 31/10 20u00"
+  function parseHead(l) {
+    let m = l.match(HEAD_TXT);
+    if (m) return { day: +m[1], month: MONTH.indexOf(m[2].toLowerCase()), year: m[3] ? +m[3] : null, time: m[4] ? toTime(m[4]) : null };
+    m = l.match(HEAD_NUM);
+    if (m && +m[2] >= 1 && +m[2] <= 12) return { day: +m[1], month: +m[2] - 1, year: m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : null, time: m[4] ? toTime(m[4]) : null };
+    return null;
+  }
 
   // Leest de tekst van de RBFA-ploegkalender (of het competitieoverzicht) en houdt de matchen van je ploeg over
   function parseCalendar(text) {
-    const lines = text.split(/\r?\n/).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
-    const head = new RegExp(`^(maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag),?\\s+(\\d{1,2})\\s+(${MONTHS_RE})(?:\\s+(\\d{4}))?(?:\\s*-\\s*(\\d{1,2}:\\d{2}))?$`, 'i');
+    const lines = normDash(text).split(/\r?\n/).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
     const t = today();
     const seasonStart = t.getMonth() >= 5 ? t.getFullYear() : t.getFullYear() - 1;
     const found = new Map();
     let i = 0;
     while (i < lines.length) {
-      const h = lines[i].match(head);
+      const h = parseHead(lines[i]);
       if (!h) { i++; continue; }
-      const month = MONTH.indexOf(h[3].toLowerCase());
-      const year = h[4] ? +h[4] : (month >= 6 ? seasonStart : seasonStart + 1);
-      const date = dkey(new Date(year, month, +h[2]));
+      const year = h.year || (h.month >= 6 ? seasonStart : seasonStart + 1);
+      const date = dkey(new Date(year, h.month, h.day));
+      let headTime = h.time;
       let j = i + 1;
+      // Het uur staat soms op een eigen regel onder de datum ("- 20:00")
+      if (!headTime && j < lines.length && isTime(lines[j]) && lines[j].startsWith('-')) { headTime = toTime(lines[j]); j++; }
       const block = [];
-      while (j < lines.length && !head.test(lines[j]) && !/^(sorteer|kalender afdrukken|podium|volledige)/i.test(lines[j])) { block.push(lines[j]); j++; }
+      while (j < lines.length && !parseHead(lines[j]) && !/^(sorteer|kalender afdrukken|podium|volledige)/i.test(lines[j])) { block.push(lines[j]); j++; }
       let comp = null;
       for (let b = 0; b < block.length; b++) {
         const next = block[b + 1];
-        if (isNoise(block[b]) || !next || !(isScore(next) || isTime(next) || /^(afgelast|uitgesteld|ff|forfait)/i.test(next))) {
+        const startsMatch = next && (isScore(next) || isTime(next) || isStatus(next)) && !isNoise(block[b]);
+        if (!startsMatch) {
           if (b === 0 && !isNoise(block[b])) comp = block[b];
           continue;
         }
         const home = block[b];
-        let k2 = b + 1, hs = null, as = null, time = h[5] || null, status = null;
-        if (isScore(block[k2])) { [hs, as] = block[k2].split('-').map(x => +x.trim()); }
-        else if (isTime(block[k2])) time = block[k2];
-        else status = block[k2];
+        let k2 = b + 1, hs = null, as = null, time = headTime;
+        if (isScore(block[k2])) [hs, as] = block[k2].split('-').map(x => +x.trim());
+        else if (isTime(block[k2])) time = toTime(block[k2]) || headTime;
         k2++;
         while (k2 < block.length && (isScore(block[k2]) || /^strafschoppen$/i.test(block[k2]))) k2++;
         const away = block[k2];
         if (!away) break;
         if (isMine(home) || isMine(away)) {
-          const f = { date, time, home, away, hs, as, comp: comp && !isMine(comp) ? comp : null, status };
-          found.set(`${date}|${home.toLowerCase()}|${away.toLowerCase()}`, f);
+          const f = normFx({ date, time, home, away, hs, as, comp: comp && !isMine(comp) ? comp : null });
+          found.set(f.key + '|' + date, f);
         }
         b = k2;
         while (b + 1 < block.length && isRef(block[b + 1])) b++;
@@ -1742,14 +1804,30 @@
     return [...found.values()].sort((a, b) => a.date.localeCompare(b.date));
   }
 
+  // Voegt geïmporteerde matchen samen met wat er al is. Zelf aangepaste of verwijderde matchen blijven zoals ze zijn.
+  function mergeFixtures(parsed) {
+    const list = fixtures();
+    const deleted = new Set(S.settings.fixturesDeleted || []);
+    const res = { added: 0, updated: 0, kept: 0 };
+    parsed.forEach(p => {
+      if (deleted.has(p.key)) { res.kept++; return; }
+      const ex = list.find(f => f.key === p.key && f.src === 'rbfa' && Math.abs(daysBetween(parseKey(f.date), parseKey(p.date))) < 120)
+        || list.find(f => f.date === p.date && f.opponent.toLowerCase() === p.opponent.toLowerCase());
+      if (!ex) { list.push(p); res.added++; }
+      else if (ex.edited) res.kept++;
+      else { Object.assign(ex, { date: p.date, time: p.time || ex.time, gf: p.gf, ga: p.ga, comp: p.comp || ex.comp, home: p.home }); res.updated++; }
+    });
+    return { list, res };
+  }
+
   // Leest een wedstrijdblad en berekent alleen JOUW minuten. Andere namen worden niet bewaard.
   function parseMatchSheet(text, player) {
-    const lines = text.split(/\r?\n/).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const lines = normDash(text).split(/\r?\n/).map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
     const surname = player.trim().split(' ').slice(1).join(' ') || player.trim();
     const lower = s => s.toLowerCase();
     const res = { ok: false };
-    const dm = text.match(new RegExp(`\\b(?:ma|di|wo|do|vr|za|zo)\\w*\\.?\\s+(\\d{1,2})\\s+(${MONTHS_RE})\\s+(\\d{4})(?:\\s*-\\s*(\\d{1,2}:\\d{2}))?`, 'i'));
-    if (dm) res.date = dkey(new Date(+dm[3], MONTH.indexOf(dm[2].toLowerCase()), +dm[1]));
+    const dm = normDash(text).match(new RegExp(`\\b(?:ma|di|wo|do|vr|za|zo)\\w*\\.?\\s+(\\d{1,2})\\s+(${MONTHS_RE})\\s+(\\d{4})(?:\\s*-\\s*(\\d{1,2}[:.]\\d{2}))?`, 'i'));
+    if (dm) { res.date = dkey(new Date(+dm[3], MONTH.indexOf(dm[2].toLowerCase()), +dm[1])); res.time = dm[4] ? toTime(dm[4]) : null; }
     const iOp = lines.findIndex(l => /^opstellingen$/i.test(l));
     const iBench = lines.findIndex(l => /^wisselspelers$/i.test(l));
     const iStaff = lines.findIndex(l => /^staf$/i.test(l));
@@ -1768,8 +1846,8 @@
     if (iRep > 0) {
       let cur = null;
       for (const l of lines.slice(iRep + 1, iInfo > 0 ? iInfo : undefined)) {
-        const mm = l.match(/^(\d{1,3})\s*[‘'’`´]?\+?\d*$/);
-        if (mm && /[‘'’`´]/.test(l)) { cur = { min: +mm[1], names: [] }; groups.push(cur); }
+        const mm = l.match(/^(\d{1,3})(?:\s*\+\s*\d+)?\s*[‘'’`´]$/);
+        if (mm) { cur = { min: +mm[1], names: [] }; groups.push(cur); }
         else if (/^(aftrap|einde van de wedstrijd|rust)$/i.test(l)) cur = null;
         else if (cur) cur.names.push(l);
       }
@@ -1791,35 +1869,32 @@
   }
 
   function openRbfa() {
-    openSheet(`<div class="sheet-head"><div><h3>RBFA-kalender</h3><p>${esc(C.rbfa.teamLabel)}: matchen, uren en uitslagen</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+    openSheet(`<div class="sheet-head"><div><h3>RBFA-kalender</h3><p>Alle matchen van ${esc(C.rbfa.teamLabel)}, met uur en uitslag</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <ol class="steps">
-        <li>Open de <a href="${esc(C.rbfa.calendarUrl)}" target="_blank" rel="noopener">kalender van ${esc(C.rbfa.teamLabel)}</a> op rbfa.be.</li>
-        <li>Selecteer alles: op gsm lang drukken op tekst → <b>Alles selecteren</b>, op computer Ctrl+A. Kopieer.</li>
-        <li>Kom terug en tik op <b>Plakken</b> (of plak in het vak).</li>
+        <li>Open de <a href="${esc(C.rbfa.calendarUrl)}" target="_blank" rel="noopener">kalender van ${esc(C.rbfa.teamLabel)}</a>.</li>
+        <li>Houd je vinger op de tekst → <b>Alles selecteren</b> → <b>Kopieer</b>.</li>
+        <li>Kom terug en tik op <b>Plakken</b>.</li>
       </ol>
-      <label class="flabel" for="rbfa-text">Gekopieerde tekst</label>
-      <textarea class="input paste" id="rbfa-text" placeholder="ZONDAG 08 NOVEMBER - 12:30&#10;4 Provinciaal Antw D&#10;KV Bonheiden B&#10;12:30&#10;KFC LINT"></textarea>
-      <div class="row" style="margin-top:10px">
-        <button class="btn ghost" data-action="paste" data-target="rbfa-text">${icon('paste')} Plakken</button>
+      <textarea class="input paste" id="rbfa-text" aria-label="Gekopieerde tekst" placeholder="Plak hier de tekst van de RBFA-pagina"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" data-action="paste" data-target="rbfa-text">${icon('paste')} Plakken</button>
         <button class="btn primary" data-action="rbfa-import">${icon('download')} Importeren</button>
       </div>
-      <p class="muted small" style="margin-top:10px">De app slaat alleen de matchen van ${esc(C.rbfa.teamLabel)} op. Werk de kalender af en toe bij voor nieuwe uitslagen en verplaatste matchen.</p>`);
+      <p class="label" style="margin-top:12px">Matchen die je zelf aangepast of verwijderd hebt, blijven zoals jij ze zette.</p>`);
   }
 
   async function importCalendar() {
-    const text = $('#rbfa-text').value;
-    const list = parseCalendar(text);
-    if (!list.length) { toast(`Geen matchen van ${C.rbfa.teamLabel} gevonden in de tekst`); return; }
+    const parsed = parseCalendar($('#rbfa-text').value);
+    if (!parsed.length) { toast(`Geen matchen van ${C.rbfa.teamLabel} gevonden. Kopieer de volledige kalenderpagina.`); return; }
+    const { list, res } = mergeFixtures(parsed);
     await setSetting('fixtures', list);
     await setSetting('fixturesAt', Date.now());
     closeSheet();
     render({ keepScroll: true });
-    const pl = list.filter(played).length;
-    toast(`${list.length} matchen geïmporteerd (${pl} gespeeld, ${list.length - pl} komend)`);
+    toast(`${res.added} nieuw, ${res.updated} bijgewerkt${res.kept ? `, ${res.kept} door jou aangepast en behouden` : ''}`);
   }
 
   function openMinutes(date) {
-    const fx = fixtures().filter(played);
     const f = date ? fixtureOn(date) : null;
     openSheet(`<div class="sheet-head"><div><h3>Mijn minuten</h3><p>${f ? `${esc(fxTitle(f))}, ${fmtShort(f.date)}` : 'Van het wedstrijdblad op rbfa.be'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <ol class="steps">
@@ -1827,46 +1902,43 @@
         <li>Selecteer alles op de matchpagina en kopieer.</li>
         <li>Plak hieronder. De app zoekt <b>${esc(profile().rbfaName)}</b> en bewaart alleen jouw minuten.</li>
       </ol>
-      <textarea class="input paste" id="sheet-text" placeholder="OPSTELLINGEN …"></textarea>
-      <div class="row" style="margin-top:10px">
-        <button class="btn ghost" data-action="paste" data-target="sheet-text">${icon('paste')} Plakken</button>
+      <textarea class="input paste" id="sheet-text" aria-label="Gekopieerde tekst" placeholder="Plak hier de matchpagina"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" data-action="paste" data-target="sheet-text">${icon('paste')} Plakken</button>
         <button class="btn primary" data-action="minutes-parse">${icon('clock')} Berekenen</button>
       </div>
       <div id="minutes-result"></div>
-      ${!fx.length ? '' : `<p class="muted small" style="margin-top:10px">Tip: het wedstrijdblad staat er meestal pas een paar uur na de match op.</p>`}`);
+      <p class="label" style="margin-top:12px">Het wedstrijdblad staat er meestal een paar uur na de match op.</p>`);
   }
 
   function showMinutesResult() {
     const r = parseMatchSheet($('#sheet-text').value, profile().rbfaName);
     const box = $('#minutes-result');
-    if (!r.ok) { box.innerHTML = `<div class="alert" style="margin-top:12px">${icon('alert')}<div>${esc(r.error || 'Kon de tekst niet lezen.')}</div></div>`; return; }
+    if (!r.ok) { box.innerHTML = `<div class="hint warn" style="margin-top:12px">${icon('alert')}<span>${esc(r.error || 'Kon de tekst niet lezen.')}</span></div>`; return; }
     const mineHome = isMine(r.home || '');
-    const opp = mineHome ? r.away : r.home;
+    const opp = nice(mineHome ? r.away : r.home);
+    const gf = r.hs == null ? null : mineHome ? r.hs : r.as, ga = r.hs == null ? null : mineHome ? r.as : r.hs;
     const existing = S.activities.find(a => a.type === 'match' && a.date === r.date);
     const detail = r.role === 'basisspeler'
       ? (r.outMin != null ? `Basisspeler, gewisseld in de ${r.outMin}e minuut` : 'Basisspeler, de hele match gespeeld')
       : r.role === 'wisselspeler'
         ? (r.inMin != null ? `Ingevallen in de ${r.inMin}e minuut${r.outMin != null ? `, eruit in de ${r.outMin}e` : ''}` : 'Op de bank, niet ingevallen')
         : `${profile().rbfaName} staat niet op dit wedstrijdblad`;
-    box.innerHTML = `<div class="result-card">
-      <p class="muted small">${r.date ? cap(fmtDay(r.date)) : 'Datum onbekend'} · ${esc(nice(r.home || '?'))} ${r.hs != null ? `${r.hs} - ${r.as}` : '–'} ${esc(nice(r.away || '?'))}</p>
-      <div class="big" style="margin-top:6px">${r.minutes}<small style="font-size:16px"> min</small></div>
-      <p class="small" style="margin-top:4px">${esc(detail)}</p>
+    box.innerHTML = `<div class="result">
+      <span class="label">${r.date ? cap(fmtDay(r.date)) : 'Datum onbekend'} · ${mineHome ? 'thuis' : 'uit'} tegen ${esc(opp || '?')}${gf != null ? ` · ${gf}–${ga}` : ''}</span>
+      <div class="num xl" style="margin-top:8px">${r.minutes}<span class="unit">min</span></div>
+      <p class="small" style="margin-top:6px">${esc(detail)}</p>
     </div>
     <form id="minutes-form">
       <input type="hidden" name="date" value="${esc(r.date || dkey(today()))}">
       <input type="hidden" name="opponent" value="${esc(opp || '')}">
-      <input type="hidden" name="score" value="${r.hs != null ? `${r.hs} - ${r.as}` : ''}">
+      <input type="hidden" name="home" value="${mineHome ? '1' : '0'}">
+      <input type="hidden" name="gf" value="${gf ?? ''}"><input type="hidden" name="ga" value="${ga ?? ''}">
+      <input type="hidden" name="time" value="${esc(r.time || '')}">
       <input type="hidden" name="role" value="${esc(r.role)}">
-      <div class="form-grid" style="margin-top:4px">
-        <div><label class="flabel" for="mf-min">Minuten (aanpasbaar)</label><input class="input" id="mf-min" name="minutes" type="number" inputmode="numeric" min="0" max="130" value="${r.minutes}"></div>
-        <div><label class="flabel" for="mf-pain">Pijn achteraf (0–10)</label><input class="input" id="mf-pain" name="pain" type="number" inputmode="numeric" min="0" max="10" value="${existing ? existing.pain : 0}"></div>
-      </div>
-      <span class="flabel">Ondergrond</span>
-      <div class="seg">${radio('surface', 'kunstgras', 'Kunstgras', existing ? existing.surface : 'kunstgras')}${radio('surface', 'natuurgras', 'Natuurgras', existing ? existing.surface : '')}</div>
-      <span class="flabel">Schoenen</span>
-      <div class="seg">${radio('shoes', 'AG', 'AG', existing ? existing.shoes : 'AG')}${radio('shoes', 'FG', 'FG', existing ? existing.shoes : '')}</div>
-      <button class="btn primary block" type="submit">${icon('check')} ${existing ? 'Match bijwerken' : 'Opslaan als match'}</button>
+      <label class="field"><span>Minuten (aanpasbaar)</span><input class="input" name="minutes" type="number" inputmode="numeric" min="0" max="130" value="${r.minutes}"></label>
+      ${logFields(existing)}
+      <button class="btn primary block lg" type="submit">${icon('check')} ${existing ? 'Match bijwerken' : 'Opslaan'}</button>
     </form>`;
   }
 
@@ -1874,14 +1946,23 @@
     const f = new FormData(form);
     const date = f.get('date');
     const existing = S.activities.find(a => a.type === 'match' && a.date === date);
+    const gf = num(f.get('gf')), ga = num(f.get('ga'));
     const rec = {
       ...(existing || {}),
       type: 'match', date, minutes: +f.get('minutes') || 0, surface: f.get('surface'), shoes: f.get('shoes'),
-      pain: +f.get('pain') || 0, opponent: f.get('opponent') || null, score: f.get('score') || null, role: f.get('role') || null,
+      pain: padValue('P'), opponent: f.get('opponent') || null, score: gf != null ? `${gf} - ${ga}` : null, role: f.get('role') || null,
       note: existing ? existing.note || '' : '', source: 'rbfa', createdAt: existing ? existing.createdAt : Date.now(), sample: false
     };
     rec.id = await DB.put('activities', rec);
     S.activities = S.activities.filter(a => a.id !== rec.id).concat(rec);
+    // De uitslag ook in de matchlijst zetten, als je die match niet zelf aangepast hebt
+    const list = fixtures();
+    const fx = list.find(x => x.date === date);
+    if (fx && !fx.edited && gf != null) { fx.gf = gf; fx.ga = ga; await setSetting('fixtures', list); }
+    else if (!fx && rec.opponent) {
+      const n = { id: newId(), date, time: f.get('time') || null, opponent: rec.opponent, home: f.get('home') === '1', gf, ga, comp: null, src: 'rbfa', edited: false };
+      n.key = fxKey(n); list.push(n); await setSetting('fixtures', list);
+    }
     closeSheet();
     render({ keepScroll: true });
     toast(`${rec.minutes} minuten opgeslagen`);
@@ -1899,24 +1980,27 @@
   /* ================= Loggen ================= */
   const radio = (name, value, label, cur) =>
     `<label><input type="radio" name="${name}" value="${value}" ${value === cur ? 'checked' : ''}><span>${label}</span></label>`;
+  const padValue = side => { const b = document.querySelector(`.score-pad[data-side="${side}"] .on`); return b ? +b.dataset.v : 0; };
+  const painPad = v => `<div class="score-pad" data-side="P">${Array.from({ length: 11 }, (_, i) => `<button type="button" class="${i === v ? 'on' : ''} ${i > MAX_PAIN ? 'hi' : ''}" data-action="score-pick" data-v="${i}">${i}</button>`).join('')}</div>`;
+  const logFields = ex => `
+      <p class="label" style="margin:4px 2px 6px">Ondergrond</p>
+      <div class="seg">${radio('surface', 'kunstgras', 'Kunstgras', ex ? ex.surface : 'kunstgras')}${radio('surface', 'natuurgras', 'Natuurgras', ex ? ex.surface : '')}</div>
+      <p class="label" style="margin:0 2px 6px">Schoenen</p>
+      <div class="seg">${radio('shoes', 'AG', 'AG', ex ? ex.shoes : 'AG')}${radio('shoes', 'FG', 'FG', ex ? ex.shoes : '')}</div>
+      <p class="label" style="margin:0 2px 6px">Pijn achteraf (0 = niets)</p>
+      ${painPad(ex ? ex.pain : 0)}`;
 
   function openLog(type = 'training', date = dkey(today())) {
     openSheet(`<form id="log-form">
       <div class="sheet-head"><h3 id="log-title">${type === 'match' ? 'Match' : 'Training'} loggen</h3>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="seg">${radio('type', 'match', 'Match', type)}${radio('type', 'training', 'Training', type)}</div>
-      <div class="form-grid" style="margin-top:4px">
-        <div><label class="flabel" for="lg-date">Datum</label><input class="input" type="date" id="lg-date" name="date" value="${date}" max="${dkey(today())}" required></div>
-        <div><label class="flabel" for="lg-min">Minuten</label><input class="input" type="number" inputmode="numeric" id="lg-min" name="minutes" min="0" max="240" value="${type === 'match' ? 90 : 105}" required></div>
+      <div class="form-grid">
+        <label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${date}" max="${dkey(today())}" required></label>
+        <label class="field"><span>Minuten</span><input class="input" type="number" inputmode="numeric" id="lg-min" name="minutes" min="0" max="240" value="${type === 'match' ? 90 : 105}" required></label>
       </div>
-      <span class="flabel">Ondergrond</span>
-      <div class="seg">${radio('surface', 'kunstgras', 'Kunstgras', 'kunstgras')}${radio('surface', 'natuurgras', 'Natuurgras')}</div>
-      <span class="flabel">Schoenen</span>
-      <div class="seg">${radio('shoes', 'AG', 'AG', 'AG')}${radio('shoes', 'FG', 'FG')}</div>
-      <div class="slider-top" style="margin-top:14px"><span class="flabel" style="margin:0 0 0 4px">Pijn achteraf</span><strong class="score low" id="lg-pain-v">0</strong></div>
-      <input type="range" name="pain" min="0" max="10" value="0" data-out="lg-pain-v" data-score aria-label="Pijn achteraf">
-      <label class="flabel" for="lg-note">Notitie</label>
-      <textarea class="input" id="lg-note" name="note" rows="2" placeholder="Hoe voelde het? Bv. stijf na de rust"></textarea>
-      <button class="btn primary block" type="submit">${icon('check')} Opslaan</button>
+      ${logFields(null)}
+      <label class="field" style="margin-top:14px"><span>Notitie (optioneel)</span><textarea class="input" name="note" rows="2" placeholder="Bv. stijf na de rust"></textarea></label>
+      <button class="btn primary block lg" type="submit">${icon('check')} Opslaan</button>
     </form>`);
   }
 
@@ -1924,16 +2008,16 @@
     const f = new FormData(form);
     const rec = {
       type: f.get('type'), date: f.get('date') || dkey(today()), minutes: +f.get('minutes') || 0,
-      surface: f.get('surface'), shoes: f.get('shoes'), pain: +f.get('pain') || 0,
+      surface: f.get('surface'), shoes: f.get('shoes'), pain: padValue('P'),
       note: (f.get('note') || '').trim(), createdAt: Date.now(), sample: false
     };
     const fx = rec.type === 'match' ? fixtureOn(rec.date) : null;
-    if (fx) { rec.opponent = opponent(fx); if (played(fx)) rec.score = `${fx.hs} - ${fx.as}`; }
+    if (fx) { rec.opponent = fx.opponent; if (played(fx)) rec.score = `${fx.gf} - ${fx.ga}`; }
     rec.id = await DB.put('activities', rec);
     S.activities.push(rec);
     closeSheet();
     render({ keepScroll: true });
-    toast(rec.pain > MAX_PAIN ? `Opgeslagen. Pijn ${rec.pain}/10: let goed op je ochtendcheck morgen.` : `${rec.type === 'match' ? 'Match' : 'Training'} opgeslagen`);
+    toast(rec.pain > MAX_PAIN ? `Opgeslagen. Pijn ${rec.pain}/10: let morgen goed op je ochtendscore.` : `${rec.type === 'match' ? 'Match' : 'Training'} opgeslagen`);
   }
 
   /* ================= Sheets, menu, toast ================= */
@@ -2136,7 +2220,10 @@
     'scroll-cal': () => { const c = $('#cal-card'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     'show-entry': el => showEntry(el.dataset.store, +el.dataset.id),
     'del-entry': el => deleteEntry(el.dataset.store, +el.dataset.id),
-    'toggle-edit': () => { S.ui.editProfile = !S.ui.editProfile; render({ keepScroll: true }); },
+    'pick-photo': () => $('#photo-file').click(),
+    'remove-photo': async () => { if (!await ask('Je profielfoto verwijderen?', { ok: 'Verwijderen', danger: true })) return; await setSetting('photo', null); render({ keepScroll: true }); },
+    'edit-match': el => openMatchEdit(el.dataset.id),
+    'delete-match': el => deleteMatch(el.dataset.id),
     'open-rbfa': openRbfa,
     'rbfa-import': importCalendar,
     'open-minutes': el => openMinutes(el.dataset.date),
@@ -2191,6 +2278,11 @@
       await setSetting('satMatchWeeks', [...set]);
       render({ keepScroll: true });
       toast(el.checked ? 'Zaterdagmatch: Sessie C staat nu op donderdag' : 'Standaard weekschema hersteld');
+    } else if (kind === 'profile') {
+      await saveProfileField(el);
+    } else if (kind === 'photo') {
+      if (el.files && el.files[0]) savePhoto(el.files[0]);
+      el.value = '';
     } else if (kind === 'theme') {
       setTheme(el.value);
     } else if (kind === 'phase') {
@@ -2218,8 +2310,8 @@
   document.addEventListener('submit', e => {
     e.preventDefault();
     if (e.target.id === 'log-form') saveLog(e.target);
-    if (e.target.id === 'profile-form') saveProfile(e.target);
     if (e.target.id === 'minutes-form') saveMinutes(e.target);
+    if (e.target.id === 'match-form') saveMatch(e.target);
   });
 
   window.addEventListener('hashchange', () => { closeSheet(); render(); });
@@ -2238,10 +2330,26 @@
     }).catch(() => { });
   }
 
+  /* ================= Migraties ================= */
+  // Zet bestaande data om wanneer het datamodel verandert. Er gaat niets verloren.
+  const DATA_VERSION = 3;
+  async function migrate() {
+    const v = S.settings.dataVersion || 1;
+    if (v >= DATA_VERSION) return;
+    if (v < 3) {
+      // v3: matchen krijgen een id, tegenstander, thuis/uit, score vanuit KFC Lint en een sleutel voor samenvoegen
+      if (Array.isArray(S.settings.fixtures)) await setSetting('fixtures', fixtures());
+      // v3: profiel krijgt een naam voor het wedstrijdblad
+      if (S.settings.profile && !S.settings.profile.rbfaName) await setSetting('profile', { ...S.settings.profile, rbfaName: C.rbfa.player });
+    }
+    await setSetting('dataVersion', DATA_VERSION);
+  }
+
   /* ================= Start ================= */
   async function init() {
     try {
       await loadAll();
+      await migrate();
       if (!S.settings.seeded) await seedSample();
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
       if (draft()) requestWakeLock();
