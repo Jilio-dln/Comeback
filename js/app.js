@@ -62,47 +62,50 @@
 
   /* ================= Iconen ================= */
   const I = {
-    home: '<path d="M3.5 10.5L12 4l8.5 6.5V20a1 1 0 0 1-1 1h-5v-6h-5v6h-5a1 1 0 0 1-1-1z"/>',
-    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>',
-    moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
-    dumbbell: '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>',
-    chart: '<path d="M5 20V11M11 20V5M17 20v-6M3 20h18"/>',
-    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.5-4 3.8-6 8-6s7.5 2 8 6"/>',
+    home: '<path d="M4 10.5L12 4l8 6.5V20H4z"/><path d="M10 20v-5h4v5"/>',
+    calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="1.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    dumbbell: '<path d="M3 12h18M6.5 7.5v9M17.5 7.5v9M3.5 10v4M20.5 10v4"/>',
+    chart: '<path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/>',
+    user: '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c.8-3.8 3.8-5.6 7.5-5.6s6.7 1.8 7.5 5.6"/>',
     back: '<path d="M15 18l-6-6 6-6"/>',
-    menu: '<path d="M4 7h16M4 12h16M4 17h10"/>',
-    dots: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
-    edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
-    play: '<path d="M8 5.5v13l10.5-6.5z"/>',
-    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
-    timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>',
-    plus: '<path d="M12 5v14M5 12h14"/>',
-    x: '<path d="M6 6l12 12M18 6L6 18"/>',
     chevL: '<path d="M15 18l-6-6 6-6"/>',
     chevR: '<path d="M9 18l6-6-6-6"/>',
-    arrowL: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
-    arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    minus: '<path d="M5 12h14"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+    timer: '<circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 2M9.5 3h5"/>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    ball: '<circle cx="12" cy="12" r="8.5"/><path d="M12 8l3.3 2.4-1.3 3.9h-4l-1.3-3.9zM12 3.5V8M15.3 10.4l4-1.3M14 14.3l2.5 3.5M10 14.3l-2.5 3.5M8.7 10.4l-4-1.3"/>',
+    whistle: '<circle cx="9" cy="14" r="5"/><path d="M12.5 10.5L20 5v4l-6 4"/>',
+    moon: '<path d="M19.5 14.5A7.5 7.5 0 1 1 9.5 4.5a6 6 0 0 0 10 10z"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M4.6 4.6L6 6M18 18l1.4 1.4M3 12h2M19 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>',
+    alert: '<path d="M12 4L3 19.5h18z"/><path d="M12 10v4M12 17h.01"/>',
+    up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+    move: '<rect x="3.5" y="5" width="17" height="15.5" rx="1.5"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15h6M13 13l2 2-2 2"/>',
+    skip: '<path d="M6 6l8 6-8 6zM17 6v12"/>',
+    undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
     download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
     upload: '<path d="M12 16V5M7 10l5-5 5 5M5 20h14"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
-    alert: '<path d="M12 3.5L2.5 20h19z"/><path d="M12 10v4.5M12 17.5h.01"/>',
-    ball: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5l3.8 2.8-1.4 4.4H9.6l-1.4-4.4zM12 3v4.5M15.8 10.3l4.5-1.4M14.4 14.7l2.7 3.8M9.6 14.7l-2.7 3.8M8.2 10.3L3.7 8.9"/>',
-    flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
-    bolt: '<path d="M13 2.5L4.5 14H11l-1 7.5L19.5 10H13z"/>',
-    hold: '<rect x="6" y="5" width="4" height="14" rx="1.5"/><rect x="14" y="5" width="4" height="14" rx="1.5"/>',
-    calendar: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>',
-    move: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4M9 15.5h6M13 13.5l2 2-2 2"/>',
-    skip: '<path d="M5 5l9 7-9 7zM18 5v14"/>',
-    undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
-    magic: '<path d="M5 19L17 7M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1zM19 12l.7 1.3L21 14l-1.3.7L19 16l-.7-1.3L17 14l1.3-.7z"/>',
-    trend: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
-    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+    camera: '<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+    paste: '<rect x="6" y="4" width="12" height="17" rx="1.5"/><path d="M9 4V3h6v1M9 10h6M9 14h6"/>',
+    info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',
     heart: '<path d="M12 20s-7.5-4.6-7.5-10A4.5 4.5 0 0 1 12 7.5 4.5 4.5 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/>',
-    flask: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>',
-    link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
-    paste: '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6"/>',
-    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    flame: '<path d="M12 21c-4 0-6.5-2.6-6.5-6 0-3.5 3-5.5 3.5-9 2 1.5 3 3.5 3 5 1-1 1.5-2 1.5-3.5 2.5 2 5 4.5 5 7.5 0 3.4-2.5 6-6.5 6z"/>',
-    whistle: '<circle cx="9" cy="14" r="5"/><path d="M12.5 10.5L20 5v4l-6 4"/>'
+    pulse: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+    list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
+    arrowL: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+    arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    magic: '<path d="M5 19L17 7M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>',
+    // Sessie-iconen
+    legs: '<path d="M9.5 3.5v6.5L7 15l2.5 5.5M14.5 3.5v6.5L17 15l-2.5 5.5M9.5 9h5"/>',
+    barbell: '<path d="M2.5 12h19M6 7.5v9M18 7.5v9M3.5 9.5v5M20.5 9.5v5"/>',
+    torso: '<circle cx="12" cy="5" r="2"/><path d="M6.5 21v-6.5L4.5 10l3.5-2h8l3.5 2-2 4.5V21M9.5 13h5"/>',
+    hold: '<circle cx="12" cy="12" r="8.5"/><path d="M10 9v6M14 9v6"/>',
+    calf: '<path d="M9 3v10.5L6 17h10.5l-1.5-2.5L14 14V3"/><path d="M4.5 20.5h15"/>',
+    bolt: '<path d="M13 2.5L4.5 14H11l-1 7.5L19.5 10H13z"/>'
   };
   const icon = (n, cls = '') => `<svg class="ic ${n === 'play' ? 'fill' : ''} ${cls}" viewBox="0 0 24 24" aria-hidden="true">${I[n] || ''}</svg>`;
   const iconBtn = (name, action, label, extra = '') =>
@@ -117,7 +120,7 @@
     const dark = p === 'dark' || (p === 'auto' && darkQuery && darkQuery.matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', dark ? '#0a0a0b' : '#e9eff3');
+    if (meta) meta.setAttribute('content', dark ? '#000000' : '#e8e8e5');
   }
   function setTheme(p) {
     try { localStorage.setItem('comeback-theme', p); } catch (_) { }
@@ -457,31 +460,48 @@
   }
 
   /* ================= Router ================= */
+  // Hoofdtabs (zonder terugknop) en subschermen (met terugknop naar hun tab)
   const ROUTES = {
-    vandaag: { label: 'Home', icon: 'home', render: renderToday },
-    workout: { label: 'Workout', icon: 'dumbbell', render: renderWorkout },
-    statistieken: { label: 'Stats', icon: 'chart', render: renderStats },
-    profiel: { label: 'Profiel', icon: 'user', render: renderProfile }
+    vandaag: { label: 'Home', icon: 'home', render: () => renderToday() },
+    workout: { label: 'Workout', icon: 'dumbbell', render: () => renderWorkout() },
+    statistieken: { label: 'Stats', icon: 'chart', render: () => renderStats() },
+    account: { label: 'Account', icon: 'user', render: () => renderProfile() }
   };
+  const SUBS = {};
+  const ALIASES = { profiel: 'account' };
   let lastRoute = null;
-  const currentRoute = () => { const r = location.hash.slice(1); return ROUTES[r] ? r : 'vandaag'; };
+  const currentRoute = () => {
+    const r = location.hash.slice(1);
+    if (ALIASES[r]) return ALIASES[r];
+    return ROUTES[r] || SUBS[r] ? r : 'vandaag';
+  };
 
   function render({ keepScroll = false } = {}) {
     const r = currentRoute();
     const y = window.scrollY;
     if (r !== lastRoute && r === 'workout') S.ui.woView = null;
-    ROUTES[r].render();
-    renderTabbar(r);
+    (ROUTES[r] || SUBS[r]).render();
+    renderTabbar(SUBS[r] ? SUBS[r].parent : r);
     if (keepScroll || r === lastRoute) window.scrollTo(0, y);
     else window.scrollTo(0, 0);
     lastRoute = r;
   }
 
   function renderTabbar(active) {
-    $('#tabbar').innerHTML = Object.entries(ROUTES).map(([key, r]) =>
-      `<a class="tab ${key === active ? 'active' : ''}" href="#${key}" aria-label="${r.label}" ${key === active ? 'aria-current="page"' : ''}>${icon(r.icon)}<span class="lbl">${r.label}</span></a>`
-    ).join('');
+    const keys = Object.keys(ROUTES);
+    const bar = $('#tabbar');
+    bar.style.gridTemplateColumns = `repeat(${keys.length}, 1fr)`;
+    bar.innerHTML = keys.map(key => {
+      const r = ROUTES[key];
+      return `<a class="tab ${key === active ? 'active' : ''}" href="#${key}" ${key === active ? 'aria-current="page"' : ''}><span class="box">${icon(r.icon)}</span>${r.label}</a>`;
+    }).join('');
   }
+
+  // Kop voor een hoofdtab (geen terugknop) en voor een subscherm (wel een terugknop)
+  const pageHead = (title, sub = '', right = '') =>
+    `<header class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right}</header>`;
+  const subHead = (title, back, sub = '', right = '') =>
+    `<header class="sub-head">${iconBtn('back', 'go', 'Terug', `data-to="${back}"`)}<div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right || '<span></span>'}</header>`;
 
   /* ================= Home (vandaag) ================= */
   function renderToday() {
@@ -788,7 +808,7 @@
     const cur = draft();
     if (cur) {
       if (cur.sessionKey === key && cur.date === dkey(today())) { S.ui.woView = 'active'; go('workout'); return; }
-      if (!confirm(`Je hebt nog een workout bezig (${cur.title}). Die stoppen en een nieuwe starten?`)) return;
+      if (!await ask(`Je hebt nog een workout bezig (${cur.title}). Die stoppen en een nieuwe starten?`)) return;
     }
     const w = {
       sessionKey: key, title: sessionTitle(key), phase: currentPhase(),
@@ -1018,8 +1038,8 @@
     const w = draft(); if (!w) return;
     const all = w.exercises.flatMap(x => x.sets);
     const done = all.filter(s => s.done);
-    if (!done.length) { if (!confirm('Je hebt nog geen sets afgevinkt. Toch opslaan als afgewerkte sessie?')) return; }
-    else if (done.length < all.length && !confirm(`${all.length - done.length} sets zijn niet afgevinkt. Workout toch afronden?`)) return;
+    if (!done.length) { if (!await ask('Je hebt nog geen sets afgevinkt. Toch opslaan als afgewerkte sessie?')) return; }
+    else if (done.length < all.length && !await ask(`${all.length - done.length} sets zijn niet afgevinkt. Workout toch afronden?`)) return;
     const clean = s => ({
       idx: s.idx, side: s.side, label: s.label || null,
       reps: num(s.reps), weight: num(s.weight), duration: num(s.duration), dist: num(s.dist), pain: num(s.pain), done: true
@@ -1043,7 +1063,7 @@
   }
 
   async function cancelWorkout() {
-    if (!confirm('Deze workout stoppen zonder op te slaan?')) return;
+    if (!await ask('Deze workout stoppen zonder op te slaan?')) return;
     S.settings.activeWorkout = null;
     await saveDraft(true);
     stopRest();
@@ -1355,7 +1375,7 @@
   }
 
   async function deleteEntry(store, id) {
-    if (!confirm('Dit item verwijderen?')) return;
+    if (!await ask('Dit item verwijderen?')) return;
     await DB.del(store, id);
     S[store] = S[store].filter(x => x.id !== id);
     render({ keepScroll: true });
@@ -1763,6 +1783,27 @@
   }
   function closeSheet() { document.querySelectorAll('.sheet-backdrop').forEach(n => n.remove()); }
 
+  // Bevestiging in de app zelf (in plaats van de systeempopup)
+  function ask(text, { ok = 'Ja', cancel = 'Annuleren', danger = false, title = 'Ben je zeker?' } = {}) {
+    return new Promise(resolve => {
+      const bd = document.createElement('div');
+      bd.className = 'sheet-backdrop confirm';
+      bd.innerHTML = `<div class="sheet" role="alertdialog" aria-modal="true">
+        <div class="sheet-head"><div><h3>${esc(title)}</h3><p>${esc(text)}</p></div></div>
+        <div class="row"><button class="btn" data-a="no">${esc(cancel)}</button><button class="btn ${danger ? 'accent' : 'primary'}" data-a="yes">${esc(ok)}</button></div>
+      </div>`;
+      const done = v => { bd.remove(); resolve(v); };
+      bd.addEventListener('click', e => {
+        e.stopPropagation();
+        const b = e.target.closest('[data-a]');
+        if (b) done(b.dataset.a === 'yes');
+        else if (e.target === bd) done(false);
+      });
+      document.body.appendChild(bd);
+      requestAnimationFrame(() => bd.classList.add('open'));
+    });
+  }
+
   function openMenu() {
     openSheet(`<div class="sheet-head"><h3>Menu</h3>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="menu-list">
@@ -1820,7 +1861,7 @@
     if (!data || !Array.isArray(data.checks) || !Array.isArray(data.workouts) || !Array.isArray(data.activities)) {
       toast('Dit lijkt geen Comeback-back-up'); return;
     }
-    if (!confirm(`Back-up van ${data.exportedAt ? new Date(data.exportedAt).toLocaleDateString('nl-BE') : 'onbekende datum'} importeren? Dit vervangt alle huidige data.`)) return;
+    if (!await ask(`Back-up van ${data.exportedAt ? new Date(data.exportedAt).toLocaleDateString('nl-BE') : 'onbekende datum'} importeren? Dit vervangt alle huidige data.`)) return;
     for (const s of DB.stores) await DB.clear(s);
     await DB.bulkPut('checks', data.checks);
     await DB.bulkPut('workouts', data.workouts);
@@ -1847,7 +1888,7 @@
   }
 
   async function clearSample() {
-    if (!confirm('Alle voorbeelddata wissen? Je eigen gegevens blijven staan.')) return;
+    if (!await ask('Alle voorbeelddata wissen? Je eigen gegevens blijven staan.')) return;
     await DB.bulkDel('checks', S.checks.filter(x => x.sample).map(x => x.date));
     await DB.bulkDel('workouts', S.workouts.filter(x => x.sample).map(x => x.id));
     await DB.bulkDel('activities', S.activities.filter(x => x.sample).map(x => x.id));
@@ -1857,8 +1898,8 @@
   }
 
   async function clearAll() {
-    if (!confirm('Echt ALLE data wissen (ook je eigen workouts, checks en instellingen)? Maak eerst een back-up.')) return;
-    if (!confirm('Laatste bevestiging: alles wissen?')) return;
+    if (!await ask('Echt ALLE data wissen (ook je eigen workouts, checks en instellingen)? Maak eerst een back-up.')) return;
+    if (!await ask('Laatste bevestiging: alles wissen?')) return;
     for (const s of DB.stores) await DB.clear(s);
     await DB.setSetting('seeded', true);
     await loadAll();
