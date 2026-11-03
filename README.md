@@ -43,7 +43,7 @@ De map `.claude/` heb je niet nodig op GitHub.
 ### Later iets aanpassen (bv. je schema)
 
 1. Open `js/config.js` op GitHub, klik op het potlood (**Edit**), pas aan en klik **Commit changes**.
-2. Verhoog in `sw.js` de regel `const CACHE_VERSION = 'comeback-v1';` naar `'comeback-v2'` (enzovoort). Zo haalt elke gsm zeker de nieuwe versie op.
+2. Verhoog in `sw.js` het getal in `const CACHE_VERSION = 'comeback-v10';` (bv. naar `v11`). Zo haalt elke gsm zeker de nieuwe versie op.
 3. Open de app op je gsm. Na een paar seconden verschijnt **Nieuwe versie beschikbaar**: tik op **Herladen**. Of sluit de app volledig en open ze opnieuw.
 
 ## 2. Installeren op je gsm
@@ -64,60 +64,53 @@ De map `.claude/` heb je niet nodig op GitHub.
 - Open de app één keer met internet. Daarna werkt ze ook offline (bv. in de fitness zonder bereik).
 - Op iPhone hebben de geïnstalleerde app en Safari elk **eigen** data. Gebruik dus altijd het icoon.
 - Op iPhone kan een webapp niet trillen, en het piepje van de timers hoor je alleen als je belsignaal aanstaat (de stilteschakelaar staat uit).
-- Je data staat alleen op je toestel. Maak geregeld een back-up via **Profiel → Back-up → Exporteren**. Op een nieuwe gsm zet je ze terug met **Importeren**.
+- Je data staat alleen op je toestel. Maak geregeld een back-up via **Account → Data → Exporteren**. Op een nieuwe gsm zet je ze terug met **Importeren**.
 
-## 3. Voorbeelddata
+## 3. De app in het kort
 
-Bij de eerste start vult de app zich met zes weken voorbeelddata (workouts, ochtendchecks, trainingen en matchen), zodat je meteen ziet hoe de statistieken eruitzien.
-Wissen gaat met één knop: **Profiel → Voorbeelddata → Voorbeelddata wissen**. Je eigen gegevens blijven staan. In de lijsten krijgen voorbeeldrecords het label *voorbeeld*.
+Onderaan staan vijf tabs:
 
-## 4. Light en dark mode
+| Tab | Wat je er doet |
+| --- | --- |
+| **Home** | Kies een dag in de rij bovenaan. De oranje kaart toont wat je die dag doet, met één startknop. Daaronder je ochtendscore (Herstel), je weekvoortgang en de volgende match. |
+| **Kalender** | Maandoverzicht met een stip per type (oranje = kracht, blauw = training, zwart/wit = match, grijs = rust). Gevuld = gedaan, open = gepland, kruisje = gemist. Tik op een dag voor de knoppen Start, Verplaats, Overslaan, Loggen of Terugzetten. |
+| **Workout** | Alle sessies. Tijdens een workout vul je de huidige set in met grote −/+ knoppen en tik je op **Set klaar**. De rusttimer start vanzelf. |
+| **Stats** | Overzicht, Herstel (ochtendscore en pijn), Kracht (gewicht per oefening) en Matchen (jouw minuten en uitslagen). |
+| **Account** | Profiel en foto, thema (licht, donker of automatisch), herstelfase, criteria, matchen en data. |
 
-Tik op het maantje of zonnetje bovenaan Home, of kies in **Profiel → Weergave**: *Automatisch* (volgt je gsm), *Licht* of *Donker*.
+**Verplaatsen:** bij **Verplaats** kiest de app de beste dag: zware sessies nooit op of vlak voor een matchdag en liefst op een dag zonder andere sessie. Je kunt ook zelf een dag kiezen. Een sessie die je later in dezelfde week toch doet, telt als **ingehaald**.
 
-## 5. Kalender en plannen wijzigen
+**Voorbeelddata:** bij de eerste start staat er voorbeelddata in de app, zodat je de grafieken meteen ziet. Wissen gaat via **Account → Data → Voorbeelddata wissen**. Je eigen gegevens blijven dan staan.
 
-- **Tik op een dag** in de kalender (Stats) of op een staafje in de weektegel (Home) om te zien wat er die dag gepland staat, wat je gelogd hebt en of er een match is.
-- Elk item heeft een **⋯**-knop met:
-  - **Slim verplaatsen**: de app kiest de beste dag in de komende week. Zware sessies (A, B en plyo) komen nooit op een matchdag of de dag ervoor, en de app vermijdt dagen waarop al een sessie staat. 's Avonds plant hij niet meer op vandaag.
-  - **Kies zelf een dag**: zeven dagen met per dag een advies (★ Aanbevolen, "matchdag", "al B", …) of een eigen datum.
-  - **Overslaan**: de sessie telt dan niet meer als gemist.
-- Op Home verschijnt de kaart **Gemist** met sessies van de afgelopen week die je niet deed. Eén tik op **Slim** plant ze opnieuw in. Na elke wijziging kun je ze **ongedaan** maken.
-- In de dagweergave kun je ook een sessie **toevoegen** of iets **herstellen** dat je verplaatst of overgeslagen had.
+## 4. RBFA: matchen en jouw minuten
 
-## 6. RBFA: matchen en jouw minuten
-
-De RBFA-site laat geen andere apps rechtstreeks gegevens ophalen. Daarom werkt de koppeling met kopiëren en plakken. Dat duurt een halve minuut en werkt ook op je gsm.
+De RBFA-site laat geen andere apps rechtstreeks gegevens ophalen. Daarom werkt de koppeling met kopiëren en plakken.
 
 **Kalender (één keer, daarna af en toe bijwerken)**
-1. Profiel → **KFC Lint via RBFA** → **Kalender**.
-2. Tik op de link naar de kalender van KFC Lint, selecteer alles en kopieer.
+1. **Account → RBFA-kalender importeren**, tik op de link naar de kalender van KFC Lint.
+2. Houd je vinger op de tekst → **Alles selecteren** → **Kopieer**.
 3. Terug in de app: **Plakken** → **Importeren**.
 
-Daarna:
-- staan matchdagen met uur, tegenstander en uitslag in je kalender en op Home;
-- past je schema zich automatisch aan: bij een **zaterdagmatch** schuift Sessie C naar donderdag, en een weekend zonder match wordt een rustdag;
-- zie je in **Stats → Seizoen KFC Lint** je uitslagen, je totaal aantal minuten en je gemiddelde per match.
+Matchdagen komen dan automatisch in je schema: bij een zaterdagmatch schuift *Bovenlichaam & core* naar donderdag.
+
+**Matchen beheren:** in **Account → Matchen beheren** pas je per match de datum, het uur, de tegenstander, thuis of uit en de uitslag aan. Je kunt er ook matchen toevoegen en verwijderen. Wat je zelf aanpast of verwijdert, blijft zo staan bij een nieuwe import.
 
 **Jouw minuten na een match**
-1. Open de match op rbfa.be (via de kalender), selecteer alles en kopieer.
-2. In de app: tik op de match in de kalender → **Mijn minuten importeren** (of via Menu → Minuten van RBFA) → **Plakken** → **Berekenen**.
-3. De app zoekt jouw naam (*Jilio Dillen*, aan te passen in Profiel → bewerken) in de opstelling en de wissels. Hij berekent je minuten: basisspeler tot je wissel, of invaller vanaf je invalbeurt. Controleer het getal en pas het aan als dat nodig is. Vul ook ondergrond, schoenen en pijn in en sla op.
+1. Open de match op rbfa.be, selecteer alles en kopieer.
+2. Tik in de kalender op de matchdag → **Minuten invullen**, of ga naar **Account → Mijn minuten van een match**. Tik op **Plakken** → **Berekenen**.
+3. De app zoekt jouw naam (*Jilio Dillen*, aan te passen in Account) in de opstelling en de wissels en berekent alleen jouw minuten. Controleer het getal en sla op.
 
-Alleen jouw minuten worden bewaard, geen namen of gegevens van andere spelers. Een rode kaart of extra tijd kan de app niet zien; pas de minuten in dat geval zelf aan. Ploeg, links en speelduur staan in `js/config.js` onder `rbfa`.
+Een rode kaart of extra tijd kan de app niet zien. Pas de minuten in dat geval zelf aan.
 
-## 7. Schema aanpassen
+## 5. Schema aanpassen
 
 Alles staat in `js/config.js`, met uitleg bovenaan het bestand:
 
 - **`exercises`**: oefeningen (naam, herhalingen of duur, per kant, gewicht, rusttijd, tempo, tip).
-- **`sessions`**: welke oefeningen in Sessie A, B, C, de isometrische holds en de plyo-stappen zitten. Met `phases: ['f2', 'f3']` toon je een oefening alleen in die fases (zo komen de calf raises er vanaf fase 2 bij).
-- **`week`**: het weekschema (0 = zondag … 6 = zaterdag).
-- **`weekWithSaturdayMatch`**: het schema in weken met een zaterdagmatch (aan te zetten op het startscherm). Sessie C schuift dan naar donderdag.
+- **`sessions`**: de zes sessies met naam, korte omschrijving, plaats, icoon en oefeningen. Met `phases: ['f2', 'f3']` toon je iets alleen in die fases. Met `heavy` duid je een zware sessie aan, met `catchUp: false` een sessie die je niet hoeft in te halen.
+- **`week`** en **`weekWithSaturdayMatch`**: het weekschema (0 = zondag … 6 = zaterdag).
 - **`daily`**: sessies die in een fase elke dag terugkomen (fase 1: isometrische holds).
-- **`painRule`**, **`criteria`**, **`phases`**: pijnregel, criteria om volledig te spelen, fases met hun standaard startdatums.
-- **`heavy`** en **`catchUp`** bij een sessie: zware sessie (niet op of vlak voor een matchdag) en of gemiste sessies ingehaald moeten worden.
-- **`rbfa`**: ploegnaam, jouw naam op het wedstrijdblad, link naar de kalender en de speelduur (90 min).
+- **`painRule`**, **`criteria`**, **`phases`**, **`rbfa`**: pijnregel, criteria, fases en de RBFA-gegevens.
 
 ## Lokaal testen op je computer (optioneel)
 

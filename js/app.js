@@ -471,8 +471,6 @@
         <div class="row"><input class="input" type="date" id="move-date" min="${dkey(today())}"><button class="btn primary" style="flex:0 0 auto" data-action="move-custom" data-from="${k}" data-key="${esc(key)}">Zet</button></div></label>`);
   }
 
-  // Verouderd menu: leidt nu door naar de kalenderdag met zichtbare knoppen
-  function openItemSheet(k) { openDay(k); }
 
   /* ================= Router ================= */
   // Hoofdtabs (zonder terugknop) en subschermen (met terugknop naar hun tab)
@@ -689,7 +687,7 @@
         if (it.type === 'rest') return;
         const bucket = it.type === 'session' ? (C.sessions[it.id] && C.sessions[it.id].catchUp === false ? 'holds' : 'kracht') : it.type;
         c[bucket][1]++;
-        if (itemDone(it, k)) c[bucket][0]++;
+        if (doneOrCaughtUp(it, k)) c[bucket][0]++;
       });
     }
     return c;
@@ -758,31 +756,31 @@
     toast(morningWarning() ? 'Opgeslagen. Je score is hoger dan gisteren: zet een stap terug.' : 'Ochtendscore opgeslagen');
   }
 
-  // Tijdelijk nog gebruikt door oudere schermen
-  function heroHtml(it, k) { return homeHero(k); }
 
-  function planItemHtml(it, k, { actions = true } = {}) {
-    const m = itemMeta(it), done = itemDone(it, k), key = itemKey(it);
-    let btn = '';
-    if (actions && it.type === 'session' && !done) btn = `<button class="btn sm" data-action="start-session" data-key="${it.id}">${icon('play')} Start</button>`;
-    if (actions && it.type !== 'rest' && !done) btn += `<button class="btn sm" data-action="item-menu" data-k="${k}" data-key="${key}">Wijzig</button>`;
-    return `<div class="list-row"><div class="ico">${icon(m.icon)}</div><div class="body"><b>${esc(m.title)}</b><span>${esc(m.sub)}</span></div><div class="end">${done ? '<span class="tag done">Gedaan</span>' : btn}</div></div>`;
-  }
 
   /* ================= Kalender ================= */
   const TYPE_LABEL = { kracht: 'Kracht', training: 'Training', match: 'Match', rust: 'Rust' };
   const planStart = () => S.settings.phaseSince || phaseObj(currentPhase()).start;
 
+  // Ingehaald = dezelfde sessie later in dezelfde week toch gedaan
+  function caughtUp(it, k) {
+    if (it.type !== 'session') return false;
+    const end = dkey(addDays(startOfWeek(parseKey(k)), 6));
+    return S.workouts.some(w => w.sessionKey === it.id && w.date > k && w.date <= end);
+  }
+  const doneOrCaughtUp = (it, k) => itemDone(it, k) || caughtUp(it, k);
+
   // Gemist = een in te halen sessie in het verleden, vanaf de start van de huidige fase, die niet gedaan is
   function isMissed(it, k) {
     return it.type === 'session' && C.sessions[it.id] && C.sessions[it.id].catchUp !== false
-      && k < dkey(today()) && k >= planStart() && !itemDone(it, k);
+      && k < dkey(today()) && k >= planStart() && !doneOrCaughtUp(it, k);
   }
 
   function itemStatus(it, k) {
     if (itemDone(it, k)) return { cls: 'done', label: 'Gedaan' };
+    if (caughtUp(it, k)) return { cls: 'done', label: 'Ingehaald' };
     if (isMissed(it, k)) return { cls: 'missed', label: 'Gemist' };
-    if (k < dkey(today()) && it.type !== 'rest') return { cls: 'skip', label: 'Niet gelogd' };
+    if (k < dkey(today()) && it.type !== 'rest') return { cls: 'skip', label: 'Niet gedaan' };
     return { cls: '', label: 'Gepland' };
   }
 
@@ -803,7 +801,7 @@
     items.forEach(it => {
       if (it.type === 'rest') { if (items.length === 1) set('rust', 'done'); return; }
       const t = itemType(it);
-      const s = itemDone(it, k) ? 'done' : isMissed(it, k) ? 'missed' : k < dkey(today()) ? null : 'planned';
+      const s = doneOrCaughtUp(it, k) ? 'done' : isMissed(it, k) ? 'missed' : k < dkey(today()) ? null : 'planned';
       if (s) set(t, s);
     });
     if (workoutsOn(k).length) set('kracht', 'done');
@@ -872,7 +870,9 @@
         return;
       }
       let actions = '';
-      if (!itemDone(it, k)) {
+      // Voorbije holds en dagen vóór de start van de fase hoef je niet meer in te halen
+      const noCatchUp = it.type === 'session' && k < tk && (C.sessions[it.id].catchUp === false || k < planStart());
+      if (!doneOrCaughtUp(it, k) && !noCatchUp) {
         if (it.type === 'session') {
           actions = `<button class="btn sm ${k <= tk ? 'primary' : ''}" data-action="start-session" data-key="${it.id}">${icon('play')} ${k === tk ? 'Start' : k < tk ? 'Nu inhalen' : 'Nu starten'}</button>
             ${C.sessions[it.id].catchUp === false ? '' : `<button class="btn sm" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')} Verplaats</button>`}
@@ -2049,18 +2049,6 @@
     });
   }
 
-  function openMenu() {
-    openSheet(`<div class="sheet-head"><h3>Menu</h3>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      <div class="menu-list">
-        <button data-action="open-day" data-k="${dkey(today())}"><span class="li-icon">${icon('move')}</span><div>Planning van vandaag<small>Verplaatsen, overslaan of iets toevoegen</small></div></button>
-        <button data-action="menu-go" data-to="workout"><span class="li-icon">${icon('dumbbell')}</span><div>Workout starten</div></button>
-        <button data-action="open-log" data-type="training"><span class="li-icon">${icon('whistle')}</span><div>Training loggen</div></button>
-        <button data-action="open-log" data-type="match"><span class="li-icon amber">${icon('ball')}</span><div>Match loggen</div></button>
-        <button data-action="open-minutes"><span class="li-icon">${icon('clock')}</span><div>Minuten van RBFA<small>Van het wedstrijdblad</small></div></button>
-        <button data-action="open-rbfa"><span class="li-icon">${icon('calendar')}</span><div>RBFA-kalender bijwerken</div></button>
-        <button data-action="export"><span class="li-icon">${icon('download')}</span><div>Back-up maken</div></button>
-      </div>`);
-  }
 
   let toastTimer = null;
   function toast(msg, action) {
@@ -2156,8 +2144,6 @@
   /* ================= Events ================= */
   const actions = {
     'go': el => go(el.dataset.to),
-    'menu-go': el => go(el.dataset.to),
-    'open-menu': openMenu,
     'close-sheet': closeSheet,
     'toggle-theme': () => setTheme(isDark() ? 'light' : 'dark'),
     'save-check': saveCheck,
@@ -2168,7 +2154,6 @@
     'start-session': el => startSession(el.dataset.key),
     'open-log': el => openLog(el.dataset.type, el.dataset.date || undefined),
     'open-day': el => openDay(el.dataset.k),
-    'item-menu': el => openItemSheet(el.dataset.k, el.dataset.key),
     'open-move': el => openMoveSheet(el.dataset.k, el.dataset.key),
     'smart-move': el => smartMove(el.dataset.k, el.dataset.key),
     'move-to': el => moveItem(el.dataset.from, el.dataset.key, el.dataset.to),
@@ -2216,7 +2201,6 @@
     'line-range': el => { S.ui.lineRange = +el.dataset.r; render({ keepScroll: true }); },
     'cal-prev': () => shiftMonth(-1),
     'cal-next': () => shiftMonth(1),
-    'scroll-cal': () => { const c = $('#cal-card'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     'show-entry': el => showEntry(el.dataset.store, +el.dataset.id),
     'del-entry': el => deleteEntry(el.dataset.store, +el.dataset.id),
     'pick-photo': () => $('#photo-file').click(),
