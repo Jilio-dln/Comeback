@@ -27,11 +27,12 @@ window.Sample = (() => {
 
       L = Math.max(1, L - 0.09 + (r() - 0.5) * 0.7);
       R = Math.max(0.5, R - 0.06 + (r() - 0.5) * 0.6);
+      // Voorbeeld van het traject 'inj1' (achillespees en kuit): stijfheid en pijn per kant
+      const sL = clamp(Math.round(L + (afterMatch ? 1 : 0)), 0, 10), sR = clamp(Math.round(R + (afterMatch && r() > 0.5 ? 1 : 0)), 0, 10);
       checks.push({
         date: k,
-        left: clamp(Math.round(L + (afterMatch ? 1 : 0)), 0, 10),
-        right: clamp(Math.round(R + (afterMatch && r() > 0.5 ? 1 : 0)), 0, 10),
-        savedAt: d.getTime() + 7.5 * 3600e3,
+        inj: { inj1: { stiff: { L: sL, R: sR }, pain: { L: Math.max(0, sL - 2), R: Math.max(0, sR - 2) }, reaction: afterMatch ? pick(['gelijk', 'slechter']) : null } },
+        fatigue: ri(1, 4), savedAt: d.getTime() + 7.5 * 3600e3,
         sample: true
       });
       afterMatch = false;
@@ -44,15 +45,17 @@ window.Sample = (() => {
           if (r() < 0.15) continue;
           const surface = r() < 0.7 ? 'kunstgras' : 'natuurgras';
           activities.push({
-            type: 'training', date: k, minutes: ri(85, 105), surface,
-            shoes: surface === 'kunstgras' ? 'AG' : 'FG', pain: ri(1, 3), note: '',
+            type: 'training', date: k, minutes: ri(85, 105), plannedMinutes: 105, surface,
+            shoes: surface === 'kunstgras' ? 'AG' : 'FG', pains: { inj1: ri(1, 3) }, rpe: ri(5, 8),
+            participation: r() < 0.2 ? 'aangepast' : 'volledig', note: '',
             createdAt: d.getTime() + 21.6 * 3600e3, sample: true
           });
         } else if (it.type === 'match') {
           const surface = r() < 0.5 ? 'kunstgras' : 'natuurgras';
           activities.push({
-            type: 'match', date: k, minutes: Math.min(90, 30 + week * 12 + ri(0, 10)), surface,
-            shoes: surface === 'kunstgras' ? 'AG' : 'FG', pain: ri(1, 4),
+            type: 'match', date: k, minutes: Math.min(90, 30 + week * 12 + ri(0, 10)), plannedMinutes: 90, surface,
+            shoes: surface === 'kunstgras' ? 'AG' : 'FG', pains: { inj1: ri(1, 4) }, rpe: ri(6, 9),
+            participation: 'gedeeltelijk',
             note: pick(['Goed gevoel', 'Wat stijf na de rust', 'Eén keer gescoord', 'Zware ondergrond', '']),
             createdAt: d.getTime() + 17 * 3600e3, sample: true
           });
@@ -93,7 +96,7 @@ window.Sample = (() => {
       });
       return {
         date: k, sessionKey: key, title: C.sessions[key].name, phase,
-        startedAt: start, finishedAt: start + ri(25, 55) * 60e3, exercises, sample: true
+        startedAt: start, finishedAt: start + ri(25, 55) * 60e3, exercises, logged: 'full', mode: 'volledig', rpe: ri(4, 8), sample: true
       };
     }
   }

@@ -27,6 +27,8 @@
  * Sessie-item: { ex: 'oefening-id', sets: 3 } of sets: [3, 4]
  *   phases: ['f2', 'f3'] = alleen in die fases tonen
  *
+ * Sessie: program = hoort bij een hersteltraject (staat alleen in je schema zolang dat traject
+ *   loopt, of als je hem na afronden als onderhoud houdt).
  * Sessie: heavy: true = zware krachtsessie (de slimme planner zet die
  *   niet op een matchdag of de dag ervoor); catchUp: false = gemist
  *   hoeft niet ingehaald te worden.
@@ -57,9 +59,11 @@ window.APP_CONFIG = {
     matchMinutes: 90
   },
 
+  // Startwaarden voor het eerste hersteltraject (achillespees en kuit). Dit zijn geen medische regels:
+  // je past ze per traject aan in Account → Blessures & herstel, volgens je afspraken met je kinesist.
   painRule: {
-    maxDuring: 3, // max pijn tijdens een oefening (0–10)
-    text: 'Tijdens een oefening maximaal 3/10. De ochtend erna moet de pijn terug op het normale niveau zijn.'
+    maxDuring: 3, // afgesproken maximale pijn tijdens oefenen (0–10)
+    text: 'Pijn tijdens oefenen max 3/10, de ochtend erna terug op het normale niveau.'
   },
 
   rpe: 'RPE 7–8',
@@ -264,12 +268,12 @@ window.APP_CONFIG = {
         { ex: 'bandPullAparts', sets: 3 },
         { ex: 'deadBug', sets: 3 },
         { ex: 'sidePlank', sets: 3 },
-        { ex: 'calfRaiseLight', sets: 2, phases: ['f2', 'f3'] }
+        { ex: 'calfRaiseLight', sets: 2, phases: ['f2', 'f3'], program: 'kuitpees' }
       ]
     },
     ISO: {
       short: 'Holds', name: 'Kuit & pees: isometrisch', desc: 'Holds van 45 s die de pees kalmeren', place: 'thuis',
-      typeLabel: 'Kuit & pees', icon: 'hold',
+      typeLabel: 'Herstel', icon: 'hold', program: 'kuitpees',
       catchUp: false, // gemiste holds hoef je niet in te halen
       items: [
         { ex: 'calfHoldStanding', sets: 5 },
@@ -278,7 +282,7 @@ window.APP_CONFIG = {
     },
     CALF: {
       short: 'Kuitkracht', name: 'Kuit & pees: kracht', desc: 'Zware, trage calf raises: 3 s op, 3 s neer', place: 'thuis of fitness',
-      typeLabel: 'Kuit & pees', icon: 'calf', heavy: true,
+      typeLabel: 'Herstel', icon: 'calf', heavy: true, program: 'kuitpees',
       items: [
         { ex: 'calfRaiseSL', sets: [3, 4] },
         { ex: 'seatedCalfRaise', sets: [3, 4] }
@@ -286,7 +290,7 @@ window.APP_CONFIG = {
     },
     PLYO: {
       short: 'Veerkracht', name: 'Veerkracht & sprint', desc: 'Sprongen en sprints, elke week een stap verder', place: 'vóór de training',
-      typeLabel: 'Veerkracht', icon: 'bolt', heavy: true,
+      typeLabel: 'Herstel', icon: 'bolt', heavy: true, program: 'kuitpees',
       // Elke week een stap (vanaf de dag dat je fase 2 + 3 kiest)
       steps: [
         { title: 'Pogo hops op twee benen', items: [{ ex: 'pogo', sets: 3 }] },

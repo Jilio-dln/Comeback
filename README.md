@@ -16,6 +16,7 @@ js/db.js              lokale opslag (IndexedDB)
 js/charts.js          grafieken (eigen SVG, geen internet nodig)
 js/sample.js          voorbeelddata
 icons/                app-iconen (ook apple-touch-icon)
+assets/hero.jpg       foto voor de header (Unsplash License)
 .nojekyll             zorgt dat GitHub Pages alles ongewijzigd serveert
 ```
 
@@ -29,7 +30,7 @@ De map `.claude/` heb je niet nodig op GitHub.
    - Zet hem op **Public** (GitHub Pages is gratis voor publieke repositories).
    - Klik **Create repository**.
 3. Klik op de link **uploading an existing file**.
-4. Sleep **de inhoud** van deze map naar het venster: `index.html`, `manifest.json`, `sw.js`, `README.md`, `.nojekyll` en de mappen `css`, `js` en `icons`.
+4. Sleep **de inhoud** van deze map naar het venster: `index.html`, `manifest.json`, `sw.js`, `README.md`, `.nojekyll` en de mappen `css`, `js`, `icons` en `assets`.
    Sleep de bestanden zelf, niet de bovenliggende map, zodat `index.html` in de hoofdmap van de repository staat.
    (Ziet de upload `.nojekyll` niet, geen probleem: de app werkt ook zonder.)
 5. Klik onderaan op **Commit changes**.
@@ -43,7 +44,7 @@ De map `.claude/` heb je niet nodig op GitHub.
 ### Later iets aanpassen (bv. je schema)
 
 1. Open `js/config.js` op GitHub, klik op het potlood (**Edit**), pas aan en klik **Commit changes**.
-2. Verhoog in `sw.js` het getal in `const CACHE_VERSION = 'comeback-v10';` (bv. naar `v11`). Zo haalt elke gsm zeker de nieuwe versie op.
+2. Verhoog in `sw.js` het getal in `const CACHE_VERSION = 'comeback-v17';` (bv. naar `v18`). Zo haalt elke gsm zeker de nieuwe versie op.
 3. Open de app op je gsm. Na een paar seconden verschijnt **Nieuwe versie beschikbaar**: tik op **Herladen**. Of sluit de app volledig en open ze opnieuw.
 
 ## 2. Installeren op je gsm
@@ -64,25 +65,43 @@ De map `.claude/` heb je niet nodig op GitHub.
 - Open de app één keer met internet. Daarna werkt ze ook offline (bv. in de fitness zonder bereik).
 - Op iPhone hebben de geïnstalleerde app en Safari elk **eigen** data. Gebruik dus altijd het icoon.
 - Op iPhone kan een webapp niet trillen, en het piepje van de timers hoor je alleen als je belsignaal aanstaat (de stilteschakelaar staat uit).
-- Je data staat alleen op je toestel. Maak geregeld een back-up via **Account → Data → Exporteren**. Op een nieuwe gsm zet je ze terug met **Importeren**.
+- Je data staat alleen op je toestel. Maak geregeld een back-up via **Account → Gegevens → Back-up maken**. Op een nieuwe gsm zet je ze terug met **Terugzetten**.
 
 ## 3. De app in het kort
 
-Onderaan staan vijf tabs:
+Onderaan staan vijf tabs met alleen een icoon:
 
 | Tab | Wat je er doet |
 | --- | --- |
-| **Home** | Kies een dag in de rij bovenaan. De oranje kaart toont wat je die dag doet, met één startknop. Daaronder je ochtendscore (Herstel), je weekvoortgang en de volgende match. |
-| **Kalender** | Maandoverzicht met een stip per type (oranje = kracht, blauw = training, zwart/wit = match, grijs = rust). Gevuld = gedaan, open = gepland, kruisje = gemist. Tik op een dag voor de knoppen Start, Verplaats, Overslaan, Loggen of Terugzetten. |
-| **Workout** | Alle sessies. Tijdens een workout vul je de huidige set in met grote −/+ knoppen en tik je op **Set klaar**. De rusttimer start vanzelf. |
-| **Stats** | Overzicht, Herstel (ochtendscore en pijn), Kracht (gewicht per oefening) en Matchen (jouw minuten en uitslagen). |
-| **Account** | Profiel en foto, thema (licht, donker of automatisch), herstelfase, criteria, matchen en data. |
+| **Home** | Een korte **dagelijkse check**, daaronder wat er **vandaag gepland** staat (herstel, kracht, clubtraining en match elk als eigen kaart, met één oranje startknop bij de belangrijkste sessie) en je **week**. Een onafgewerkte workout kun je hier hervatten. |
+| **Kalender** | Maandoverzicht met een stip per type (kracht, herstel, training, match, rust). Tik op een dag om te starten, te loggen, te verplaatsen, over te slaan of iets aangepast te registreren. |
+| **Workout** | Alle sessies. Tijdens een workout zie je vooral de huidige oefening, set, timer en rust; de volledige setlijst klap je open. |
+| **Statistieken** | Overzicht (gepland, uitgevoerd, aangepast, overgeslagen, gemist), Herstel (stijfheid en pijn per traject naast trainingsduur en zwaarte), Kracht en Matchen. |
+| **Account** | Profiel, doel, blessures & herstel, thema, matchen en gegevens (back-up, demostand). |
 
-**Verplaatsen:** bij **Verplaats** kiest de app de beste dag: zware sessies nooit op of vlak voor een matchdag en liefst op een dag zonder andere sessie. Je kunt ook zelf een dag kiezen. Een sessie die je later in dezelfde week toch doet, telt als **ingehaald**.
+**Registreren:** bij een training, match of workout noteer je de ervaren zwaarte (0–10), of je volledig, gedeeltelijk of aangepast meedeed en eventueel je pijn per blessure. Ondergrond en schoenen onthoudt de app; pijn vult hij nooit zelf in. Bij een gepland item kies je ook **Gedaan zonder details**, **Aangepast uitgevoerd**, **Overslaan** of **Verplaatsen**. Elke registratie kun je later bewerken; verwijderen staat onder **Meer opties** en kun je even ongedaan maken.
 
-**Voorbeelddata:** bij de eerste start staat er voorbeelddata in de app, zodat je de grafieken meteen ziet. Wissen gaat via **Account → Data → Voorbeelddata wissen**. Je eigen gegevens blijven dan staan.
+**Een workout verlaten:** met de terugknop kies je **Pauzeren** (alles blijft bewaard, hervatten via Home) of **Afronden**. Stoppen zonder opslaan zit apart onder Meer opties.
 
-## 4. RBFA: matchen en jouw minuten
+**Verplaatsen:** de app stelt de beste dag voor: zware sessies niet op of vlak voor een matchdag en liefst op een dag zonder andere sessie. Een sessie die je later in dezelfde week toch doet, telt als **ingehaald**.
+
+## 4. Blessures en hersteltrajecten
+
+Een blessure is een **hersteltraject** met eigen instellingen: locatie (kuit, achillespees, hamstring, knie, enkel of andere), kant, status (actief, in opbouw of afgerond), startdatum, notities en de **afspraken met je kinesist** (met datum). Je dagelijkse check vraagt per lopend traject naar **stijfheid** en **pijn** per kant, en de dag na een training of match naar je reactie.
+
+- Je oorspronkelijke plan is omgezet naar het traject **Achillespees en kuit**. De oude ochtendscores staan daar als stijfheid; ze worden nooit aan een andere blessure gekoppeld.
+- **Traject afronden:** je geschiedenis blijft bewaard, de blessurevragen en herstelkaart verdwijnen van Home, en je kiest zelf welke hersteloefeningen je als onderhoud houdt. Met **Geen actieve blessure** rond je alles in één keer af.
+- **Nieuw traject:** de app schrijft geen behandelprogramma voor. Je koppelt zelf oefeningen (eigen workouts) en legt je afspraken vast.
+- Pijngrenzen, fases en evaluatiedata zijn **persoonlijke afspraken**, geen medische regels. Een datum is een evaluatiemoment, geen toestemming om zwaarder te trainen. De **evaluatiechecklist** is een notitie voor jezelf, geen medische vrijgave.
+- Een persoonlijk **doel** en **evaluatiedatum** stel je in bij Account → Doel.
+
+**Demostand:** voorbeelddata staat helemaal apart van je eigen gegevens en telt alleen mee als je **Account → Gegevens → Demostand** aanzet. Wissen van de voorbeelddata raakt je eigen registraties nooit.
+
+**Back-up:** onder Account → Gegevens zie je wanneer je laatste back-up gemaakt is. Een oudere back-up terugzetten kan ook: de app zet hem automatisch om naar het nieuwe formaat.
+
+**Foto in de header:** John Money via Unsplash (Unsplash License).
+
+## 5. RBFA: matchen en jouw minuten
 
 De RBFA-site laat geen andere apps rechtstreeks gegevens ophalen. Daarom werkt de koppeling met kopiëren en plakken.
 
@@ -102,7 +121,7 @@ Matchdagen komen dan automatisch in je schema: bij een zaterdagmatch schuift *Bo
 
 Een rode kaart of extra tijd kan de app niet zien. Pas de minuten in dat geval zelf aan.
 
-## 5. Schema aanpassen
+## 6. Schema aanpassen
 
 Alles staat in `js/config.js`, met uitleg bovenaan het bestand:
 
