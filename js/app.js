@@ -523,7 +523,8 @@
     bar.style.gridTemplateColumns = `repeat(${keys.length}, 1fr)`;
     bar.innerHTML = keys.map(key => {
       const r = ROUTES[key];
-      return `<a class="tab ${key === active ? 'active' : ''}" href="#${key}" ${key === active ? 'aria-current="page"' : ''}><span class="box">${icon(r.icon)}</span>${r.label}</a>`;
+      // Alleen het icoon is zichtbaar; de naam blijft voor schermlezers en als tooltip
+      return `<a class="tab ${key === active ? 'active' : ''}" href="#${key}" aria-label="${r.label}" title="${r.label}" ${key === active ? 'aria-current="page"' : ''}><span class="box">${icon(r.icon)}</span></a>`;
     }).join('');
   }
 
