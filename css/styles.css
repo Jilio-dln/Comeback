@@ -16,7 +16,9 @@
   --primary-ink: #ffffff;
   --select: #111111;
   --select-ink: #ffffff;
-  --tab-bg: #dcdcd8;
+  --tab-bg: rgba(222, 222, 218, .62);
+  --tab-bg-solid: rgba(222, 222, 218, .96);
+  --tab-border: rgba(255, 255, 255, .6);
   --tab-active: #111111;
   --tab-active-ink: #ffffff;
   --c-kracht: #ff5a1f;
@@ -52,7 +54,9 @@
   --primary-ink: #000000;
   --select: #ffffff;
   --select-ink: #000000;
-  --tab-bg: #161616;
+  --tab-bg: rgba(30, 30, 30, .58);
+  --tab-bg-solid: rgba(24, 24, 24, .96);
+  --tab-border: rgba(255, 255, 255, .09);
   --tab-active: #ff6a00;
   --tab-active-ink: #000000;
   --c-kracht: #ff6a00;
@@ -501,14 +505,24 @@ textarea.paste { min-height: 110px; font-size: 13px; }
   height: var(--tabbar-h);
   display: grid; grid-template-columns: repeat(5, 1fr);
   padding: 6px; gap: 4px;
-  background: var(--tab-bg); border-radius: var(--radius);
+  background: var(--tab-bg); border-radius: 22px;
+  border: 1px solid var(--tab-border);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .12);
+}
+/* Zonder blur-ondersteuning: iets minder doorzichtig, zodat de tekst leesbaar blijft */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tabbar { background: var(--tab-bg-solid); }
 }
 .tab {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  text-decoration: none; color: var(--muted); border-radius: var(--radius-sm);
+  text-decoration: none; color: var(--muted); border-radius: 16px;
   font-size: 10.5px; font-weight: 600;
+  transition: transform .12s;
 }
-.tab .box { width: 40px; height: 36px; border-radius: var(--radius-sm); display: grid; place-items: center; transition: background .2s, color .2s; }
+.tab:active { transform: scale(.94); }
+.tab .box { width: 46px; height: 34px; border-radius: 12px; display: grid; place-items: center; transition: background .2s, color .2s; }
 .tab.active { color: var(--ink); }
 .tab.active .box { background: var(--tab-active); color: var(--tab-active-ink); }
 
