@@ -291,7 +291,8 @@ a { color: inherit; }
 .day-item .body { flex: 1; min-width: 0; }
 .day-item .body b { display: block; font-size: 15px; font-weight: 600; line-height: 1.3; }
 .day-item .body span { display: block; font-size: 13px; color: var(--muted); }
-.day-item-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 6px; margin-top: 10px; padding-left: 15px; }
+.day-item-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; padding-left: 15px; }
+.day-item-actions .btn { white-space: nowrap; padding: 0 10px; }
 .day-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 
 /* ---------- Workout ---------- */
@@ -445,6 +446,19 @@ textarea.paste { min-height: 110px; font-size: 13px; }
 .photo-btn { position: relative; border: 0; padding: 0; background: none; }
 .photo-btn em { position: absolute; right: -4px; bottom: -4px; width: 26px; height: 26px; border-radius: var(--radius-sm); background: var(--primary); color: var(--primary-ink); display: grid; place-items: center; }
 .photo-btn em .ic { width: 15px; height: 15px; }
+
+/* ---------- Eigen workout (builder) ---------- */
+.b-item { background: var(--card); border-radius: var(--radius); padding: 12px; margin-bottom: 8px; }
+.b-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.b-top b { font-size: 15px; font-weight: 600; line-height: 1.3; }
+.b-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+.mini > span { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.mini-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; gap: 3px; }
+.mini-row button { height: 44px; border: 0; border-radius: var(--radius-sm); background: var(--card-2); font-size: 20px; font-weight: 300; padding: 0; }
+.mini-row input { height: 44px; width: 100%; min-width: 0; border: 0; border-radius: var(--radius-sm); background: var(--bg); text-align: center; font-size: 17px; font-weight: 500; padding: 0; }
+.mini-row input:focus { outline: 2px solid var(--ink); }
+.b-add { background: var(--card); border-radius: var(--radius); padding: 12px; margin: 4px 0 6px; }
+.b-new { margin-top: 12px; }
 
 /* ---------- Sheets ---------- */
 .sheet-backdrop {

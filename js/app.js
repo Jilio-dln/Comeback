@@ -226,9 +226,10 @@
     const base = basePlan(date);
     const ov = overrides()[k] || {};
     const removed = ov.removed || {};
+    const exists = it => it.type !== 'session' || !!C.sessions[it.id];
     const items = base.filter(it => !removed[itemKey(it)]);
-    (ov.added || []).forEach(a => { if (!items.some(x => itemKey(x) === itemKey(a))) items.push({ ...a }); });
-    const off = base.filter(it => removed[itemKey(it)]).map(it => ({ item: it, reason: removed[itemKey(it)] }));
+    (ov.added || []).forEach(a => { if (exists(a) && !items.some(x => itemKey(x) === itemKey(a))) items.push({ ...a }); });
+    const off = base.filter(it => removed[itemKey(it)] && exists(it)).map(it => ({ item: it, reason: removed[itemKey(it)] }));
     const order = { session: 0, training: 1, match: 2, rest: 3 };
     items.sort((a, b) => order[a.type] - order[b.type]);
     return { items: items.filter(it => it.type !== 'rest' || items.length === 1), off };
@@ -396,6 +397,21 @@
     saveOverrides(all, `${itemMeta(it).title} overgeslagen`);
   }
 
+  // Verwijderen: weg uit de planning (telt niet als gemist). Terugzetten kan in de kalender.
+  function deleteItem(k, key) {
+    const it = findItem(k, key);
+    if (!it) return;
+    const all = clone(overrides());
+    if (it.from || it.extra) {
+      editOv(all, k, o => { o.added = o.added.filter(a => itemKey(a) !== key); });
+      if (it.from) editOv(all, it.from, o => { o.removed[key] = 'del'; });
+    } else {
+      editOv(all, k, o => { o.removed[key] = 'del'; });
+    }
+    closeSheet();
+    saveOverrides(all, `${itemMeta(it).title} verwijderd uit de planning`);
+  }
+
   function restoreItem(k, key) {
     const all = clone(overrides());
     const reason = ((all[k] || {}).removed || {})[key];
@@ -404,10 +420,10 @@
     saveOverrides(all, 'Terug in de planning gezet');
   }
 
-  function addSessionTo(k, id) {
+  function addSessionTo(k, id, note = 'Extra toegevoegd') {
     const all = clone(overrides());
-    if (planFor(parseKey(k)).some(x => itemKey(x) === `session:${id}`)) { toast('Die sessie staat al op deze dag'); return; }
-    editOv(all, k, o => { o.added.push({ type: 'session', id, extra: true, note: 'Extra toegevoegd' }); });
+    if (planFor(parseKey(k)).some(x => itemKey(x) === `session:${id}`)) { closeSheet(); toast('Die sessie staat al op deze dag'); return; }
+    editOv(all, k, o => { o.added.push({ type: 'session', id, extra: true, note }); });
     closeSheet();
     saveOverrides(all, `${sessionTitle(id)} toegevoegd op ${fmtDay(k)}`);
   }
@@ -873,12 +889,16 @@
       // Voorbije holds en dagen vóór de start van de fase hoef je niet meer in te halen
       const noCatchUp = it.type === 'session' && k < tk && (C.sessions[it.id].catchUp === false || k < planStart());
       if (!doneOrCaughtUp(it, k) && !noCatchUp) {
+        const del = `<button class="btn sm" data-action="del-item" data-k="${k}" data-key="${esc(key)}">${icon('trash')} Verwijder</button>`;
         if (it.type === 'session') {
-          actions = `<button class="btn sm ${k <= tk ? 'primary' : ''}" data-action="start-session" data-key="${it.id}">${icon('play')} ${k === tk ? 'Start' : k < tk ? 'Nu inhalen' : 'Nu starten'}</button>
-            ${C.sessions[it.id].catchUp === false ? '' : `<button class="btn sm" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')} Verplaats</button>`}
-            <button class="btn sm" data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')} Overslaan</button>`;
-        } else if (past) {
-          actions = `<button class="btn sm primary" data-action="open-log" data-type="${it.type}" data-date="${k}">${icon('edit')} Loggen</button>`;
+          const s = C.sessions[it.id];
+          actions = `<button class="btn sm ${k <= tk ? 'primary' : ''}" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Inhalen' : 'Start'}</button>
+            ${s.catchUp === false ? '' : `<button class="btn sm" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')} Verplaats</button>`}
+            ${s.custom ? `<button class="btn sm" data-action="edit-custom" data-key="${it.id}">${icon('edit')} Aanpassen</button>`
+              : it.extra ? '' : `<button class="btn sm" data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')} Overslaan</button>`}
+            ${del}`;
+        } else {
+          actions = `${past ? `<button class="btn sm primary" data-action="open-log" data-type="${it.type}" data-date="${k}">${icon('edit')} Loggen</button>` : ''}${del}`;
         }
       }
       html += `<div class="day-item">
@@ -891,9 +911,9 @@
 
     off.forEach(o => {
       const m = itemMeta(o.item);
-      const txt = o.reason === 'skip' ? 'Overgeslagen' : `Verplaatst naar ${fmtDay(o.reason.slice(6))}`;
+      const txt = o.reason === 'skip' ? 'Overgeslagen' : o.reason === 'del' ? 'Verwijderd uit de planning' : `Verplaatst naar ${fmtDay(o.reason.slice(6))}`;
       html += `<div class="day-item"><div class="day-item-top"><span class="type-bar" style="background:var(--line)"></span>
-        <div class="body"><b class="muted">${esc(m.title)}</b><span>${esc(txt)}</span></div><span class="tag skip">${o.reason === 'skip' ? 'Overgeslagen' : 'Verplaatst'}</span></div>
+        <div class="body"><b class="muted">${esc(m.title)}</b><span>${esc(txt)}</span></div><span class="tag skip">${o.reason === 'skip' ? 'Overgeslagen' : o.reason === 'del' ? 'Verwijderd' : 'Verplaatst'}</span></div>
         <div class="day-item-actions"><button class="btn sm" data-action="restore-item" data-k="${k}" data-key="${esc(itemKey(o.item))}">${icon('undo')} Terugzetten</button></div></div>`;
     });
 
@@ -913,9 +933,153 @@
   }
 
   function openAddMenu(k) {
-    openSheet(`<div class="sheet-head"><div><h3>Sessie toevoegen</h3><p>${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      ${Object.keys(C.sessions).map(id => `<div class="list-row tap" data-action="add-session" data-k="${k}" data-id="${id}">
-        <div class="ico">${icon(C.sessions[id].icon)}</div><div class="body"><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span></div><div class="end">${icon('plus')}</div></div>`).join('')}`);
+    const ids = Object.keys(C.sessions);
+    const own = ids.filter(id => C.sessions[id].custom), std = ids.filter(id => !C.sessions[id].custom);
+    const small = 'style="width:36px;height:36px;background:transparent"';
+    const row = id => `<div class="list-row"><div class="ico">${icon(C.sessions[id].icon)}</div>
+        <div class="body" style="cursor:pointer" data-action="add-session" data-k="${k}" data-id="${id}"><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span></div>
+        <div class="end">${C.sessions[id].custom ? `<button class="icon-btn" ${small} data-action="edit-custom" data-key="${id}" aria-label="Aanpassen">${icon('edit')}</button><button class="icon-btn" ${small} data-action="delete-custom" data-key="${id}" aria-label="Verwijderen">${icon('trash')}</button>` : ''}
+          <button class="icon-btn" style="width:36px;height:36px" data-action="add-session" data-k="${k}" data-id="${id}" aria-label="Toevoegen">${icon('plus')}</button></div></div>`;
+    openSheet(`<div class="sheet-head"><div><h3>Toevoegen</h3><p>${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <button class="btn accent block lg" data-action="new-custom" data-k="${k}">${icon('plus')} Eigen workout maken</button>
+      <p class="label" style="margin:6px 2px 0">Kies zelf je oefeningen, sets, herhalingen of tijd en kg.</p>
+      ${own.length ? `<div class="section"><span>Mijn workouts</span></div>${own.map(row).join('')}` : ''}
+      <div class="section"><span>Uit je schema</span></div>${std.map(row).join('')}`);
+  }
+
+  /* ================= Eigen workouts ================= */
+  // Bewaard in de instellingen: customSessions { X…: { name, items: [{ ex, sets, reps, duration, weight }] } }
+  // en customExercises { cx…: { name, kind, load, … } }. Ze worden bij het starten in de config gezet.
+  function registerCustom() {
+    Object.entries(S.settings.customExercises || {}).forEach(([k, v]) => { C.exercises[k] = { rest: 60, ...v, custom: true }; });
+    const cs = S.settings.customSessions || {};
+    Object.keys(C.sessions).forEach(k => { if (C.sessions[k].custom && !cs[k]) delete C.sessions[k]; });
+    Object.entries(cs).forEach(([k, v]) => {
+      C.sessions[k] = {
+        short: v.name, name: v.name, desc: `Eigen workout · ${v.items.map(it => (C.exercises[it.ex] || {}).name).filter(Boolean).slice(0, 3).join(', ')}${v.items.length > 3 ? '…' : ''}`,
+        place: 'eigen workout', typeLabel: 'Eigen workout', icon: 'dumbbell', custom: true,
+        items: v.items.filter(it => C.exercises[it.ex])
+      };
+    });
+  }
+
+  // Standaardwaarden voor een oefening die je aan een eigen workout toevoegt
+  function builderItem(exId) {
+    const ex = C.exercises[exId];
+    const prev = lastPerformance(exId);
+    const lastW = prev ? Math.max(0, ...prev.sets.map(s => num(s.weight)).filter(v => v != null)) : 0;
+    return {
+      ex: exId, sets: 3,
+      reps: ex.kind === 'reps' ? (ex.reps ? ex.reps[1] : 10) : null,
+      duration: ex.kind === 'hold' || ex.kind === 'time' ? (Array.isArray(ex.duration) ? ex.duration[0] : ex.duration || 30) : null,
+      weight: ex.load === 'kg' || ex.load === 'bw' ? (lastW || null) : null
+    };
+  }
+
+  function openBuilder(k, key) {
+    const cs = (S.settings.customSessions || {})[key];
+    S.ui.builder = { k, key: key || null, name: cs ? cs.name : '', items: cs ? clone(cs.items) : [], adding: false };
+    renderBuilder(true);
+  }
+
+  function renderBuilder(fresh) {
+    const b = S.ui.builder;
+    const lib = Object.keys(C.exercises).filter(id => !C.exercises[id].custom).sort((a, c) => C.exercises[a].name.localeCompare(C.exercises[c].name));
+    const own = Object.keys(C.exercises).filter(id => C.exercises[id].custom);
+    const mini = (i, f, label, v, step) => `<div class="mini"><span>${label}</span><div class="mini-row">
+        <button type="button" data-action="b-step" data-i="${i}" data-f="${f}" data-d="${-step}" aria-label="${label} min">−</button>
+        <input inputmode="decimal" data-bi="${i}" data-bf="${f}" value="${v == null ? '' : String(v).replace('.', ',')}" placeholder="–" aria-label="${label}">
+        <button type="button" data-action="b-step" data-i="${i}" data-f="${f}" data-d="${step}" aria-label="${label} plus">+</button></div></div>`;
+    const rows = b.items.map((it, i) => {
+      const ex = C.exercises[it.ex] || { name: '?' };
+      return `<div class="b-item">
+        <div class="b-top"><b>${esc(ex.name)}</b><button type="button" class="icon-btn" style="width:36px;height:36px;background:transparent" data-action="b-remove" data-i="${i}" aria-label="Oefening verwijderen">${icon('x')}</button></div>
+        <div class="b-grid">
+          ${mini(i, 'sets', 'Sets', it.sets, 1)}
+          ${ex.kind === 'reps' || ex.kind === 'distance' ? mini(i, 'reps', ex.kind === 'distance' ? 'Keer' : 'Herhalingen', it.reps, 1) : mini(i, 'duration', 'Seconden', it.duration, 5)}
+          ${ex.load === 'kg' || ex.load === 'bw' ? mini(i, 'weight', 'kg', it.weight, 2.5) : ''}
+        </div>
+      </div>`;
+    }).join('');
+    const html = `<div class="sheet-head"><div><h3>${b.key ? 'Eigen workout aanpassen' : 'Eigen workout'}</h3><p>${b.k ? `Voor ${fmtDay(b.k)}` : 'Kies je oefeningen en stel ze in'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <label class="field"><span>Naam</span><input class="input" id="b-name" data-b="name" value="${esc(b.name)}" placeholder="Bv. Benen licht"></label>
+      ${rows || '<p class="empty">Nog geen oefeningen. Voeg er hieronder een toe.</p>'}
+      <div class="b-add">
+        <label class="field" style="margin:0"><span>Oefening toevoegen</span>
+          <select class="select" id="b-pick" data-change="b-pick" style="margin:0">
+            <option value="">Kies een oefening…</option>
+            <option value="__new">+ Nieuwe oefening maken</option>
+            ${own.length ? `<optgroup label="Mijn oefeningen">${own.map(id => `<option value="${id}">${esc(C.exercises[id].name)}</option>`).join('')}</optgroup>` : ''}
+            <optgroup label="Uit je schema">${lib.map(id => `<option value="${id}">${esc(C.exercises[id].name)}</option>`).join('')}</optgroup>
+          </select></label>
+        ${b.adding ? `<div class="b-new">
+          <label class="field"><span>Naam van de oefening</span><input class="input" id="b-new-name" placeholder="Bv. Hamstring curl"></label>
+          <div class="seg">${radio('b-kind', 'reps', 'Herhalingen + kg', 'reps')}${radio('b-kind', 'time', 'Op tijd', 'reps')}</div>
+          <button type="button" class="btn block" data-action="b-new-add">${icon('plus')} Oefening toevoegen</button>
+        </div>` : ''}
+      </div>
+      <button class="btn primary block lg" data-action="b-save">${icon('check')} ${b.key ? 'Opslaan' : b.k ? 'Opslaan en inplannen' : 'Opslaan'}</button>`;
+    const sh = $('.sheet');
+    if (!fresh && sh) { const y = sh.scrollTop; sh.innerHTML = html; sh.scrollTop = y; }
+    else openSheet(html);
+  }
+
+  function builderStep(i, f, d) {
+    const it = S.ui.builder.items[i];
+    const min = f === 'sets' ? 1 : 0;
+    it[f] = clamp(Math.round(((num(it[f]) ?? (f === 'weight' ? 0 : min)) + d) * 100) / 100, min, f === 'duration' ? 600 : 500);
+    const inp = $(`[data-bi="${i}"][data-bf="${f}"]`);
+    if (inp) inp.value = String(it[f]).replace('.', ',');
+  }
+
+  function builderAddNew() {
+    const name = ($('#b-new-name').value || '').trim();
+    if (!name) { toast('Geef de oefening een naam'); return; }
+    const kind = (document.querySelector('input[name="b-kind"]:checked') || {}).value || 'reps';
+    const key = 'cx' + newId();
+    C.exercises[key] = kind === 'reps'
+      ? { name, kind: 'reps', reps: [10, 10], load: 'kg', increment: 2.5, rest: 75, custom: true }
+      : { name, kind: 'time', duration: 30, load: 'bw', rest: 45, custom: true };
+    S.ui.builder.items.push(builderItem(key));
+    S.ui.builder.adding = false;
+    renderBuilder();
+  }
+
+  async function saveBuilder() {
+    const b = S.ui.builder;
+    b.name = ($('#b-name').value || '').trim();
+    if (!b.name) { toast('Geef je workout een naam'); $('#b-name').focus(); return; }
+    if (!b.items.length) { toast('Voeg minstens één oefening toe'); return; }
+    const items = b.items.map(it => ({ ex: it.ex, sets: Math.max(1, num(it.sets) || 1), reps: num(it.reps), duration: num(it.duration), weight: num(it.weight) }));
+    // Nieuwe eigen oefeningen bewaren
+    const cx = { ...(S.settings.customExercises || {}) };
+    items.forEach(it => { const ex = C.exercises[it.ex]; if (ex && ex.custom && !cx[it.ex]) { const { custom, ...def } = ex; cx[it.ex] = def; } });
+    await setSetting('customExercises', cx);
+    const cs = { ...(S.settings.customSessions || {}) };
+    const key = b.key || 'X' + newId();
+    cs[key] = { name: b.name, items };
+    await setSetting('customSessions', cs);
+    registerCustom();
+    S.ui.builder = null;
+    if (!b.key && b.k) { addSessionTo(b.k, key, ''); return; }
+    closeSheet();
+    render({ keepScroll: true });
+    toast(b.key ? 'Eigen workout aangepast' : 'Eigen workout bewaard');
+  }
+
+  async function deleteCustom(key) {
+    const cs = { ...(S.settings.customSessions || {}) };
+    if (!cs[key] || !await ask(`"${cs[key].name}" verwijderen? Hij verdwijnt ook uit je planning. Afgewerkte workouts blijven bewaard.`, { ok: 'Verwijderen', danger: true })) return;
+    delete cs[key];
+    await setSetting('customSessions', cs);
+    // Uit de planning halen
+    const all = clone(overrides());
+    Object.keys(all).forEach(k => editOv(all, k, o => { o.added = o.added.filter(a => a.id !== key); delete o.removed[`session:${key}`]; }));
+    await setSetting('overrides', all);
+    registerCustom();
+    closeSheet();
+    render({ keepScroll: true });
+    toast('Eigen workout verwijderd');
   }
 
   /* ================= Workout ================= */
@@ -946,7 +1110,10 @@
   }
 
   function buildExercise(it) {
-    const ex = C.exercises[it.ex];
+    // Een eigen workout kan herhalingen en tijd per oefening overschrijven
+    const ex = { ...C.exercises[it.ex] };
+    if (it.reps) { ex.reps = [+it.reps, +it.reps]; ex.repsText = null; }
+    if (it.duration) ex.duration = +it.duration;
     const e = {
       exId: it.ex, name: ex.name, kind: ex.kind, load: ex.load, perSide: !!ex.perSide,
       presc: prescription(it, ex) + (ex.kind === 'reps' && ex.load === 'kg' ? ` · ${C.rpe}` : ''),
@@ -954,7 +1121,7 @@
       target: ex.reps || null, repsText: ex.repsText || null, progressAt: ex.progressAt || null,
       duration: Array.isArray(ex.duration) ? ex.duration[0] : (ex.duration || null),
       distance: ex.distance || null, increment: ex.increment || 2.5,
-      setLabels: it.setLabels || null, sets: [], bump: 0, cur: 0
+      setLabels: it.setLabels || null, sets: [], bump: 0, cur: 0, startWeight: it.weight ?? null
     };
     const prev = lastPerformance(it.ex);
     e.prevReady = !!(prev && progressionReady(e, prev.sets.map(s => ({ ...s, done: true }))));
@@ -970,6 +1137,7 @@
       const ws = prev.sets.filter(s => s.side === side).map(s => num(s.weight)).filter(v => v != null);
       if (ws.length) weight = String(Math.max(...ws) + e.bump).replace('.', ',');
     }
+    if (weight === '' && e.startWeight != null) weight = String(e.startWeight).replace('.', ',');
     return {
       idx, side, label: e.setLabels ? e.setLabels[idx] || null : null,
       reps: '', weight, duration: e.kind === 'hold' ? String(e.duration) : '',
@@ -1538,6 +1706,7 @@
 
   async function deleteEntry(store, id) {
     if (!await ask('Dit item verwijderen? Dat kan niet ongedaan gemaakt worden.', { ok: 'Verwijderen', danger: true })) return;
+    closeSheet();
     await DB.del(store, id);
     S[store] = S[store].filter(x => x.id !== id);
     render({ keepScroll: true });
@@ -2163,6 +2332,14 @@
     'cal-pick': el => { S.ui.calDay = el.dataset.k; const d = parseKey(el.dataset.k); S.ui.calMonth = new Date(d.getFullYear(), d.getMonth(), 1); render({ keepScroll: true }); },
     'add-menu': el => openAddMenu(el.dataset.k),
     'add-session': el => addSessionTo(el.dataset.k, el.dataset.id),
+    'del-item': el => deleteItem(el.dataset.k, el.dataset.key),
+    'new-custom': el => openBuilder(el.dataset.k),
+    'edit-custom': el => openBuilder(null, el.dataset.key),
+    'delete-custom': el => deleteCustom(el.dataset.key),
+    'b-step': el => builderStep(+el.dataset.i, el.dataset.f, +el.dataset.d),
+    'b-remove': el => { S.ui.builder.name = $('#b-name').value; S.ui.builder.items.splice(+el.dataset.i, 1); renderBuilder(); },
+    'b-new-add': () => { S.ui.builder.name = $('#b-name').value; builderAddNew(); },
+    'b-save': saveBuilder,
     'undo': async () => { if (!S.ui.undo) return; await setSetting('overrides', S.ui.undo); S.ui.undo = null; $('#toast').hidden = true; render({ keepScroll: true }); toast('Ongedaan gemaakt'); },
     'wo-pause': () => { S.ui.woView = 'picker'; render(); },
     'wo-resume': () => { S.ui.woView = 'active'; requestWakeLock(); render(); },
@@ -2243,6 +2420,7 @@
       if (out) { out.textContent = el.value; if (el.hasAttribute('data-score')) out.className = `score ${level(+el.value)}`; }
     }
     if (el.matches('[data-set]')) onSetInput(el);
+    if (el.matches('[data-bi]') && S.ui.builder) S.ui.builder.items[+el.dataset.bi][el.dataset.bf] = num(el.value);
   });
 
   document.addEventListener('change', async e => {
@@ -2261,6 +2439,11 @@
       await setSetting('satMatchWeeks', [...set]);
       render({ keepScroll: true });
       toast(el.checked ? 'Zaterdagmatch: Sessie C staat nu op donderdag' : 'Standaard weekschema hersteld');
+    } else if (kind === 'b-pick') {
+      const b = S.ui.builder; b.name = $('#b-name').value;
+      if (el.value === '__new') b.adding = true;
+      else if (el.value) { b.items.push(builderItem(el.value)); b.adding = false; }
+      renderBuilder();
     } else if (kind === 'profile') {
       await saveProfileField(el);
     } else if (kind === 'photo') {
@@ -2333,6 +2516,7 @@
     try {
       await loadAll();
       await migrate();
+      registerCustom();
       if (!S.settings.seeded) await seedSample();
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
       if (draft()) requestWakeLock();
