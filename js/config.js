@@ -228,11 +228,11 @@ window.APP_CONFIG = {
     }
   },
 
-  // name = naam in de app, desc = korte omschrijving (één regel), place = waar,
+  // short = korte naam voor kleine plaatsen, name = naam in de app, desc = korte omschrijving (één regel), place = waar,
   // typeLabel = soort, icon = legs | barbell | torso | hold | calf | bolt
   sessions: {
     A: {
-      name: 'Onderlichaam & stabiliteit', desc: 'Eenbenige kracht voor heup, knie en enkel', place: 'thuis',
+      short: 'Onderlichaam', name: 'Onderlichaam & stabiliteit', desc: 'Eenbenige kracht voor heup, knie en enkel', place: 'thuis',
       typeLabel: 'Kracht', icon: 'legs', heavy: true,
       items: [
         { ex: 'bulgarian', sets: 3 },
@@ -243,7 +243,7 @@ window.APP_CONFIG = {
       ]
     },
     B: {
-      name: 'Full body kracht', desc: 'Zware basisoefeningen voor benen, rug en borst', place: 'fitness',
+      short: 'Full body', name: 'Full body kracht', desc: 'Zware basisoefeningen voor benen, rug en borst', place: 'fitness',
       typeLabel: 'Kracht', icon: 'barbell', heavy: true,
       items: [
         { ex: 'trapBar', sets: 3 },
@@ -256,7 +256,7 @@ window.APP_CONFIG = {
       ]
     },
     C: {
-      name: 'Bovenlichaam & core', desc: 'Duwen, trekken en een stabiele romp', place: 'thuis',
+      short: 'Bovenlichaam', name: 'Bovenlichaam & core', desc: 'Duwen, trekken en een stabiele romp', place: 'thuis',
       typeLabel: 'Kracht', icon: 'torso',
       items: [
         { ex: 'pushups', sets: 3 },
@@ -268,7 +268,7 @@ window.APP_CONFIG = {
       ]
     },
     ISO: {
-      name: 'Kuit & pees: isometrisch', desc: 'Holds van 45 s die de pees kalmeren', place: 'thuis',
+      short: 'Holds', name: 'Kuit & pees: isometrisch', desc: 'Holds van 45 s die de pees kalmeren', place: 'thuis',
       typeLabel: 'Kuit & pees', icon: 'hold',
       catchUp: false, // gemiste holds hoef je niet in te halen
       items: [
@@ -277,7 +277,7 @@ window.APP_CONFIG = {
       ]
     },
     CALF: {
-      name: 'Kuit & pees: kracht', desc: 'Zware, trage calf raises: 3 s op, 3 s neer', place: 'thuis of fitness',
+      short: 'Kuitkracht', name: 'Kuit & pees: kracht', desc: 'Zware, trage calf raises: 3 s op, 3 s neer', place: 'thuis of fitness',
       typeLabel: 'Kuit & pees', icon: 'calf', heavy: true,
       items: [
         { ex: 'calfRaiseSL', sets: [3, 4] },
@@ -285,7 +285,7 @@ window.APP_CONFIG = {
       ]
     },
     PLYO: {
-      name: 'Veerkracht & sprint', desc: 'Sprongen en sprints, elke week een stap verder', place: 'vóór de training',
+      short: 'Veerkracht', name: 'Veerkracht & sprint', desc: 'Sprongen en sprints, elke week een stap verder', place: 'vóór de training',
       typeLabel: 'Veerkracht', icon: 'bolt', heavy: true,
       // Elke week een stap (vanaf de dag dat je fase 2 + 3 kiest)
       steps: [

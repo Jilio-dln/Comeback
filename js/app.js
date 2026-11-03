@@ -285,14 +285,14 @@
       const sub = sessionDesc(it.id);
       return { icon: s.icon || 'dumbbell', title: sessionTitle(it.id), sub: `${s.place ? cap(s.place) + ' · ' : ''}${st.exercises} oefeningen · ±${st.minutes} min`, note: it.note, short: s.short || it.id, stats: st, subtitle: sub };
     }
-    if (it.type === 'training') return { icon: 'whistle', title: 'Clubtraining', sub: it.time || '', note: it.note, short: 'TR' };
+    if (it.type === 'training') return { icon: 'whistle', title: 'Clubtraining', sub: it.time || '', note: it.note, short: 'Training' };
     if (it.type === 'match') {
       const f = it.fixture;
       if (f) {
         const score = played(f) ? ` · ${fxScore(f)}` : "";
-        return { icon: 'ball', title: `${f.home ? 'Thuis' : 'Uit'} tegen ${nice(opponent(f))}`, sub: `${f.time || ''}${score}${f.comp ? ' · ' + f.comp : ''}`, note: it.note, short: '⚽', cls: 'match' };
+        return { icon: 'ball', title: `${f.home ? 'Thuis' : 'Uit'} tegen ${nice(opponent(f))}`, sub: `${f.time || ''}${score}${f.comp ? ' · ' + f.comp : ''}`, note: it.note, short: 'Match', cls: 'match' };
       }
-      return { icon: 'ball', title: 'Match', sub: 'Log je minuten en hoe het voelde', note: it.note, short: '⚽', cls: 'match' };
+      return { icon: 'ball', title: 'Match', sub: 'Log je minuten en hoe het voelde', note: it.note, short: 'Match', cls: 'match' };
     }
     return { icon: 'moon', title: 'Rustdag', sub: 'Wandelen, mobiliteit en goed slapen', note: it.note, short: 'rust' };
   }
@@ -435,7 +435,7 @@
       if (heavy && training) { score -= 6; why.push('clubtraining'); }
       if (!sessions.length && !hasMatch) { score += 20; why.push(training ? 'alleen training' : 'vrije dag'); }
       score -= i * 3;
-      const items2 = items.filter(x => x.type !== 'rest').map(x => itemMeta(x).short).join(' + ');
+      const items2 = items.filter(x => x.type !== 'rest').map(x => itemMeta(x).short).join(', ');
       out.push({ k, d, score, why, label: items2 || 'rust' });
     }
     const best = out.reduce((a, b) => b.score > a.score ? b : a, out[0]);
@@ -449,42 +449,34 @@
     moveItem(fromK, key, best.k);
   }
 
+  // Verplaatsen: de slimme keuze bovenaan, daarna de komende 7 dagen met advies
   function openMoveSheet(k, key) {
     const it = findItem(k, key);
     if (!it) return;
     const m = itemMeta(it);
     const days = suggestDays(key, k);
-    openSheet(`<div class="sheet-head"><div><h3>${esc(m.title)} verplaatsen</h3><p>Nu op ${fmtDay(k)}. De slimme planner houdt rekening met matchen en je andere sessies.</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+    const best = days.find(o => o.best);
+    openSheet(`<div class="sheet-head"><div><h3>${esc(m.title)} verplaatsen</h3><p>Nu gepland op ${fmtDay(k)}.</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${best ? `<button class="btn accent block lg" data-action="move-to" data-from="${k}" data-key="${esc(key)}" data-to="${best.k}">${icon('magic')} Beste dag: ${fmtDay(best.k)}</button>
+      <p class="label" style="margin:8px 2px 16px">Zware sessies komen nooit op een matchdag of de dag ervoor, en de app vermijdt dagen waarop al een sessie staat.</p>` : ''}
+      <p class="label" style="margin:0 2px 8px">Of kies zelf</p>
       <div class="day-pick">${days.map(o => `<button class="${o.best ? 'best' : ''}" data-action="move-to" data-from="${k}" data-key="${esc(key)}" data-to="${o.k}">
-        <b>${DAY_S[o.d.getDay()]} ${o.d.getDate()} ${MON[o.d.getMonth()]}</b>
+        <b>${cap(DAY_S[o.d.getDay()])} ${o.d.getDate()} ${MON[o.d.getMonth()]}</b>
         <span>${esc(o.label)}</span>
-        <span class="tag ${o.score >= 0 ? 'good' : 'bad'}">${o.best ? '★ Aanbevolen' : esc(o.why[0] || 'ok')}</span>
+        <span class="tag ${o.best ? 'done' : o.score >= 0 ? '' : 'missed'}">${o.best ? 'Aanbevolen' : o.score >= 0 ? 'Kan' : esc(o.why[0] || 'Liever niet')}</span>
       </button>`).join('')}</div>
-      <label class="flabel" for="move-date">Of kies een andere datum</label>
-      <div class="row"><input class="input" type="date" id="move-date" min="${dkey(today())}"><button class="btn primary small" data-action="move-custom" data-from="${k}" data-key="${esc(key)}">Zet</button></div>
-      <button class="btn danger block" data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')} Overslaan</button>`);
+      <label class="field" style="margin-top:14px"><span>Andere datum</span>
+        <div class="row"><input class="input" type="date" id="move-date" min="${dkey(today())}"><button class="btn primary" style="flex:0 0 auto" data-action="move-custom" data-from="${k}" data-key="${esc(key)}">Zet</button></div></label>`);
   }
 
-  function openItemSheet(k, key) {
-    const it = findItem(k, key);
-    if (!it) return;
-    const m = itemMeta(it);
-    const done = itemDone(it, k);
-    const isToday = k === dkey(today());
-    openSheet(`<div class="sheet-head"><div><h3>${esc(m.title)}</h3><p>${cap(fmtDay(k))} · ${esc(m.sub)}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      <div class="menu-list">
-        ${it.type === 'session' && !done ? `<button data-action="start-session" data-key="${it.id}"><span class="li-icon">${icon('play')}</span><div>${isToday ? 'Nu starten' : 'Nu toch starten'}<small>Start de workout vandaag</small></div></button>` : ''}
-        ${it.type !== 'session' ? `<button data-action="open-log" data-type="${it.type}" data-date="${k}"><span class="li-icon">${icon('edit')}</span><div>Loggen<small>Minuten, ondergrond, schoenen en pijn</small></div></button>` : ''}
-        <button data-action="smart-move" data-k="${k}" data-key="${esc(key)}"><span class="li-icon">${icon('magic')}</span><div>Slim verplaatsen<small>Naar de beste dag in de komende week</small></div></button>
-        <button data-action="open-move" data-k="${k}" data-key="${esc(key)}"><span class="li-icon">${icon('move')}</span><div>Kies zelf een dag<small>Met advies per dag</small></div></button>
-        <button data-action="skip-item" data-k="${k}" data-key="${esc(key)}"><span class="li-icon amber">${icon('skip')}</span><div>Overslaan<small>${it.from ? 'Haalt hem uit de planning' : 'Telt niet als gemist'}</small></div></button>
-      </div>`);
-  }
+  // Verouderd menu: leidt nu door naar de kalenderdag met zichtbare knoppen
+  function openItemSheet(k) { openDay(k); }
 
   /* ================= Router ================= */
   // Hoofdtabs (zonder terugknop) en subschermen (met terugknop naar hun tab)
   const ROUTES = {
     vandaag: { label: 'Home', icon: 'home', render: () => renderToday() },
+    kalender: { label: 'Kalender', icon: 'calendar', render: () => renderCalendarPage() },
     workout: { label: 'Workout', icon: 'dumbbell', render: () => renderWorkout() },
     statistieken: { label: 'Stats', icon: 'chart', render: () => renderStats() },
     account: { label: 'Account', icon: 'user', render: () => renderProfile() }
@@ -775,42 +767,153 @@
     return `<div class="list-row"><div class="ico">${icon(m.icon)}</div><div class="body"><b>${esc(m.title)}</b><span>${esc(m.sub)}</span></div><div class="end">${done ? '<span class="tag done">Gedaan</span>' : btn}</div></div>`;
   }
 
-  /* ================= Dagdetail (kalender) ================= */
+  /* ================= Kalender ================= */
+  const TYPE_LABEL = { kracht: 'Kracht', training: 'Training', match: 'Match', rust: 'Rust' };
+  const planStart = () => S.settings.phaseSince || phaseObj(currentPhase()).start;
+
+  // Gemist = een in te halen sessie in het verleden, vanaf de start van de huidige fase, die niet gedaan is
+  function isMissed(it, k) {
+    return it.type === 'session' && C.sessions[it.id] && C.sessions[it.id].catchUp !== false
+      && k < dkey(today()) && k >= planStart() && !itemDone(it, k);
+  }
+
+  function itemStatus(it, k) {
+    if (itemDone(it, k)) return { cls: 'done', label: 'Gedaan' };
+    if (isMissed(it, k)) return { cls: 'missed', label: 'Gemist' };
+    if (k < dkey(today()) && it.type !== 'rest') return { cls: 'skip', label: 'Niet gelogd' };
+    return { cls: '', label: 'Gepland' };
+  }
+
+  // Openen vanuit een ander scherm: spring naar de kalender op die dag
   function openDay(k) {
+    closeSheet();
+    S.ui.calDay = k;
     const d = parseKey(k);
-    const { items, off } = planDetail(d);
+    S.ui.calMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    if (currentRoute() === 'kalender') render({ keepScroll: true }); else location.hash = 'kalender';
+  }
+
+  function calDots(d) {
+    const k = dkey(d);
+    const items = planFor(d);
+    const st = {};
+    const set = (t, s) => { const rank = { done: 3, missed: 2, planned: 1 }; if (!st[t] || rank[s] > rank[st[t]]) st[t] = s; };
+    items.forEach(it => {
+      if (it.type === 'rest') { if (items.length === 1) set('rust', 'done'); return; }
+      const t = itemType(it);
+      const s = itemDone(it, k) ? 'done' : isMissed(it, k) ? 'missed' : k < dkey(today()) ? null : 'planned';
+      if (s) set(t, s);
+    });
+    if (workoutsOn(k).length) set('kracht', 'done');
+    activitiesOn(k).forEach(a => set(a.type, 'done'));
+    if (fixtureOn(k) && !st.match) set('match', 'planned');
+    return ['kracht', 'training', 'match', 'rust'].filter(t => st[t])
+      .map(t => `<i class="dot t-${t} ${st[t] === 'done' ? '' : st[t]}"></i>`).join('');
+  }
+
+  function renderCalendarPage() {
+    const t = today(), tk = dkey(t);
+    const sel = S.ui.calDay || tk;
+    const m = S.ui.calMonth || new Date(t.getFullYear(), t.getMonth(), 1);
+    const start = startOfWeek(m);
+    let cells = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'].map(d => `<div class="cal-wd">${d}</div>`).join('');
+    for (let i = 0; i < 42; i++) {
+      const d = addDays(start, i);
+      if (i >= 35 && d.getMonth() !== m.getMonth()) break;
+      const k = dkey(d);
+      cells += `<button class="cal-cell ${d.getMonth() !== m.getMonth() ? 'out' : ''} ${k === tk ? 'today' : ''} ${k === sel ? 'on' : ''}" data-action="cal-pick" data-k="${k}" aria-label="${fmtDay(k)}">
+        ${d.getDate()}<span class="dots">${calDots(d)}</span></button>`;
+    }
+    main.innerHTML = `
+      ${pageHead('Kalender', 'Tik op een dag om te zien wat er gepland of gedaan is')}
+      <section class="card">
+        <div class="cal-head">
+          ${iconBtn('chevL', 'cal-prev', 'Vorige maand')}
+          <strong>${MONTH[m.getMonth()]} ${m.getFullYear()}</strong>
+          ${iconBtn('chevR', 'cal-next', 'Volgende maand')}
+        </div>
+        <div class="cal-grid">${cells}</div>
+        <div class="legend">
+          ${['kracht', 'training', 'match', 'rust'].map(tp => `<span><i class="dot t-${tp}"></i>${TYPE_LABEL[tp]}</span>`).join('')}
+        </div>
+        <div class="legend-states">
+          <span><i class="dot"></i>gedaan</span><span><i class="dot planned"></i>gepland</span><span><i class="dot missed"></i>gemist</span>
+        </div>
+      </section>
+      <div class="section"><span>${cap(fmtDay(sel))} · ${relLong(sel).toLowerCase()}</span>${sel !== tk ? `<button class="link-btn" data-action="cal-pick" data-k="${tk}">Vandaag</button>` : ''}</div>
+      <section class="card" id="day-panel">${dayPanelHtml(sel)}</section>
+    `;
+  }
+
+  function dayPanelHtml(k) {
+    const tk = dkey(today());
+    const { items, off } = planDetail(parseKey(k));
     const f = fixtureOn(k);
-    const chk = checkFor(k);
-    const ws = workoutsOn(k), acts = activitiesOn(k);
-    const isPastOrToday = k <= dkey(today());
-    openSheet(`<div class="sheet-head"><div><h3>${cap(fmtDay(k))}</h3><p>${relLong(k)}${(S.settings.satMatchWeeks || []).includes(weekKey(d)) ? ' · week met zaterdagmatch' : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+    const chk = checkFor(k), ws = workoutsOn(k), acts = activitiesOn(k);
+    const past = k <= tk;
+    let html = '';
 
-      ${f ? `<div class="plan-item">
-        <div class="pi-icon match">${icon('ball')}</div>
-        <div class="pi-body"><strong>${esc(fxTitle(f))}</strong><span>${esc(f.time || '')}${f.comp ? ' · ' + esc(f.comp) : ''}</span></div>
-        ${played(f) ? `<span class="score-pill ${fixtureResult(f)}">${fxScore(f)}</span>` : ''}
-      </div>
-      ${played(f) && !acts.some(a => a.type === 'match') ? `<button class="btn soft block" style="margin:0 0 8px" data-action="open-minutes" data-date="${k}">${icon('paste')} Mijn minuten importeren</button>` : ''}` : ''}
+    if (f) {
+      const logged = acts.some(a => a.type === 'match');
+      html += `<div class="day-item">
+        <div class="day-item-top"><span class="type-bar" style="background:var(--c-match)"></span>
+          <div class="body"><b>${esc(fxTitle(f))}</b><span>${f.home ? 'Thuis' : 'Uit'}${f.time ? ' · ' + esc(f.time) : ''}${f.comp ? ' · ' + esc(f.comp) : ''}</span></div>
+          ${played(f) ? `<span class="tag ${fixtureResult(f) === 'win' ? 'done' : ''}">${fxScore(f)}</span>` : `<span class="tag">Match</span>`}</div>
+        ${past && !logged ? `<div class="day-item-actions"><button class="btn sm primary" data-action="${played(f) ? 'open-minutes' : 'open-log'}" data-type="match" data-date="${k}">${icon('edit')} Minuten invullen</button></div>` : ''}
+      </div>`;
+    }
 
-      <div class="sheet-section">Planning</div>
-      ${items.filter(it => !(f && it.type === 'match')).map(it => planItemHtml(it, k)).join('') || '<p class="muted small">Niets gepland.</p>'}
-      ${off.map(o => {
-        const m = itemMeta(o.item);
-        const txt = o.reason === 'skip' ? 'Overgeslagen' : `Verplaatst naar ${fmtDay(o.reason.slice(6))}`;
-        return `<div class="plan-item is-off"><div class="pi-icon">${icon(m.icon)}</div><div class="pi-body"><strong>${esc(m.title)}</strong><span>${esc(txt)}</span></div>
-          <div class="pi-actions"><button class="btn tiny ghost" data-action="restore-item" data-k="${k}" data-key="${esc(itemKey(o.item))}">${icon('undo')} Herstel</button></div></div>`;
-      }).join('')}
+    items.filter(it => !(f && it.type === 'match')).forEach(it => {
+      const m = itemMeta(it), key = itemKey(it), st = itemStatus(it, k);
+      if (it.type === 'rest') {
+        html += `<div class="day-item"><div class="day-item-top"><span class="type-bar" style="background:var(--c-rust)"></span><div class="body"><b>Rustdag</b><span>${esc(it.note || 'Wandelen, mobiliteit en goed slapen')}</span></div></div></div>`;
+        return;
+      }
+      let actions = '';
+      if (!itemDone(it, k)) {
+        if (it.type === 'session') {
+          actions = `<button class="btn sm ${k <= tk ? 'primary' : ''}" data-action="start-session" data-key="${it.id}">${icon('play')} ${k === tk ? 'Start' : k < tk ? 'Nu inhalen' : 'Nu starten'}</button>
+            ${C.sessions[it.id].catchUp === false ? '' : `<button class="btn sm" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')} Verplaats</button>`}
+            <button class="btn sm" data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')} Overslaan</button>`;
+        } else if (past) {
+          actions = `<button class="btn sm primary" data-action="open-log" data-type="${it.type}" data-date="${k}">${icon('edit')} Loggen</button>`;
+        }
+      }
+      html += `<div class="day-item">
+        <div class="day-item-top"><span class="type-bar" style="background:var(--c-${itemType(it)})"></span>
+          <div class="body"><b>${esc(m.title)}</b><span>${esc(it.type === 'session' ? sessionDesc(it.id) : m.sub)}${it.note ? ' · ' + esc(it.note) : ''}</span></div>
+          <span class="tag ${st.cls}">${st.label}</span></div>
+        ${actions ? `<div class="day-item-actions">${actions}</div>` : ''}
+      </div>`;
+    });
 
-      ${chk || ws.length || acts.length ? `<div class="sheet-section">Gelogd</div>` : ''}
-      ${chk ? `<div class="plan-item"><div class="pi-icon">${icon('heart')}</div><div class="pi-body"><strong>Ochtendcheck</strong><span>Links ${chk.left} · rechts ${chk.right}</span></div></div>` : ''}
-      ${ws.map(w => `<div class="plan-item"><div class="pi-icon">${icon('dumbbell')}</div><div class="li-body pi-body" data-action="show-entry" data-store="workouts" data-id="${w.id}"><strong>${esc(woTitle(w))}</strong><span>${sum((w.exercises || []).map(e => e.sets.length))} sets${w.finishedAt ? ' · ' + fmtTime(w.finishedAt) : ''}</span></div></div>`).join('')}
-      ${acts.map(a => `<div class="plan-item"><div class="pi-icon ${a.type === 'match' ? 'match' : ''}">${icon(a.type === 'match' ? 'ball' : 'whistle')}</div><div class="li-body pi-body" data-action="show-entry" data-store="activities" data-id="${a.id}"><strong>${a.type === 'match' ? 'Match' : 'Clubtraining'}</strong><span>${a.minutes} min · ${esc(a.surface)} · pijn ${a.pain}</span></div></div>`).join('')}
+    off.forEach(o => {
+      const m = itemMeta(o.item);
+      const txt = o.reason === 'skip' ? 'Overgeslagen' : `Verplaatst naar ${fmtDay(o.reason.slice(6))}`;
+      html += `<div class="day-item"><div class="day-item-top"><span class="type-bar" style="background:var(--line)"></span>
+        <div class="body"><b class="muted">${esc(m.title)}</b><span>${esc(txt)}</span></div><span class="tag skip">${o.reason === 'skip' ? 'Overgeslagen' : 'Verplaatst'}</span></div>
+        <div class="day-item-actions"><button class="btn sm" data-action="restore-item" data-k="${k}" data-key="${esc(itemKey(o.item))}">${icon('undo')} Terugzetten</button></div></div>`;
+    });
 
-      <div class="sheet-section">Toevoegen</div>
-      <div class="chips">
-        ${Object.keys(C.sessions).map(id => `<button class="chip" style="border:0" data-action="add-session" data-k="${k}" data-id="${id}">${icon('plus')} ${esc(C.sessions[id].short || id)}</button>`).join('')}
-        ${isPastOrToday ? `<button class="chip" style="border:0" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button><button class="chip" style="border:0" data-action="open-log" data-type="match" data-date="${k}">${icon('edit')} Match loggen</button>` : ''}
-      </div>`);
+    if (!html) html = `<p class="empty">Niets gepland.</p>`;
+
+    const logged = [];
+    if (chk) logged.push(`<div class="list-row"><div class="ico">${icon('pulse')}</div><div class="body"><b>Ochtendscore</b><span>Links ${chk.left} · rechts ${chk.right}</span></div></div>`);
+    ws.forEach(w => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="workouts" data-id="${w.id}"><div class="ico">${icon((C.sessions[w.sessionKey] || {}).icon || 'dumbbell')}</div><div class="body"><b>${esc(woTitle(w))}</b><span>${sum((w.exercises || []).map(e => e.sets.length))} sets${w.finishedAt ? ' · ' + fmtTime(w.finishedAt) : ''}</span></div><div class="end">${icon('chevR')}</div></div>`));
+    acts.forEach(a => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="activities" data-id="${a.id}"><div class="ico">${icon(a.type === 'match' ? 'ball' : 'whistle')}</div><div class="body"><b>${a.type === 'match' ? 'Match' : 'Clubtraining'}</b><span>${a.minutes} min · ${esc(a.surface)} · pijn ${a.pain}</span></div><div class="end">${icon('chevR')}</div></div>`));
+    if (logged.length) html += `<div class="divider"></div><p class="label" style="margin-bottom:6px">Gelogd</p>${logged.join('')}`;
+
+    html += `<div class="divider"></div><div class="day-actions">
+      <button class="btn sm" data-action="add-menu" data-k="${k}">${icon('plus')} Sessie</button>
+      ${past ? `<button class="btn sm" data-action="open-log" data-type="training" data-date="${k}">${icon('whistle')} Training loggen</button>` : ''}
+    </div>`;
+    return html;
+  }
+
+  function openAddMenu(k) {
+    openSheet(`<div class="sheet-head"><div><h3>Sessie toevoegen</h3><p>${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${Object.keys(C.sessions).map(id => `<div class="list-row tap" data-action="add-session" data-k="${k}" data-id="${id}">
+        <div class="ico">${icon(C.sessions[id].icon)}</div><div class="body"><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span></div><div class="end">${icon('plus')}</div></div>`).join('')}`);
   }
 
   /* ================= Workout ================= */
@@ -1997,7 +2100,9 @@
     'move-to': el => moveItem(el.dataset.from, el.dataset.key, el.dataset.to),
     'move-custom': el => { const v = $('#move-date').value; if (!v) { toast('Kies eerst een datum'); return; } moveItem(el.dataset.from, el.dataset.key, v); },
     'skip-item': el => skipItem(el.dataset.k, el.dataset.key),
-    'restore-item': el => { const k = el.dataset.k; restoreItem(k, el.dataset.key); openDay(k); },
+    'restore-item': el => restoreItem(el.dataset.k, el.dataset.key),
+    'cal-pick': el => { S.ui.calDay = el.dataset.k; const d = parseKey(el.dataset.k); S.ui.calMonth = new Date(d.getFullYear(), d.getMonth(), 1); render({ keepScroll: true }); },
+    'add-menu': el => openAddMenu(el.dataset.k),
     'add-session': el => addSessionTo(el.dataset.k, el.dataset.id),
     'undo': async () => { if (!S.ui.undo) return; await setSetting('overrides', S.ui.undo); S.ui.undo = null; $('#toast').hidden = true; render({ keepScroll: true }); toast('Ongedaan gemaakt'); },
     'wo-pause': () => { S.ui.woView = 'picker'; render(); },
@@ -2051,7 +2156,7 @@
     const t = today();
     const m = S.ui.calMonth || new Date(t.getFullYear(), t.getMonth(), 1);
     S.ui.calMonth = new Date(m.getFullYear(), m.getMonth() + n, 1);
-    $('#cal-card').innerHTML = calendarHtml();
+    render({ keepScroll: true });
   }
 
   document.addEventListener('click', e => {
