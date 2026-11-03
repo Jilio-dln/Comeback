@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Comeback</title>
+  <meta name="description" content="Persoonlijke app voor voetbal, fitness en herstel van achillespees en kuit.">
+  <meta name="theme-color" content="#e9eff3">
+  <script>
+    // Thema meteen zetten, zodat er geen witte flits is in dark mode
+    (function () {
+      var p = 'auto';
+      try { p = localStorage.getItem('comeback-theme') || 'auto'; } catch (e) { }
+      var dark = p === 'dark' || (p === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    })();
+  </script>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Comeback">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="bg" aria-hidden="true"></div>
+
+  <main id="app" class="app" aria-live="polite">
+    <div class="boot">Laden…</div>
+  </main>
+
+  <nav class="tabbar glass" id="tabbar" aria-label="Hoofdnavigatie"></nav>
+
+  <div id="rest-timer" class="rest-timer" hidden></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/sample.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

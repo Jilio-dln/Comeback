@@ -1,0 +1,20 @@
+{
+  "name": "Comeback: voetbal, fitness en herstel",
+  "short_name": "Comeback",
+  "description": "Persoonlijke app om voetbal, fitness en het herstel van achillespees en kuit bij te houden.",
+  "lang": "nl",
+  "dir": "ltr",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#e9eff3",
+  "theme_color": "#e9eff3",
+  "categories": ["health", "fitness", "sports"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
