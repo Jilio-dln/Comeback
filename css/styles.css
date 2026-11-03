@@ -240,7 +240,7 @@ a { color: inherit; }
 .list-row .ico .ic { width: 20px; height: 20px; }
 .list-row .body { flex: 1; min-width: 0; }
 .list-row .body b { display: block; font-weight: 600; font-size: 15px; line-height: 1.3; }
-.list-row .body span { display: block; font-size: 13px; color: var(--muted); line-height: 1.35; }
+.list-row .body > span { display: block; font-size: 13px; color: var(--muted); line-height: 1.35; }
 .list-row .end { flex: none; display: flex; align-items: center; gap: 6px; }
 .list-row.tap { cursor: pointer; }
 .type-bar { width: 3px; align-self: stretch; border-radius: 2px; flex: none; }

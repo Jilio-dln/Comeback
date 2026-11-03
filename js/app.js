@@ -309,6 +309,7 @@
     const t = today(), tk = dkey(t), out = [];
     for (let i = 7; i >= 1; i--) {
       const d = addDays(t, -i), k = dkey(d);
+      if (k < planStart()) continue; // vóór de start van de huidige fase telt niets als gemist
       planFor(d).forEach(it => {
         if (it.type !== 'session') return;
         const s = C.sessions[it.id];
@@ -1361,141 +1362,137 @@
   });
 
   /* ================= Statistieken ================= */
+  const STATS_TABS = [['overzicht', 'Overzicht'], ['herstel', 'Herstel'], ['kracht', 'Kracht'], ['matchen', 'Matchen']];
+
   function renderStats() {
+    const tab = S.ui.statsTab || 'overzicht';
+    const body = { overzicht: statsOverview, herstel: statsRecovery, kracht: statsStrength, matchen: statsMatches }[tab]();
+    main.innerHTML = `
+      ${pageHead('Stats')}
+      <div class="seg" role="tablist">${STATS_TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" role="tab" aria-selected="${k === tab}" data-action="stats-tab" data-t="${k}">${l}</button>`).join('')}</div>
+      ${body}`;
+  }
+
+  function statsOverview() {
     const t = today();
     const weeks = [];
     for (let i = 7; i >= 0; i--) {
       const ws = addDays(startOfWeek(t), -7 * i), k = dkey(ws);
       weeks.push({ start: ws, key: k, label: `W${isoWeek(ws)}`, value: S.workouts.filter(w => inWeek(w.date, k)).length });
     }
-    const sel = clamp(S.ui.statsWeek, 0, 7);
+    const sel = clamp(S.ui.statsWeek ?? 7, 0, 7);
     const sw = weeks[sel];
     const swActs = S.activities.filter(a => inWeek(a.date, sw.key));
-    const swTrain = swActs.filter(a => a.type === 'training').length;
-    const swMatch = swActs.filter(a => a.type === 'match').length;
-    const swMin = sum(swActs.map(a => +a.minutes));
+    const monthKey = dkey(t).slice(0, 7);
+    const monthWorkouts = S.workouts.filter(w => w.date.startsWith(monthKey)).length;
+    const monthMinutes = sum(S.activities.filter(a => a.date.startsWith(monthKey)).map(a => +a.minutes));
+    const all = entries();
+    const shown = S.ui.recentAll ? all : all.slice(0, 5);
+    return `
+      <div class="tiles">
+        <div class="tile"><span class="label">Workouts in ${MONTH[t.getMonth()]}</span><div class="num">${monthWorkouts}</div></div>
+        <div class="tile"><span class="label">Minuten voetbal in ${MONTH[t.getMonth()]}</span><div class="num">${monthMinutes}<span class="unit">min</span></div></div>
+      </div>
+      <section class="card">
+        <div class="card-head"><h2>Workouts per week</h2><span class="label">tik op een week</span></div>
+        ${Charts.bars(weeks, { selected: sel })}
+        <p class="status-line">Week van ${fmtShort(sw.start)}: ${sw.value} workouts, ${swActs.filter(a => a.type === 'training').length} trainingen, ${swActs.filter(a => a.type === 'match').length} matchen, ${sum(swActs.map(a => +a.minutes))} minuten voetbal.</p>
+      </section>
+      <div class="section"><span>Recent</span><span>${all.length}</span></div>
+      <section class="card">${recentRows(shown)}
+        ${all.length > 5 ? `<button class="btn block sm" style="margin-top:10px" data-action="recent-all">${S.ui.recentAll ? 'Minder tonen' : `Alles tonen (${all.length})`}</button>` : ''}
+      </section>`;
+  }
 
-    const range = S.ui.lineRange;
+  function statsRecovery() {
+    const t = today(), range = S.ui.lineRange || 30;
     const labels = [], Lv = [], Rv = [];
     for (let i = range - 1; i >= 0; i--) {
       const d = addDays(t, -i), c = checkFor(dkey(d));
       labels.push(fmtShort(d)); Lv.push(c ? c.left : null); Rv.push(c ? c.right : null);
     }
-    const hasChecks = Lv.some(v => v != null) || Rv.some(v => v != null);
     const avg = arr => { const v = arr.filter(x => x != null); return v.length ? fmtNum(Math.round(sum(v) / v.length * 10) / 10) : '–'; };
+    const has = Lv.some(v => v != null);
+    // Hoogste pijn per workout (laatste 20)
+    const pains = S.workouts.slice().sort((a, b) => a.date.localeCompare(b.date) || (a.finishedAt || 0) - (b.finishedAt || 0)).slice(-20)
+      .map(w => ({ date: w.date, v: Math.max(-1, ...(w.exercises || []).flatMap(e => e.sets.map(s => num(s.pain))).filter(v => v != null)) }))
+      .filter(p => p.v >= 0);
+    return `
+      <section class="card">
+        <div class="card-head"><h2>Ochtendscore</h2>
+          <div class="seg" style="margin:0;padding:2px">${[14, 30, 90].map(r => `<button class="${r === range ? 'on' : ''}" style="padding:6px 10px" data-action="line-range" data-r="${r}">${r} d</button>`).join('')}</div></div>
+        <div class="recovery-nums" style="margin-bottom:12px">
+          <div class="num md">${avg(Lv)}<span class="unit">gem. links</span></div>
+          <div class="num md">${avg(Rv)}<span class="unit">gem. rechts</span></div>
+        </div>
+        ${has ? Charts.line({ labels, series: [{ color: 'var(--accent)', values: Lv }, { color: 'var(--ink)', values: Rv }], step: true })
+          + `<div class="legend-line"><span><i style="background:var(--accent)"></i>Links</span><span><i style="background:var(--ink)"></i>Rechts</span></div>`
+          : '<p class="empty">Nog geen ochtendscores in deze periode.</p>'}
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>Pijn tijdens workouts</h2><span class="label">hoogste per sessie</span></div>
+        ${pains.length > 1 ? Charts.line({ labels: pains.map(p => fmtShort(p.date)), series: [{ color: 'var(--accent)', values: pains.map(p => p.v) }], step: true, ticks: [0, MAX_PAIN, 10] })
+          + `<p class="status-line">De lijn op ${MAX_PAIN} is je grens: daarboven maak je de oefening lichter.</p>`
+          : '<p class="empty">Nog te weinig workouts met een pijnscore.</p>'}
+      </section>`;
+  }
 
+  function statsStrength() {
     const exWithWeight = {};
     S.workouts.forEach(w => (w.exercises || []).forEach(e => {
       if (e.sets.some(s => num(s.weight) > 0)) exWithWeight[e.exId] = (C.exercises[e.exId] && C.exercises[e.exId].name) || e.name;
     }));
     const exIds = Object.keys(exWithWeight);
     if (!exIds.includes(S.ui.weightEx)) S.ui.weightEx = exIds[0] || null;
-    let weightChart = `<p class="empty">Nog geen gewichten gelogd.</p>`, weightInfo = '';
-    if (S.ui.weightEx) {
-      const pts = S.workouts
-        .map(w => { const e = (w.exercises || []).find(x => x.exId === S.ui.weightEx); if (!e) return null; const ws = e.sets.map(s => num(s.weight)).filter(v => v > 0); return ws.length ? { date: w.date, ts: w.finishedAt || 0, v: Math.max(...ws) } : null; })
-        .filter(Boolean).sort((a, b) => a.date.localeCompare(b.date) || a.ts - b.ts).slice(-20);
-      const vals = pts.map(p => p.v);
-      const lo = Math.max(0, Math.floor((Math.min(...vals) - 2) / 5) * 5), hi = Math.ceil((Math.max(...vals) + 2) / 5) * 5;
-      weightChart = Charts.line({ labels: pts.map(p => fmtShort(p.date)), series: [{ name: 'kg', color: 'var(--line-1)', values: vals }], yMin: lo, yMax: hi, ticks: [lo, Math.round((lo + hi) / 2), hi], xTicks: 4 });
-      const diff = vals[vals.length - 1] - vals[0];
-      weightInfo = `<div class="chips" style="margin-top:12px"><span class="chip">Start ${fmtNum(vals[0])} kg</span><span class="chip dark">Nu ${fmtNum(vals[vals.length - 1])} kg</span>${diff ? `<span class="chip ok">${diff > 0 ? '+' : ''}${fmtNum(diff)} kg</span>` : ''}</div>`;
-    }
-
-    main.innerHTML = `
-      <header class="topbar">
-        ${iconBtn('back', 'go', 'Terug', 'data-to="vandaag"')}
-        <div class="topbar-title"></div>
-        ${iconBtn('calendar', 'scroll-cal', 'Naar kalender')}
-      </header>
-      <h1 class="page-title">Statistieken</h1>
-
+    if (!S.ui.weightEx) return `<section class="card"><p class="empty">Nog geen gewichten gelogd. Na je eerste krachtsessie zie je hier je progressie.</p></section>`;
+    const pts = S.workouts
+      .map(w => { const e = (w.exercises || []).find(x => x.exId === S.ui.weightEx); if (!e) return null; const ws = e.sets.map(s => num(s.weight)).filter(v => v > 0); return ws.length ? { date: w.date, ts: w.finishedAt || 0, v: Math.max(...ws) } : null; })
+      .filter(Boolean).sort((a, b) => a.date.localeCompare(b.date) || a.ts - b.ts).slice(-20);
+    const vals = pts.map(p => p.v);
+    const lo = Math.max(0, Math.floor((Math.min(...vals) - 2) / 5) * 5), hi = Math.ceil((Math.max(...vals) + 2) / 5) * 5;
+    const diff = vals[vals.length - 1] - vals[0];
+    const sessions30 = S.workouts.filter(w => daysBetween(parseKey(w.date), today()) < 30 && C.sessions[w.sessionKey] && C.sessions[w.sessionKey].catchUp !== false).length;
+    return `
+      <div class="tiles">
+        <div class="tile"><span class="label">Krachtsessies, 30 dagen</span><div class="num">${sessions30}</div></div>
+        <div class="tile"><span class="label">Progressie</span><div class="num ${diff > 0 ? 'accent' : ''}">${diff > 0 ? '+' : ''}${fmtNum(diff)}<span class="unit">kg</span></div></div>
+      </div>
       <section class="card">
-        <div class="card-head"><div><h3>Sessies per week</h3><p class="muted small">Tik op een week voor details</p></div><span class="chip">${S.workouts.length} totaal</span></div>
-        <div class="chart">${Charts.bars(weeks, { selected: sel, unit: sw.value === 1 ? 'sessie' : 'sessies' })}</div>
-        <div class="week-detail">
-          <span class="chip dark">${fmtShort(sw.start)} – ${fmtShort(addDays(sw.start, 6))}</span>
-          <span class="chip">${sw.value} workouts</span><span class="chip">${swTrain} trainingen</span><span class="chip">${swMatch} matchen</span><span class="chip">${swMin} min</span>
+        <div class="card-head"><h2>Gewicht per oefening</h2><span class="label">zwaarste set</span></div>
+        <select class="select" data-change="weight-ex" aria-label="Kies oefening">${exIds.map(id => `<option value="${id}" ${id === S.ui.weightEx ? 'selected' : ''}>${esc(exWithWeight[id])}</option>`).join('')}</select>
+        <div class="recovery-nums" style="margin-bottom:10px">
+          <div class="num md">${fmtNum(vals[vals.length - 1])}<span class="unit">kg nu</span></div>
+          <div class="num md" style="color:var(--muted)">${fmtNum(vals[0])}<span class="unit">kg start</span></div>
         </div>
-      </section>
-
-      <section class="card" id="cal-card">${calendarHtml()}</section>
-
-      ${seasonHtml()}
-
-      <section class="card">
-        <div class="card-head"><div><h3>Ochtendscore</h3><p class="muted small">Gemiddeld L ${avg(Lv)} · R ${avg(Rv)}</p></div>
-          <div class="seg-mini">${[14, 30, 90].map(r => `<button class="${r === range ? 'on' : ''}" data-action="line-range" data-r="${r}">${r} d</button>`).join('')}</div></div>
-        ${hasChecks ? `<div class="chart">${Charts.line({ labels, series: [{ name: 'Links', color: 'var(--line-1)', values: Lv }, { name: 'Rechts', color: 'var(--line-2)', values: Rv }], yMin: 0, yMax: 10, ticks: [0, 5, 10] })}</div>
-        <div class="legend" style="margin-top:10px"><span><i style="background:var(--line-1)"></i>Links</span><span><i style="background:var(--line-2)"></i>Rechts</span></div>` : `<p class="empty">Nog geen ochtendchecks in deze periode.</p>`}
-      </section>
-
-      <section class="card">
-        <div class="card-head"><div><h3>Gewicht per oefening</h3><p class="muted small">Zwaarste set per sessie</p></div></div>
-        ${exIds.length ? `<select class="select" data-change="weight-ex" aria-label="Kies oefening">${exIds.map(id => `<option value="${id}" ${id === S.ui.weightEx ? 'selected' : ''}>${esc(exWithWeight[id])}</option>`).join('')}</select>` : ''}
-        <div class="chart">${weightChart}</div>
-        ${weightInfo}
-      </section>
-
-      <section class="card">
-        <div class="card-head"><h3>Recent</h3><span class="chip">Workouts, trainingen, matchen</span></div>
-        ${recentHtml(15)}
-      </section>
-    `;
+        ${Charts.line({ labels: pts.map(p => fmtShort(p.date)), series: [{ color: 'var(--accent)', values: vals }], yMin: lo, yMax: hi, ticks: [lo, Math.round((lo + hi) / 2), hi] })}
+      </section>`;
   }
 
-  function seasonHtml() {
+  function statsMatches() {
     const fx = fixtures();
     const matches = S.activities.filter(a => a.type === 'match');
     const span = fixtureSpan();
-    const seasonMatches = span ? matches.filter(a => a.date >= span.first && a.date <= span.last) : matches;
-    const total = sum(seasonMatches.map(a => +a.minutes));
-    const playedFx = fx.filter(played);
-    const rows = playedFx.slice(-6).reverse().map(f => {
+    const season = span ? matches.filter(a => a.date >= span.first && a.date <= span.last) : matches;
+    const total = sum(season.map(a => +a.minutes));
+    const playedFx = fx.filter(played).reverse();
+    const rows = playedFx.slice(0, S.ui.matchesAll ? 99 : 6).map(f => {
       const a = matches.find(m => m.date === f.date);
-      return `<div class="list-item">
-        <div class="li-icon ${fixtureResult(f) === 'win' ? 'green' : fixtureResult(f) === 'loss' ? 'amber' : ''}">${icon('ball')}</div>
-        <div class="li-body" data-action="open-day" data-k="${f.date}"><strong>${esc(nice(opponent(f)))}</strong><span>${fmtShort(f.date)} · ${f.home ? 'thuis' : 'uit'} · ${a ? `${a.minutes} min gespeeld` : 'nog geen minuten'}</span></div>
-        <span class="score-pill ${fixtureResult(f)}">${fxScore(f)}</span>
+      return `<div class="list-row tap" data-action="cal-open" data-k="${f.date}">
+        <div class="ico">${icon('ball')}</div>
+        <div class="body"><b>${esc(f.opponent)}</b><span>${cap(fmtDay(f.date))} · ${f.home ? 'thuis' : 'uit'} · ${a ? `${a.minutes} min gespeeld` : 'geen minuten ingevuld'}</span></div>
+        <div class="end"><span class="tag ${fixtureResult(f) === 'win' ? 'done' : ''}">${f.gf}–${f.ga}</span></div>
       </div>`;
     }).join('');
-    return `<section class="card">
-      <div class="card-head"><div><h3>Seizoen ${esc(C.rbfa.teamLabel)}</h3><p class="muted small">${fx.length ? `${playedFx.length} van ${fx.length} matchen gespeeld` : 'Importeer de RBFA-kalender in je profiel'}</p></div>
-        ${fx.length ? '' : `<button class="btn tiny soft" data-action="open-rbfa">Importeren</button>`}</div>
-      <div class="tile-grid" style="margin-bottom:${rows ? 8 : 0}px">
-        <div class="tile" style="background:var(--card-2);padding:12px"><div class="tile-head">${icon('clock')} Mijn minuten</div><div class="v" style="font-size:28px">${total}</div><div class="s">in ${seasonMatches.length} matchen</div></div>
-        <div class="tile" style="background:var(--card-2);padding:12px"><div class="tile-head">${icon('trend')} Gemiddeld</div><div class="v" style="font-size:28px">${seasonMatches.length ? Math.round(total / seasonMatches.length) : 0}<small>min</small></div><div class="s">per match</div></div>
+    return `
+      <div class="tiles">
+        <div class="tile"><span class="label">Mijn minuten dit seizoen</span><div class="num">${total}</div><p>in ${season.length} matchen</p></div>
+        <div class="tile"><span class="label">Gemiddeld per match</span><div class="num">${season.length ? Math.round(total / season.length) : 0}<span class="unit">min</span></div></div>
       </div>
-      ${rows}
-    </section>`;
-  }
-
-  function calendarHtml() {
-    const t = today(), tk = dkey(t);
-    const m = S.ui.calMonth || new Date(t.getFullYear(), t.getMonth(), 1);
-    const start = startOfWeek(m);
-    const wSet = new Set(S.workouts.map(w => w.date));
-    const mSet = new Set(S.activities.filter(a => a.type === 'match').map(a => a.date).concat(fixtures().map(f => f.date)));
-    const tSet = new Set(S.activities.filter(a => a.type === 'training').map(a => a.date));
-    let cells = ['M', 'D', 'W', 'D', 'V', 'Z', 'Z'].map(d => `<div class="cal-wd">${d}</div>`).join('');
-    for (let i = 0; i < 42; i++) {
-      const d = addDays(start, i);
-      if (i >= 35 && d.getMonth() !== m.getMonth()) break;
-      const k = dkey(d);
-      const sessions = planFor(d).filter(x => x.type === 'session' && x.id !== 'ISO');
-      const missed = k < tk && sessions.some(x => !itemDone(x, k));
-      const future = k > tk && sessions.length;
-      const cls = [d.getMonth() !== m.getMonth() ? 'out' : '', wSet.has(k) ? 'w' : '', k === tk ? 'today' : ''].join(' ');
-      cells += `<button class="cal-day ${cls}" data-action="open-day" data-k="${k}" aria-label="${fmtDay(k)}">${d.getDate()}<div class="cal-dots">${mSet.has(k) ? '<span class="d-m"></span>' : ''}${tSet.has(k) ? '<span class="d-t"></span>' : ''}${future ? '<span class="d-p"></span>' : ''}${missed ? '<span class="d-x"></span>' : ''}</div></button>`;
-    }
-    const doneDays = new Set([...wSet, ...S.activities.map(a => a.date)].filter(k => { const d = parseKey(k); return d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear(); })).size;
-    return `<div class="cal-head">
-        ${iconBtn('chevL', 'cal-prev', 'Vorige maand')}
-        <div style="text-align:center"><strong>${MONTH[m.getMonth()]} ${m.getFullYear()}</strong><div class="muted small">${doneDays} actieve ${doneDays === 1 ? 'dag' : 'dagen'} · tik op een dag</div></div>
-        ${iconBtn('chevR', 'cal-next', 'Volgende maand')}
-      </div>
-      <div class="cal-grid">${cells}</div>
-      <div class="cal-legend"><span><i class="w"></i>Workout</span><span><i class="d-t"></i>Training</span><span><i class="d-m"></i>Match</span><span><i class="d-p"></i>Gepland</span><span><i class="d-x"></i>Gemist</span></div>`;
+      <section class="card">
+        <div class="card-head"><h2>Uitslagen ${esc(C.rbfa.teamLabel)}</h2><button class="link-btn" data-action="go" data-to="matchen">Beheren ${icon('chevR')}</button></div>
+        ${rows || `<p class="empty">Nog geen gespeelde matchen. Importeer de RBFA-kalender of voeg matchen toe.</p>`}
+        ${playedFx.length > 6 ? `<button class="btn block sm" style="margin-top:10px" data-action="matches-all">${S.ui.matchesAll ? 'Minder tonen' : `Alles tonen (${playedFx.length})`}</button>` : ''}
+      </section>`;
   }
 
   function entries() {
@@ -1504,25 +1501,24 @@
       const sets = sum((w.exercises || []).map(e => e.sets.length));
       const pains = (w.exercises || []).flatMap(e => e.sets.map(s => num(s.pain))).filter(v => v != null);
       list.push({
-        store: 'workouts', id: w.id, date: w.date, ts: w.finishedAt || 0, icon: (C.sessions[w.sessionKey] || {}).icon || 'dumbbell', cls: '',
-        title: woTitle(w), sub: `${relDay(w.date)} · ${(w.exercises || []).length} oef. · ${sets} sets${pains.length ? ` · pijn max ${Math.max(...pains)}` : ''}`, sample: w.sample
+        store: 'workouts', id: w.id, date: w.date, ts: w.finishedAt || 0, icon: (C.sessions[w.sessionKey] || {}).icon || 'dumbbell',
+        title: woTitle(w), sub: `${cap(relDay(w.date))} · ${sets} sets${pains.length ? ` · pijn max ${Math.max(...pains)}` : ''}`, sample: w.sample
       });
     });
     S.activities.forEach(a => list.push({
-      store: 'activities', id: a.id, date: a.date, ts: a.createdAt || 0, icon: a.type === 'match' ? 'ball' : 'whistle', cls: a.type === 'match' ? 'amber' : 'green',
-      title: a.type === 'match' ? (a.opponent ? `Match tegen ${nice(a.opponent)}` : 'Match') : 'Clubtraining',
-      sub: `${relDay(a.date)} · ${a.minutes} min · ${a.surface} · ${a.shoes} · pijn ${a.pain}${a.note ? ' · ' + a.note : ''}`, sample: a.sample
+      store: 'activities', id: a.id, date: a.date, ts: a.createdAt || 0, icon: a.type === 'match' ? 'ball' : 'whistle',
+      title: a.type === 'match' ? (a.opponent ? `Match tegen ${a.opponent}` : 'Match') : 'Clubtraining',
+      sub: `${cap(relDay(a.date))} · ${a.minutes} min · ${a.surface} · pijn ${a.pain}`, sample: a.sample
     }));
     return list.sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
   }
 
-  function recentHtml(limit) {
-    const list = entries().slice(0, limit);
+  function recentRows(list) {
     if (!list.length) return `<p class="empty">Nog niets gelogd.</p>`;
-    return list.map(x => `<div class="list-item">
-      <div class="li-icon ${x.cls}">${icon(x.icon)}</div>
-      <div class="li-body" data-action="show-entry" data-store="${x.store}" data-id="${x.id}"><strong>${esc(x.title)}${x.sample ? '<span class="sample-tag">voorbeeld</span>' : ''}</strong><span>${esc(x.sub)}</span></div>
-      <button class="li-del" data-action="del-entry" data-store="${x.store}" data-id="${x.id}" aria-label="Verwijderen">${icon('trash')}</button>
+    return list.map(x => `<div class="list-row">
+      <div class="ico">${icon(x.icon)}</div>
+      <div class="body tap" data-action="show-entry" data-store="${x.store}" data-id="${x.id}" style="cursor:pointer"><b>${esc(x.title)}${x.sample ? '<span class="sample-tag">voorbeeld</span>' : ''}</b><span>${esc(x.sub)}</span></div>
+      <div class="end"><button class="icon-btn" style="background:transparent;width:36px;height:36px" data-action="del-entry" data-store="${x.store}" data-id="${x.id}" aria-label="Verwijderen">${icon('trash')}</button></div>
     </div>`).join('');
   }
 
@@ -1530,18 +1526,18 @@
     const rec = S[store].find(x => x.id === id);
     if (!rec) return;
     if (store === 'activities') {
-      openSheet(`<div class="sheet-head"><div><h3>${rec.type === 'match' ? (rec.opponent ? 'Tegen ' + esc(nice(rec.opponent)) : 'Match') : 'Clubtraining'}</h3><p>${cap(fmtDay(rec.date))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-        <div class="chips"><span class="chip dark">${rec.minutes} min</span>${rec.score ? `<span class="chip">${esc(rec.score)}</span>` : ''}${rec.role ? `<span class="chip">${esc(rec.role)}</span>` : ''}<span class="chip">${esc(rec.surface)}</span><span class="chip">${esc(rec.shoes)}</span><span class="chip">Pijn achteraf ${rec.pain}/10</span>${rec.source === 'rbfa' ? '<span class="chip ok">via RBFA</span>' : ''}</div>
-        ${rec.note ? `<p class="note">${esc(rec.note)}</p>` : ''}`);
+      openSheet(`<div class="sheet-head"><div><h3>${rec.type === 'match' ? (rec.opponent ? 'Tegen ' + esc(rec.opponent) : 'Match') : 'Clubtraining'}</h3><p>${cap(fmtDay(rec.date))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+        <div class="num" style="margin-bottom:14px">${rec.minutes}<span class="unit">min</span></div>
+        <div class="chips">${rec.score ? `<span class="chip">${esc(rec.score)}</span>` : ''}${rec.role ? `<span class="chip">${esc(rec.role)}</span>` : ''}<span class="chip">${esc(rec.surface)}</span><span class="chip">${esc(rec.shoes)}</span><span class="chip">Pijn achteraf ${rec.pain}/10</span>${rec.source === 'rbfa' ? '<span class="chip">via RBFA</span>' : ''}</div>
+        ${rec.note ? `<p class="small" style="margin-top:12px">${esc(rec.note)}</p>` : ''}`);
       return;
     }
-    openSheet(`<div class="sheet-head"><div><h3>${esc(woTitle(rec))}</h3><p>${cap(fmtDay(rec.date))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      <div class="chips" style="margin-bottom:8px">${rec.finishedAt && rec.startedAt ? `<span class="chip dark">${Math.round((rec.finishedAt - rec.startedAt) / 60000)} min</span>` : ''}<span class="chip">${esc(phaseObj(rec.phase).label)}</span></div>
-      ${(rec.exercises || []).map(e => `<div class="detail-ex"><strong>${esc(e.name)}</strong><div class="prev-chips">${e.sets.map(s => `<span>${s.label ? esc(s.label) + ' ' : s.side ? s.side + ' ' : ''}${setText(s, e.kind)}${s.pain != null ? ` <i class="${s.pain > MAX_PAIN ? 'hi' : ''}">p${s.pain}</i>` : ''}</span>`).join('')}</div></div>`).join('') || '<p class="empty">Geen sets gelogd.</p>'}`);
+    openSheet(`<div class="sheet-head"><div><h3>${esc(woTitle(rec))}</h3><p>${cap(fmtDay(rec.date))}${rec.finishedAt && rec.startedAt ? ` · ${Math.round((rec.finishedAt - rec.startedAt) / 60000)} min` : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${(rec.exercises || []).map(e => `<div class="list-row"><div class="body"><b>${esc(e.name)}</b><span>${e.sets.map(s => `${s.side ? s.side + ' ' : ''}${setText(s, e.kind) || '–'}${s.pain != null ? ` (pijn ${s.pain})` : ''}`).join(' · ')}</span></div></div>`).join('') || '<p class="empty">Geen sets gelogd.</p>'}`);
   }
 
   async function deleteEntry(store, id) {
-    if (!await ask('Dit item verwijderen?')) return;
+    if (!await ask('Dit item verwijderen? Dat kan niet ongedaan gemaakt worden.', { ok: 'Verwijderen', danger: true })) return;
     await DB.del(store, id);
     S[store] = S[store].filter(x => x.id !== id);
     render({ keepScroll: true });
@@ -2214,6 +2210,9 @@
     'rest-adj': el => { rest.endAt += (+el.dataset.d) * 1000; rest.total = Math.max(rest.total, Math.ceil((rest.endAt - Date.now()) / 1000)); tickRest(); },
     'rest-skip': stopRest,
     'bar-select': el => { S.ui.statsWeek = +el.dataset.i; render({ keepScroll: true }); },
+    'stats-tab': el => { S.ui.statsTab = el.dataset.t; render(); },
+    'recent-all': () => { S.ui.recentAll = !S.ui.recentAll; render({ keepScroll: true }); },
+    'matches-all': () => { S.ui.matchesAll = !S.ui.matchesAll; render({ keepScroll: true }); },
     'line-range': el => { S.ui.lineRange = +el.dataset.r; render({ keepScroll: true }); },
     'cal-prev': () => shiftMonth(-1),
     'cal-next': () => shiftMonth(1),
