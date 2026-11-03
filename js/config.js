@@ -297,6 +297,125 @@ window.APP_CONFIG = {
     }
   },
 
+  // Oefenbibliotheek voor eigen workouts: categorieën, spiergroepen, extra oefeningen en voorgestelde workouts.
+  // Alles is voetbalgericht: eenbenig, explosief, blessurepreventie (hamstrings, lies, kuit en pees), duels.
+  // where: 'thuis' en/of 'gym'. plyo: true = sprongen en sprints, pas vanaf fase 2 + 3.
+  library: {
+    categories: [
+      { id: 'onder', name: 'Onderlichaam', icon: 'legs', groups: [
+        { id: 'quads', name: 'Quadriceps', hint: 'Knie, sprint en afzet' },
+        { id: 'hamstrings', name: 'Hamstrings', hint: 'Sprinten en blessurepreventie' },
+        { id: 'glutes', name: 'Bilspieren & heup', hint: 'Kracht in duels en richtingsveranderingen' },
+        { id: 'adductors', name: 'Adductoren', hint: 'Lies: passen, schieten, draaien' },
+        { id: 'calves', name: 'Kuit & achilles', hint: 'Afzet en herstel van je pees' }
+      ] },
+      { id: 'boven', name: 'Bovenlichaam', icon: 'torso', groups: [
+        { id: 'push', name: 'Duwen', hint: 'Afstand houden en afschermen' },
+        { id: 'pull', name: 'Trekken', hint: 'Houding en duelkracht' },
+        { id: 'shoulders', name: 'Schouders', hint: 'Stabiele schouders bij contact' }
+      ] },
+      { id: 'core', name: 'Core', icon: 'hold', groups: [
+        { id: 'core', name: 'Romp & stabiliteit', hint: 'Balans in duels en bij het schieten' }
+      ] },
+      { id: 'power', name: 'Explosief', icon: 'bolt', groups: [
+        { id: 'power', name: 'Sprongen & sprint', hint: 'Vanaf fase 2 + 3, pijn max 2' }
+      ] },
+      { id: 'mobility', name: 'Mobiliteit', icon: 'pulse', groups: [
+        { id: 'mobility', name: 'Herstel & mobiliteit', hint: 'Heup, enkel en lies los houden' }
+      ] }
+    ],
+
+    // Spiergroep en plaats voor de oefeningen uit je schema
+    tags: {
+      calfHoldStanding: { group: 'calves', where: ['thuis', 'gym'] },
+      calfHoldSeated: { group: 'calves', where: ['thuis', 'gym'] },
+      calfRaiseSL: { group: 'calves', where: ['thuis', 'gym'] },
+      seatedCalfRaise: { group: 'calves', where: ['gym'] },
+      calfRaiseLight: { group: 'calves', where: ['thuis', 'gym'] },
+      bulgarian: { group: 'quads', where: ['thuis', 'gym'] },
+      slRdl: { group: 'hamstrings', where: ['thuis', 'gym'] },
+      slGluteBridge: { group: 'glutes', where: ['thuis', 'gym'] },
+      copenhagen: { group: 'adductors', where: ['thuis', 'gym'] },
+      bandSideWalk: { group: 'glutes', where: ['thuis', 'gym'] },
+      trapBar: { group: 'glutes', where: ['gym'] },
+      legPress: { group: 'quads', where: ['gym'] },
+      nordic: { group: 'hamstrings', where: ['thuis', 'gym'] },
+      chestRow: { group: 'pull', where: ['gym'] },
+      dbBench: { group: 'push', where: ['gym'] },
+      latPulldown: { group: 'pull', where: ['gym'] },
+      pallof: { group: 'core', where: ['thuis', 'gym'] },
+      pushups: { group: 'push', where: ['thuis', 'gym'] },
+      bandRows: { group: 'pull', where: ['thuis'] },
+      bandPullAparts: { group: 'shoulders', where: ['thuis', 'gym'] },
+      deadBug: { group: 'core', where: ['thuis', 'gym'] },
+      sidePlank: { group: 'core', where: ['thuis', 'gym'] },
+      pogo: { group: 'power', where: ['thuis', 'gym'], plyo: true },
+      hopsSL: { group: 'power', where: ['thuis', 'gym'], plyo: true },
+      skipsBounds: { group: 'power', where: ['thuis', 'gym'], plyo: true },
+      sprint30: { group: 'power', where: ['thuis', 'gym'], plyo: true }
+    },
+
+    // Extra oefeningen (zelfde velden als 'exercises', plus group, where en plyo)
+    exercises: {
+      gobletSquat: { name: 'Goblet squat', kind: 'reps', reps: [8, 12], load: 'kg', increment: 2, rest: 90, group: 'quads', where: ['thuis', 'gym'], cue: 'Dumbbell tegen je borst, diep zitten, knieën naar buiten.' },
+      splitSquat: { name: 'Split squat', kind: 'reps', reps: [10, 12], perSide: true, sideWord: 'been', load: 'bw', rest: 60, group: 'quads', where: ['thuis', 'gym'], cue: 'Rechte romp, achterste knie zacht naar de grond.' },
+      stepUp: { name: 'Step-up op een bank', kind: 'reps', reps: [8, 10], perSide: true, sideWord: 'been', load: 'kg', increment: 2, rest: 75, group: 'quads', where: ['thuis', 'gym'], cue: 'Duw af met het been op de bank, niet met het onderste.' },
+      spanishSquat: { name: 'Spanish squat met band', kind: 'reps', reps: [10, 12], load: 'band', rest: 60, group: 'quads', where: ['thuis', 'gym'], cue: 'Band achter je knieën, zak achterover. Pees- en knievriendelijk.' },
+      reverseNordic: { name: 'Reverse Nordic', kind: 'reps', reps: [6, 8], load: 'bw', rest: 75, group: 'quads', where: ['thuis', 'gym'], cue: 'Op je knieën, lichaam recht, langzaam achterover leunen.' },
+      hamstringBridge: { name: 'Eenbenige hamstring bridge', kind: 'reps', reps: [8, 12], perSide: true, sideWord: 'been', load: 'bw', rest: 60, group: 'hamstrings', where: ['thuis', 'gym'], cue: 'Hiel op een bank, knie licht gebogen, heup hoog duwen.' },
+      slidingCurl: { name: 'Sliding leg curl', kind: 'reps', reps: [8, 10], load: 'bw', rest: 60, group: 'hamstrings', where: ['thuis'], cue: 'Hielen op een handdoek op een gladde vloer, heup hoog houden.' },
+      rdlBarbell: { name: 'Roemeense deadlift', kind: 'reps', reps: [6, 8], load: 'kg', increment: 5, rest: 120, group: 'hamstrings', where: ['gym'], cue: 'Stang langs de benen, heup naar achter, rug neutraal.' },
+      hipThrust: { name: 'Hip thrust', kind: 'reps', reps: [8, 10], load: 'kg', increment: 5, rest: 90, group: 'glutes', where: ['thuis', 'gym'], cue: 'Schouders op de bank, kin in, bovenaan 1 s knijpen.' },
+      lateralLunge: { name: 'Zijwaartse lunge', kind: 'reps', reps: [8, 8], perSide: true, sideWord: 'kant', load: 'bw', rest: 60, group: 'adductors', where: ['thuis', 'gym'], cue: 'Breed staan, zak naar één kant, andere been gestrekt.' },
+      clamshell: { name: 'Clamshell met band', kind: 'reps', reps: [15, 15], perSide: true, sideWord: 'kant', load: 'band', rest: 45, group: 'glutes', where: ['thuis'], cue: 'Op je zij, voeten samen, knie openen zonder de heup te draaien.' },
+      adductorSqueeze: { name: 'Adductor squeeze', kind: 'hold', duration: 30, load: 'bw', rest: 45, group: 'adductors', where: ['thuis', 'gym'], cue: 'Bal of opgerolde handdoek tussen de knieën, stevig knijpen.' },
+      tibialisRaise: { name: 'Tibialis raise', kind: 'reps', reps: [15, 15], load: 'bw', rest: 45, group: 'calves', where: ['thuis', 'gym'], cue: 'Rug tegen de muur, tenen omhoog trekken. Goed voor scheen en enkel.' },
+      landminePress: { name: 'Landmine press', kind: 'reps', reps: [8, 10], perSide: true, sideWord: 'arm', load: 'kg', increment: 2.5, rest: 75, group: 'push', where: ['gym'], cue: 'Halfgeknield, schuin omhoog duwen, romp stil.' },
+      halfKneelPress: { name: 'Halfgeknielde dumbbell press', kind: 'reps', reps: [8, 10], perSide: true, sideWord: 'arm', load: 'kg', increment: 2, rest: 60, group: 'shoulders', where: ['thuis', 'gym'], cue: 'Op één knie, bilspier aan, niet achterover leunen.' },
+      invertedRow: { name: 'Inverted row', kind: 'reps', reps: [8, 12], load: 'bw', rest: 75, group: 'pull', where: ['thuis', 'gym'], cue: 'Onder een stevige tafel of stang, borst naar de rand trekken.' },
+      slDbRow: { name: 'Eenarmige dumbbell row', kind: 'reps', reps: [8, 10], perSide: true, sideWord: 'arm', load: 'kg', increment: 2, rest: 60, group: 'pull', where: ['thuis', 'gym'], cue: 'Hand en knie op de bank, elleboog naar de heup.' },
+      facePull: { name: 'Face pull', kind: 'reps', reps: [12, 15], load: 'band', rest: 45, group: 'shoulders', where: ['thuis', 'gym'], cue: 'Band of kabel naar je voorhoofd, ellebogen hoog.' },
+      ytw: { name: 'Y-T-W op je buik', kind: 'reps', reps: [8, 8], load: 'bw', rest: 45, group: 'shoulders', where: ['thuis'], cue: 'Duimen omhoog, schouderbladen samen en omlaag.' },
+      birdDog: { name: 'Bird dog', kind: 'reps', reps: [8, 8], perSide: true, sideWord: 'kant', load: 'bw', rest: 45, group: 'core', where: ['thuis', 'gym'], cue: 'Arm en tegenovergesteld been strekken, rug stil.' },
+      plank: { name: 'Plank', kind: 'time', duration: 45, load: 'bw', rest: 45, group: 'core', where: ['thuis', 'gym'], cue: 'Ellebogen onder de schouders, buik en billen aan.' },
+      suitcaseCarry: { name: 'Suitcase carry', kind: 'distance', distance: 20, perSide: true, sideWord: 'kant', load: 'kg', increment: 2, rest: 60, group: 'core', where: ['thuis', 'gym'], cue: 'Zwaar gewicht in één hand, rechtop wandelen zonder te hellen.' },
+      boxJump: { name: 'Box jump', kind: 'reps', reps: [5, 5], load: 'bw', rest: 90, group: 'power', where: ['gym'], plyo: true, cue: 'Explosief springen, zacht landen, rustig afstappen.' },
+      broadJump: { name: 'Broad jump', kind: 'reps', reps: [5, 5], load: 'bw', rest: 90, group: 'power', where: ['thuis', 'gym'], plyo: true, cue: 'Zo ver mogelijk vooruit, landen en 2 s stilstaan.' },
+      lateralBound: { name: 'Laterale bounds', kind: 'reps', reps: [6, 6], perSide: true, sideWord: 'kant', load: 'bw', rest: 75, group: 'power', where: ['thuis', 'gym'], plyo: true, cue: 'Zijwaarts afzetten, op één been landen en stabiliseren.' },
+      accel10: { name: 'Acceleraties 10 m', kind: 'distance', distance: 10, load: 'bw', rest: 90, group: 'power', where: ['thuis', 'gym'], plyo: true, cue: 'Vanuit staande start, eerste passen kort en krachtig. Op het veld.' },
+      hip9090: { name: 'Heup 90/90', kind: 'time', duration: 45, perSide: true, sideWord: 'kant', load: 'bw', rest: 15, group: 'mobility', where: ['thuis', 'gym'], cue: 'Beide knieën 90°, rechtop zitten, langzaam voorover.' },
+      couchStretch: { name: 'Couch stretch', kind: 'time', duration: 45, perSide: true, sideWord: 'kant', load: 'bw', rest: 15, group: 'mobility', where: ['thuis'], cue: 'Knie tegen de muur of zetel, bilspier aan, heup naar voor.' },
+      ankleMob: { name: 'Enkelmobiliteit knie-naar-muur', kind: 'reps', reps: [10, 10], perSide: true, sideWord: 'kant', load: 'bw', rest: 15, group: 'mobility', where: ['thuis', 'gym'], cue: 'Hiel aan de grond, knie naar de muur. Rustig, geen pijn.' },
+      adductorRock: { name: 'Adductor rock back', kind: 'reps', reps: [10, 10], perSide: true, sideWord: 'kant', load: 'bw', rest: 15, group: 'mobility', where: ['thuis', 'gym'], cue: 'Op handen en knieën, één been opzij, rustig naar achter.' }
+    },
+
+    // Voorgestelde workouts (focus op voetbal, niet op spiermassa)
+    templates: [
+      { id: 'lowerGym', name: 'Onderlichaam kracht', desc: 'Sterker afzetten, sprinten en duels winnen', where: 'gym', icon: 'legs',
+        items: [{ ex: 'trapBar', sets: 3, reps: 5 }, { ex: 'bulgarian', sets: 3, reps: 8 }, { ex: 'nordic', sets: 3, reps: 5 }, { ex: 'hipThrust', sets: 3, reps: 8 }, { ex: 'copenhagen', sets: 2, duration: 25 }] },
+      { id: 'lowerHome', name: 'Onderlichaam thuis', desc: 'Eenbenige kracht zonder machines', where: 'thuis', icon: 'legs',
+        items: [{ ex: 'splitSquat', sets: 3, reps: 10 }, { ex: 'slRdl', sets: 3, reps: 10 }, { ex: 'hamstringBridge', sets: 3, reps: 10 }, { ex: 'lateralLunge', sets: 2, reps: 8 }, { ex: 'copenhagen', sets: 2, duration: 20 }] },
+      { id: 'upperGym', name: 'Upper body voor duels', desc: 'Sterker afschermen, duwen en in balans blijven', where: 'gym', icon: 'torso',
+        items: [{ ex: 'dbBench', sets: 3, reps: 8 }, { ex: 'slDbRow', sets: 3, reps: 10 }, { ex: 'latPulldown', sets: 3, reps: 8 }, { ex: 'landminePress', sets: 3, reps: 8 }, { ex: 'facePull', sets: 2, reps: 15 }] },
+      { id: 'upperHome', name: 'Upper body thuis', desc: 'Duwen, trekken en sterke schouders', where: 'thuis', icon: 'torso',
+        items: [{ ex: 'pushups', sets: 3, reps: 12 }, { ex: 'invertedRow', sets: 3, reps: 10 }, { ex: 'bandRows', sets: 3, reps: 15 }, { ex: 'halfKneelPress', sets: 2, reps: 10 }, { ex: 'ytw', sets: 2, reps: 8 }] },
+      { id: 'fullGym', name: 'Full body voetbal', desc: 'Alles in één, 45 minuten in de gym', where: 'gym', icon: 'barbell',
+        items: [{ ex: 'gobletSquat', sets: 3, reps: 10 }, { ex: 'rdlBarbell', sets: 3, reps: 8 }, { ex: 'slDbRow', sets: 3, reps: 10 }, { ex: 'landminePress', sets: 3, reps: 8 }, { ex: 'pallof', sets: 3, reps: 10 }] },
+      { id: 'prevention', name: 'Hamstring & lies preventie', desc: 'De oefeningen die blessures bij voetballers het meest verminderen', where: 'thuis', icon: 'heart',
+        items: [{ ex: 'nordic', sets: 3, reps: 5 }, { ex: 'copenhagen', sets: 3, duration: 20 }, { ex: 'adductorSqueeze', sets: 3, duration: 30 }, { ex: 'hamstringBridge', sets: 2, reps: 10 }, { ex: 'slGluteBridge', sets: 2, reps: 12 }] },
+      { id: 'tendon', name: 'Kuit & pees extra', desc: 'Extra werk voor je achillespees, pijn max 3', where: 'thuis', icon: 'calf',
+        items: [{ ex: 'calfHoldStanding', sets: 4, duration: 45 }, { ex: 'calfRaiseSL', sets: 3, reps: 12 }, { ex: 'tibialisRaise', sets: 2, reps: 15 }, { ex: 'spanishSquat', sets: 3, reps: 10 }] },
+      { id: 'core', name: 'Core & stabiliteit', desc: 'Balans in duels, bij het schieten en het draaien', where: 'thuis', icon: 'hold',
+        items: [{ ex: 'deadBug', sets: 3, reps: 8 }, { ex: 'sidePlank', sets: 3, duration: 30 }, { ex: 'pallof', sets: 3, reps: 10 }, { ex: 'birdDog', sets: 2, reps: 8 }, { ex: 'suitcaseCarry', sets: 2 }] },
+      { id: 'power', name: 'Explosief & snelheid', desc: 'Sprongen en acceleraties voor je eerste meters', where: 'gym', icon: 'bolt', plyo: true,
+        items: [{ ex: 'broadJump', sets: 3, reps: 5 }, { ex: 'boxJump', sets: 3, reps: 5 }, { ex: 'lateralBound', sets: 3, reps: 6 }, { ex: 'accel10', sets: 4 }] },
+      { id: 'md1', name: 'Matchdag -1 activatie', desc: 'Kort en fris, 15 minuten, niet vermoeiend', where: 'thuis', icon: 'whistle',
+        items: [{ ex: 'ankleMob', sets: 1, reps: 10 }, { ex: 'slGluteBridge', sets: 2, reps: 10 }, { ex: 'bandSideWalk', sets: 2, reps: 12 }, { ex: 'deadBug', sets: 2, reps: 8 }, { ex: 'adductorSqueeze', sets: 2, duration: 20 }] },
+      { id: 'mobility', name: 'Herstel & mobiliteit', desc: 'De dag na de match of op een rustdag', where: 'thuis', icon: 'pulse',
+        items: [{ ex: 'hip9090', sets: 2, duration: 45 }, { ex: 'couchStretch', sets: 2, duration: 45 }, { ex: 'adductorRock', sets: 2, reps: 10 }, { ex: 'ankleMob', sets: 2, reps: 10 }, { ex: 'birdDog', sets: 2, reps: 8 }] }
+    ]
+  },
+
   // Standaard weekschema
   week: {
     1: [{ type: 'session', id: 'A' }, { type: 'session', id: 'CALF', phases: ['f2', 'f3'] }],

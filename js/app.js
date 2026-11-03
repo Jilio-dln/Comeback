@@ -951,7 +951,16 @@
   /* ================= Eigen workouts ================= */
   // Bewaard in de instellingen: customSessions { X…: { name, items: [{ ex, sets, reps, duration, weight }] } }
   // en customExercises { cx…: { name, kind, load, … } }. Ze worden bij het starten in de config gezet.
+  let libraryReady = false;
+  function registerLibrary() {
+    if (libraryReady || !C.library) return;
+    Object.entries(C.library.exercises || {}).forEach(([k, v]) => { if (!C.exercises[k]) C.exercises[k] = v; });
+    Object.entries(C.library.tags || {}).forEach(([k, v]) => { if (C.exercises[k]) Object.assign(C.exercises[k], v); });
+    libraryReady = true;
+  }
+
   function registerCustom() {
+    registerLibrary();
     Object.entries(S.settings.customExercises || {}).forEach(([k, v]) => { C.exercises[k] = { rest: 60, ...v, custom: true }; });
     const cs = S.settings.customSessions || {};
     Object.keys(C.sessions).forEach(k => { if (C.sessions[k].custom && !cs[k]) delete C.sessions[k]; });
@@ -979,51 +988,150 @@
 
   function openBuilder(k, key) {
     const cs = (S.settings.customSessions || {})[key];
-    S.ui.builder = { k, key: key || null, name: cs ? cs.name : '', items: cs ? clone(cs.items) : [], adding: false };
+    S.ui.builder = { k, key: key || null, name: cs ? cs.name : '', items: cs ? clone(cs.items) : [], adding: false, view: 'edit', tab: 'spiergroep', loc: 'alles', group: null };
     renderBuilder(true);
   }
 
   function renderBuilder(fresh) {
     const b = S.ui.builder;
-    const lib = Object.keys(C.exercises).filter(id => !C.exercises[id].custom).sort((a, c) => C.exercises[a].name.localeCompare(C.exercises[c].name));
-    const own = Object.keys(C.exercises).filter(id => C.exercises[id].custom);
+    const html = b.view === 'pick' ? pickerHtml(b) : builderEditHtml(b);
+    const sh = $('.sheet');
+    if (!fresh && sh) { const y = b.view === b.lastView ? sh.scrollTop : 0; sh.innerHTML = html; sh.scrollTop = y; }
+    else openSheet(html);
+    b.lastView = b.view;
+  }
+
+  function builderEditHtml(b) {
     const mini = (i, f, label, v, step) => `<div class="mini"><span>${label}</span><div class="mini-row">
         <button type="button" data-action="b-step" data-i="${i}" data-f="${f}" data-d="${-step}" aria-label="${label} min">−</button>
         <input inputmode="decimal" data-bi="${i}" data-bf="${f}" value="${v == null ? '' : String(v).replace('.', ',')}" placeholder="–" aria-label="${label}">
         <button type="button" data-action="b-step" data-i="${i}" data-f="${f}" data-d="${step}" aria-label="${label} plus">+</button></div></div>`;
     const rows = b.items.map((it, i) => {
       const ex = C.exercises[it.ex] || { name: '?' };
+      const second = ex.kind === 'reps' ? mini(i, 'reps', 'Herhalingen', it.reps, 1)
+        : ex.kind === 'distance' ? '' : mini(i, 'duration', 'Seconden', it.duration, 5);
       return `<div class="b-item">
-        <div class="b-top"><b>${esc(ex.name)}</b><button type="button" class="icon-btn" style="width:36px;height:36px;background:transparent" data-action="b-remove" data-i="${i}" aria-label="Oefening verwijderen">${icon('x')}</button></div>
+        <div class="b-top"><div><b>${esc(ex.name)}</b>${ex.perSide ? `<span class="label" style="display:block">per ${esc(ex.sideWord || 'kant')}${ex.kind === 'distance' ? ` · ${ex.distance} m` : ''}</span>` : ex.kind === 'distance' ? `<span class="label" style="display:block">${ex.distance} m</span>` : ''}</div>
+          <button type="button" class="icon-btn" style="width:36px;height:36px;background:transparent" data-action="b-remove" data-i="${i}" aria-label="Oefening verwijderen">${icon('x')}</button></div>
         <div class="b-grid">
           ${mini(i, 'sets', 'Sets', it.sets, 1)}
-          ${ex.kind === 'reps' || ex.kind === 'distance' ? mini(i, 'reps', ex.kind === 'distance' ? 'Keer' : 'Herhalingen', it.reps, 1) : mini(i, 'duration', 'Seconden', it.duration, 5)}
-          ${ex.load === 'kg' || ex.load === 'bw' ? mini(i, 'weight', 'kg', it.weight, 2.5) : ''}
+          ${second}
+          ${ex.load === 'kg' || ex.load === 'bw' ? mini(i, 'weight', ex.load === 'bw' ? 'Extra kg' : 'kg', it.weight, 2.5) : ''}
         </div>
       </div>`;
     }).join('');
-    const html = `<div class="sheet-head"><div><h3>${b.key ? 'Eigen workout aanpassen' : 'Eigen workout'}</h3><p>${b.k ? `Voor ${fmtDay(b.k)}` : 'Kies je oefeningen en stel ze in'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      <label class="field"><span>Naam</span><input class="input" id="b-name" data-b="name" value="${esc(b.name)}" placeholder="Bv. Benen licht"></label>
-      ${rows || '<p class="empty">Nog geen oefeningen. Voeg er hieronder een toe.</p>'}
-      <div class="b-add">
-        <label class="field" style="margin:0"><span>Oefening toevoegen</span>
-          <select class="select" id="b-pick" data-change="b-pick" style="margin:0">
-            <option value="">Kies een oefening…</option>
-            <option value="__new">+ Nieuwe oefening maken</option>
-            ${own.length ? `<optgroup label="Mijn oefeningen">${own.map(id => `<option value="${id}">${esc(C.exercises[id].name)}</option>`).join('')}</optgroup>` : ''}
-            <optgroup label="Uit je schema">${lib.map(id => `<option value="${id}">${esc(C.exercises[id].name)}</option>`).join('')}</optgroup>
-          </select></label>
-        ${b.adding ? `<div class="b-new">
-          <label class="field"><span>Naam van de oefening</span><input class="input" id="b-new-name" placeholder="Bv. Hamstring curl"></label>
-          <div class="seg">${radio('b-kind', 'reps', 'Herhalingen + kg', 'reps')}${radio('b-kind', 'time', 'Op tijd', 'reps')}</div>
-          <button type="button" class="btn block" data-action="b-new-add">${icon('plus')} Oefening toevoegen</button>
-        </div>` : ''}
-      </div>
-      <button class="btn primary block lg" data-action="b-save">${icon('check')} ${b.key ? 'Opslaan' : b.k ? 'Opslaan en inplannen' : 'Opslaan'}</button>`;
-    const sh = $('.sheet');
-    if (!fresh && sh) { const y = sh.scrollTop; sh.innerHTML = html; sh.scrollTop = y; }
-    else openSheet(html);
+    return `<div class="sheet-head"><div><h3>${b.key ? 'Eigen workout aanpassen' : 'Eigen workout'}</h3><p>${b.k ? `Voor ${fmtDay(b.k)}` : 'Kies je oefeningen en stel ze in'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <label class="field"><span>Naam</span><input class="input" id="b-name" data-b="name" value="${esc(b.name)}" placeholder="Bv. Upper body thuis"></label>
+      ${b.items.length ? '' : `<div class="b-start">
+        <button type="button" class="b-choice" data-action="b-open-pick" data-tab="voorgesteld">${icon('magic')}<b>Voorgestelde workout</b><span>Kant-en-klaar, thuis of in de gym</span></button>
+        <button type="button" class="b-choice" data-action="b-open-pick" data-tab="spiergroep">${icon('list')}<b>Zelf samenstellen</b><span>Per spiergroep oefeningen kiezen</span></button>
+      </div>`}
+      ${rows}
+      ${b.items.length ? `<div class="row" style="margin:4px 0 6px">
+        <button type="button" class="btn" data-action="b-open-pick" data-tab="spiergroep">${icon('plus')} Oefening</button>
+        <button type="button" class="btn" data-action="b-open-pick" data-tab="voorgesteld">${icon('magic')} Voorgesteld</button>
+      </div>` : ''}
+      <button class="btn primary block lg" data-action="b-save" ${b.items.length ? '' : 'disabled'}>${icon('check')} ${b.key ? 'Opslaan' : b.k ? 'Opslaan en inplannen' : 'Opslaan'}</button>`;
   }
+
+  // ---------- Oefeningen kiezen: voorgesteld of per spiergroep, filter thuis/gym ----------
+  const LIB = C.library;
+  const fitsLoc = (where, loc) => loc === 'alles' || !where || (Array.isArray(where) ? where.includes(loc) : where === loc);
+  const plyoLocked = () => currentPhase() !== 'f3';
+  const groupName = id => (LIB.categories.flatMap(c => c.groups).find(g => g.id === id) || {}).name || id;
+  function groupExercises(group, loc) {
+    return Object.keys(C.exercises).filter(k => {
+      const ex = C.exercises[k];
+      if (group === 'mine') return ex.custom;
+      return !ex.custom && ex.group === group && fitsLoc(ex.where, loc);
+    }).sort((a, c) => C.exercises[a].name.localeCompare(C.exercises[c].name));
+  }
+  function templateMinutes(t) {
+    return Math.max(10, Math.round(sum(t.items.map(it => {
+      const ex = C.exercises[it.ex] || {};
+      const n = (it.sets || 3) * (ex.perSide ? 2 : 1);
+      return n * ((ex.rest || 60) + (it.duration || (ex.kind === 'hold' || ex.kind === 'time' ? ex.duration || 30 : 35)));
+    })) / 60 / 5) * 5);
+  }
+  const whereLabel = w => (Array.isArray(w) ? w : [w]).map(x => x === 'gym' ? 'Gym' : 'Thuis').join(' · ');
+
+  function pickerHtml(b) {
+    const loc = b.loc || 'alles', tab = b.tab || 'spiergroep';
+    const head = `<div class="sheet-head">
+        <button class="icon-btn" data-action="b-back" aria-label="Terug naar je workout">${icon('back')}</button>
+        <div style="flex:1;min-width:0"><h3>${tab === 'voorgesteld' ? 'Voorgestelde workouts' : b.group ? esc(groupName(b.group)) : 'Oefeningen'}</h3><p>${b.items.length} oefening${b.items.length === 1 ? '' : 'en'} gekozen</p></div>
+        <button class="btn primary sm" data-action="b-back">Klaar</button></div>
+      <div class="seg">${[['spiergroep', 'Spiergroepen'], ['voorgesteld', 'Voorgesteld']].map(([v, l]) => `<button class="${tab === v ? 'on' : ''}" data-action="b-tab" data-v="${v}">${l}</button>`).join('')}</div>
+      <div class="chips" style="margin:-4px 0 14px">${[['alles', 'Alles'], ['thuis', 'Thuis'], ['gym', 'Gym']].map(([v, l]) => `<button class="loc-chip ${loc === v ? 'on' : ''}" data-action="b-loc" data-v="${v}">${l}</button>`).join('')}</div>`;
+
+    if (tab === 'voorgesteld') {
+      const list = LIB.templates.filter(t => fitsLoc(t.where, loc));
+      return head + (list.map(t => `<button class="tpl" data-action="b-template" data-id="${t.id}">
+          <span class="ico">${icon(t.icon)}</span>
+          <span class="body"><b>${esc(t.name)}</b><span>${esc(t.desc)}</span>
+            <span class="tpl-meta"><span class="tag">${whereLabel(t.where)}</span><span class="tag">${t.items.length} oefeningen</span><span class="tag">±${templateMinutes(t)} min</span>${t.plyo && plyoLocked() ? '<span class="tag missed">vanaf fase 2 + 3</span>' : ''}</span></span>
+          <span class="end">${icon('plus')}</span></button>`).join('') || '<p class="empty">Geen voorgestelde workouts voor deze plaats.</p>')
+        + `<p class="label" style="margin-top:10px">Na het kiezen kun je elke oefening nog aanpassen of verwijderen.</p>`;
+    }
+
+    if (b.group) {
+      const ids = groupExercises(b.group, loc);
+      const g = LIB.categories.flatMap(c => c.groups).find(x => x.id === b.group);
+      return head + `<button class="link-btn" style="margin:-4px 0 8px" data-action="b-group" data-id="">${icon('chevL')} Alle spiergroepen</button>
+        ${g && g.hint ? `<p class="label" style="margin:0 2px 10px">${esc(g.hint)}</p>` : ''}
+        <section class="card" style="padding:4px 14px">${ids.map(id => {
+          const ex = C.exercises[id], on = b.items.some(i => i.ex === id);
+          return `<div class="list-row">
+            <div class="body"><b>${esc(ex.name)}</b><span>${esc(prescription({ sets: 3 }, ex).replace(/^3 × /, ''))}${ex.where ? ' · ' + whereLabel(ex.where) : ''}</span>
+              ${ex.plyo && plyoLocked() ? '<span class="tag missed" style="margin-top:4px">vanaf fase 2 + 3</span>' : ''}</div>
+            <div class="end"><button class="icon-btn pick-btn ${on ? 'on' : ''}" data-action="b-pick-ex" data-id="${id}" aria-label="${on ? 'Verwijderen' : 'Toevoegen'}">${icon(on ? 'check' : 'plus')}</button></div>
+          </div>`;
+        }).join('') || '<p class="empty">Geen oefeningen voor deze plaats in deze groep.</p>'}</section>`;
+    }
+
+    const mine = groupExercises('mine', loc);
+    return head + LIB.categories.map(c => {
+      const groups = c.groups.map(g => ({ ...g, n: groupExercises(g.id, loc).length })).filter(g => g.n);
+      if (!groups.length) return '';
+      return `<div class="section" style="margin-top:14px"><span>${esc(c.name)}</span></div>
+        <div class="group-grid">${groups.map(g => `<button class="group-tile" data-action="b-group" data-id="${g.id}">
+          <b>${esc(g.name)}</b><span>${esc(g.hint || '')}</span><em>${g.n} oefeningen${c.id === 'power' && plyoLocked() ? ' · vanaf fase 2 + 3' : ''}</em></button>`).join('')}</div>`;
+    }).join('') + `
+      ${mine.length ? `<div class="section" style="margin-top:14px"><span>Mijn oefeningen</span></div><div class="group-grid"><button class="group-tile" data-action="b-group" data-id="mine"><b>Mijn oefeningen</b><span>Zelf gemaakt</span><em>${mine.length} oefeningen</em></button></div>` : ''}
+      <div class="b-add" style="margin-top:14px">
+        ${b.adding ? `<label class="field"><span>Naam van je eigen oefening</span><input class="input" id="b-new-name" placeholder="Bv. Hamstring curl"></label>
+          <div class="seg">${radio('b-kind', 'reps', 'Herhalingen + kg', 'reps')}${radio('b-kind', 'time', 'Op tijd', 'reps')}</div>
+          <button type="button" class="btn block" data-action="b-new-add">${icon('plus')} Toevoegen</button>`
+          : `<button type="button" class="btn ghost block" data-action="b-new-toggle">${icon('plus')} Staat je oefening er niet bij? Maak ze zelf</button>`}
+      </div>`;
+  }
+
+  // Een voorgestelde workout overnemen (naam alleen als je nog geen naam koos)
+  function applyTemplate(id) {
+    const b = S.ui.builder, t = LIB.templates.find(x => x.id === id);
+    if (!t) return;
+    if (!b.name) b.name = t.name;
+    t.items.forEach(ti => {
+      if (!C.exercises[ti.ex]) return;
+      const it = builderItem(ti.ex);
+      if (ti.sets) it.sets = ti.sets;
+      if (ti.reps && it.reps != null) it.reps = ti.reps;
+      if (ti.duration) it.duration = ti.duration;
+      b.items.push(it);
+    });
+    b.view = 'edit';
+    renderBuilder();
+    toast(`${t.name}: ${t.items.length} oefeningen toegevoegd${t.plyo && plyoLocked() ? '. Let op: sprongen pas vanaf fase 2 + 3' : ''}`);
+  }
+
+  function togglePickEx(id) {
+    const b = S.ui.builder;
+    const i = b.items.findIndex(x => x.ex === id);
+    if (i >= 0) b.items.splice(i, 1); else b.items.push(builderItem(id));
+    renderBuilder();
+  }
+
+  const keepName = () => { const n = $('#b-name'); if (n && S.ui.builder) S.ui.builder.name = n.value; };
 
   function builderStep(i, f, d) {
     const it = S.ui.builder.items[i];
@@ -1044,12 +1152,14 @@
     S.ui.builder.items.push(builderItem(key));
     S.ui.builder.adding = false;
     renderBuilder();
+    toast(`${name} toegevoegd`);
   }
 
   async function saveBuilder() {
     const b = S.ui.builder;
-    b.name = ($('#b-name').value || '').trim();
-    if (!b.name) { toast('Geef je workout een naam'); $('#b-name').focus(); return; }
+    keepName();
+    b.name = (b.name || '').trim();
+    if (!b.name) { toast('Geef je workout een naam'); const n = $('#b-name'); if (n) n.focus(); return; }
     if (!b.items.length) { toast('Voeg minstens één oefening toe'); return; }
     const items = b.items.map(it => ({ ex: it.ex, sets: Math.max(1, num(it.sets) || 1), reps: num(it.reps), duration: num(it.duration), weight: num(it.weight) }));
     // Nieuwe eigen oefeningen bewaren
@@ -2338,8 +2448,16 @@
     'edit-custom': el => openBuilder(null, el.dataset.key),
     'delete-custom': el => deleteCustom(el.dataset.key),
     'b-step': el => builderStep(+el.dataset.i, el.dataset.f, +el.dataset.d),
-    'b-remove': el => { S.ui.builder.name = $('#b-name').value; S.ui.builder.items.splice(+el.dataset.i, 1); renderBuilder(); },
-    'b-new-add': () => { S.ui.builder.name = $('#b-name').value; builderAddNew(); },
+    'b-remove': el => { keepName(); S.ui.builder.items.splice(+el.dataset.i, 1); renderBuilder(); },
+    'b-open-pick': el => { keepName(); Object.assign(S.ui.builder, { view: 'pick', tab: el.dataset.tab, group: null }); renderBuilder(); },
+    'b-back': () => { S.ui.builder.view = 'edit'; renderBuilder(); },
+    'b-tab': el => { Object.assign(S.ui.builder, { tab: el.dataset.v, group: null }); renderBuilder(); },
+    'b-loc': el => { S.ui.builder.loc = el.dataset.v; renderBuilder(); },
+    'b-group': el => { S.ui.builder.group = el.dataset.id || null; renderBuilder(); const sh = $('.sheet'); if (sh) sh.scrollTop = 0; },
+    'b-pick-ex': el => togglePickEx(el.dataset.id),
+    'b-template': el => applyTemplate(el.dataset.id),
+    'b-new-toggle': () => { S.ui.builder.adding = true; renderBuilder(); },
+    'b-new-add': builderAddNew,
     'b-save': saveBuilder,
     'undo': async () => { if (!S.ui.undo) return; await setSetting('overrides', S.ui.undo); S.ui.undo = null; $('#toast').hidden = true; render({ keepScroll: true }); toast('Ongedaan gemaakt'); },
     'wo-pause': () => { S.ui.woView = 'picker'; render(); },
