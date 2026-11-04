@@ -407,7 +407,7 @@
       planFor(d).forEach(it => {
         if (it.type !== 'session') return;
         const s = C.sessions[it.id];
-        if (!s || !it.confirmed || s.catchUp === false || itemDone(it, k)) return;
+        if (!s || !it.confirmed || it.extra || s.catchUp === false || itemDone(it, k)) return;
         if (S.workouts.some(w => w.sessionKey === it.id && w.date > k && w.date <= tk)) return;
         out.push({ date: k, item: it });
       });
@@ -1003,7 +1003,7 @@
     if (!items.length) return off.some(o => isSkip(o.reason)) ? 'neutral' : 'rest';
     if (items.some(it => doneOrCaughtUp(it, k))) return 'active';
     if (k === tk) return 'pending';
-    if (items.some(it => it.confirmed && !doneOrCaughtUp(it, k))) return 'broken';
+    if (items.some(it => it.confirmed && !it.extra && !doneOrCaughtUp(it, k))) return 'broken';
     return 'neutral';
   }
   function streakInfo() {
@@ -1217,17 +1217,20 @@
   const planStart = () => S.settings.phaseSince || phaseObj(currentPhase()).start;
 
   // Ingehaald = dezelfde sessie later in dezelfde week toch gedaan
+  // Alleen een sessie uit je schema kan ingehaald worden. Iets wat je zelf toevoegt niet,
+  // en een latere workout die op zijn eigen dag al gepland stond, telt daar en niet hier.
   function caughtUp(it, k) {
-    if (it.type !== 'session') return false;
+    if (it.type !== 'session' || it.extra) return false;
     const end = dkey(addDays(startOfWeek(parseKey(k)), 6));
-    return S.workouts.some(w => w.sessionKey === it.id && w.date > k && w.date <= end);
+    return S.workouts.some(w => w.sessionKey === it.id && w.date > k && w.date <= end
+      && !planFor(parseKey(w.date)).some(x => x.type === 'session' && x.id === it.id));
   }
   const doneOrCaughtUp = (it, k) => itemDone(it, k) || caughtUp(it, k);
 
   // Gemist = een in te halen sessie in het verleden, vanaf de start van de huidige fase, die niet gedaan is
   // Alleen een bevestigde sessie kan "gemist" zijn; een voorstel dat je niet volgde, is geen mislukking
   function isMissed(it, k) {
-    return it.type === 'session' && it.confirmed && C.sessions[it.id] && C.sessions[it.id].catchUp !== false
+    return it.type === 'session' && it.confirmed && !it.extra && C.sessions[it.id] && C.sessions[it.id].catchUp !== false
       && k < dkey(today()) && k >= planStart() && !doneOrCaughtUp(it, k);
   }
 
@@ -1238,7 +1241,7 @@
     if (rec) return recStatus(rec);
     if (caughtUp(it, k)) return { cls: 'done', label: 'Ingehaald' };
     if (isMissed(it, k)) return { cls: 'missed', label: 'Gemist' };
-    if (k < dkey(today())) return { cls: 'skip', label: it.confirmed ? 'Niet gedaan' : 'Voorstel niet gedaan' };
+    if (k < dkey(today())) return { cls: 'skip', label: it.extra ? 'Nog niet gelogd' : it.confirmed ? 'Niet gedaan' : 'Voorstel niet gedaan' };
     return it.confirmed ? { cls: 'confirmed', label: 'Bevestigd' } : { cls: 'suggested', label: 'Voorgesteld' };
   }
   // Tekst bij een weggehaald item
