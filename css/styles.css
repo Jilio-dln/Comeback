@@ -892,6 +892,27 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .add-row.two { grid-template-columns: 1fr auto; }
 .sheet .eyebrow { margin-bottom: 4px; }
 
+/* ---------- Blessures ---------- */
+.inj-hero { padding: 0; overflow: hidden; }
+.inj-hero > *:not(.inj-hero-top) { margin-left: 18px; margin-right: 18px; }
+.inj-hero > .chart-svg, .inj-hero > .empty { margin-bottom: 16px; }
+.inj-hero-top { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 18px 18px 14px; border: 0; background: transparent; color: var(--ink); text-align: left; }
+.inj-name { font-size: 26px; font-weight: 600; letter-spacing: -.025em; line-height: 1.1; }
+.inj-pain { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
+.inj-pain .num { margin-top: 6px; }
+button.inj-plan { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; color: var(--ink); cursor: pointer; }
+.inj-plan b { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.quote-card { position: relative; padding-left: 22px; }
+.quote-card::before { content: ""; position: absolute; left: 0; top: 18px; bottom: 18px; width: 2px; background: var(--accent); border-radius: 1px; }
+.quote-text { font-size: 15px; font-weight: 500; line-height: 1.4; margin: 6px 0 8px; letter-spacing: -.005em; }
+.empty-state { text-align: center; padding: 30px 20px 20px; }
+.empty-state .es-ico { width: 72px; height: 72px; margin: 0 auto 16px; border-radius: 22px; display: grid; place-items: center; background: var(--card-2); color: var(--accent-text); border: 1px solid var(--border); }
+.empty-state .es-ico .ic { width: 30px; height: 30px; }
+.empty-state h2 { font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+.empty-state p { font-size: 14px; color: var(--muted); margin: 8px auto 18px; max-width: 280px; }
+.wd-pick { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-bottom: 8px; }
+.wd-pick .tchip { padding: 0; }
+
 /* ---------- Inloggen ---------- */
 .auth { min-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 60px); display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding-top: 12px; }
 .auth-brand { display: flex; flex-direction: column; gap: 6px; }

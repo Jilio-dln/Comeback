@@ -97,6 +97,7 @@
     list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
     arrowL: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
     arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    shield: '<path d="M12 3.5l7 2.8v5.2c0 4.3-3 7.6-7 9-4-1.4-7-4.7-7-9V6.3z"/><path d="M9 12l2 2 4-4"/>',
     magic: '<path d="M5 19L17 7M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>',
     eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
     grip: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="2.6"/>',
@@ -163,7 +164,7 @@
   // Een traject: { id, location, label, side, status, start, end, notes, program, painLimit,
   //               agreements: [{ id, date, text }], evals: [{ id, date, label }],
   //               checklist: [{ id, text, done }], maintenance: [sessie-ids], linked: [sessie-ids] }
-  const LOC_LABEL = { kuit: 'Kuit', achillespees: 'Achillespees', hamstring: 'Hamstring', knie: 'Knie', enkel: 'Enkel', andere: 'Andere klacht' };
+  const LOC_LABEL = { kuit: 'Kuit', achillespees: 'Achillespees', hamstring: 'Hamstring', lies: 'Lies', knie: 'Knie', enkel: 'Enkel', voet: 'Voet', heup: 'Heup', rug: 'Rug', schouder: 'Schouder', andere: 'Andere' };
   const SIDE_LABEL = { links: 'links', rechts: 'rechts', beide: 'links en rechts', nvt: 'niet van toepassing' };
   const STATUS_LABEL = { actief: 'Actief', opbouw: 'In opbouw', afgerond: 'Afgerond' };
   const GOAL_LABEL = { herstellen: 'Herstellen', conditie: 'Voetbalconditie opbouwen', fit: 'Fit blijven' };
@@ -277,6 +278,18 @@
     daily.slice().reverse().forEach(id => {
       if (!programOn((C.sessions[id] || {}).program, id)) return;
       if (!items.some(it => it.type === 'session' && it.id === id)) items = [{ type: 'session', id, note: 'Dagelijks in deze fase' }, ...items];
+    });
+    // Herstelplannen: wekelijks ingeplande workouts van een lopende blessure (of als onderhoud na herstel)
+    if (opts.rehab !== false) injuries().forEach(inj => {
+      const done = inj.status === 'afgerond';
+      (inj.schedule || []).forEach(sc => {
+        if (!C.sessions[sc.id] || !(sc.days || []).includes(wd)) return;
+        if (sc.since && k < sc.since) return;
+        if (inj.start && k < inj.start) return;
+        // Na afronden: alleen wat je als onderhoud houdt; daarvoor gold het plan gewoon (geschiedenis blijft kloppen)
+        if (done && inj.end && k > inj.end && !(inj.maintenance || []).includes(sc.id)) return;
+        if (!items.some(it => it.type === 'session' && it.id === sc.id)) items.push({ type: 'session', id: sc.id, note: done && inj.end && k > inj.end ? `Onderhoud · ${injuryLabel(inj)}` : `Herstel · ${injuryLabel(inj)}` });
+      });
     });
     if (!items.length) items =[{ type: 'rest', note: covered && wd === 0 ? 'Geen match dit weekend' : undefined }];
     return items;
@@ -664,14 +677,15 @@
   /* ================= Router ================= */
   // Hoofdtabs (zonder terugknop) en subschermen (met terugknop naar hun tab)
   const ROUTES = {
-    vandaag: { label: 'Home', icon: 'home', render: () => renderToday() },
+    vandaag: { label: 'Vandaag', icon: 'home', render: () => renderToday() },
     planning: { label: 'Planning', icon: 'calendar', render: () => renderPlanning() },
     workout: { label: 'Workout', icon: 'dumbbell', render: () => renderWorkout() },
     statistieken: { label: 'Voortgang', icon: 'chart', render: () => renderStats() },
-    account: { label: 'Account', icon: 'user', render: () => renderAccount() }
+    blessures: { label: 'Blessures', icon: 'heart', render: () => renderInjuries() }
   };
-  const SUBS = { matchen: { parent: 'account', render: () => renderMatches() }, blessure: { parent: 'account', render: () => renderInjury() } };
-  const ALIASES = { profiel: 'account', kalender: 'planning' };
+  // Account open je via je avatar op Vandaag (geen eigen tab)
+  const SUBS = { account: { parent: null, render: () => renderAccount() }, matchen: { parent: 'account', render: () => renderMatches() }, blessure: { parent: 'blessures', render: () => renderInjury() } };
+  const ALIASES = { profiel: 'account', kalender: 'planning', voortgang: 'statistieken' };
   let lastRoute = null;
   const currentRoute = () => {
     const r = location.hash.slice(1);
@@ -729,9 +743,11 @@
     return `${cap(DAY_S[d.getDay()])} ${d.getDate()}`;
   };
   // Soort: herstel, kracht, eigen workout, clubtraining, match of rust
-  const actKindOf = id => { const s = C.sessions[id] || {}; return s.program ? 'Herstel' : s.custom ? 'Eigen workout' : 'Kracht'; };
+  // Een eigen workout die bij een blessure hoort, telt als herstel
+  const isRehab = id => injuries().some(i => (i.linked || []).includes(id));
+  const actKindOf = id => { const s = C.sessions[id] || {}; return s.program || isRehab(id) ? 'Herstel' : s.custom ? 'Eigen workout' : 'Kracht'; };
   // Kleurgroep (stip en label): kracht, herstel, training, match, rust
-  const itemType = it => it.type === 'session' ? (C.sessions[it.id] && C.sessions[it.id].program ? 'herstel' : 'kracht')
+  const itemType = it => it.type === 'session' ? (C.sessions[it.id] && (C.sessions[it.id].program || isRehab(it.id)) ? 'herstel' : 'kracht')
     : it.type === 'rest' ? 'rust' : SIMPLE.includes(it.type) ? 'herstel' : it.type;
   const actKind = it => it.type === 'session' ? (actKindOf(it.id) === 'Kracht' ? 'Fitness' : actKindOf(it.id))
     : ({ training: 'Voetbal', match: 'Match', rest: 'Rust', kine: 'Kine', recovery: 'Herstel', custom: 'Eigen' }[it.type] || '');
@@ -1514,9 +1530,10 @@
     };
   }
 
-  function openBuilder(k, key) {
+  // injury gezet = herstelplan voor die blessure samenstellen
+  function openBuilder(k, key, injury = null) {
     const cs = (S.settings.customSessions || {})[key];
-    S.ui.builder = { k, key: key || null, name: cs ? cs.name : '', items: cs ? clone(cs.items) : [], adding: false, view: 'edit', tab: 'spiergroep', loc: 'alles', group: null };
+    S.ui.builder = { k, key: key || null, injury, name: cs ? cs.name : '', items: cs ? clone(cs.items) : [], adding: false, view: 'edit', tab: 'spiergroep', loc: 'alles', group: null };
     renderBuilder(true);
   }
 
@@ -1548,7 +1565,7 @@
         </div>
       </div>`;
     }).join('');
-    return `<div class="sheet-head"><div><h3>${b.key ? 'Eigen workout aanpassen' : 'Eigen workout'}</h3><p>${b.k ? `Voor ${fmtDay(b.k)}` : 'Kies je oefeningen en stel ze in'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+    return `<div class="sheet-head"><div><h3>${b.key ? 'Eigen workout aanpassen' : b.injury ? 'Herstelplan' : 'Eigen workout'}</h3><p>${b.injury ? `Oefeningen voor ${esc(injuryLabel(injuryById(b.injury)))}, zoals je kinesist ze voorschrijft` : b.k ? `Voor ${fmtDay(b.k)}` : 'Kies je oefeningen en stel ze in'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <label class="field"><span>Naam</span><input class="input" id="b-name" data-b="name" value="${esc(b.name)}" placeholder="Bv. Upper body thuis"></label>
       ${b.items.length ? '' : `<div class="b-start">
         <button type="button" class="b-choice" data-action="b-open-pick" data-tab="voorgesteld">${icon('magic')}<b>Voorgestelde workout</b><span>Kant-en-klaar, thuis of in de gym</span></button>
@@ -1700,6 +1717,14 @@
     await setSetting('customSessions', cs);
     registerCustom();
     S.ui.builder = null;
+    if (!b.key && b.injury) {
+      await updateInjury(b.injury, i => { i.linked = [...new Set([...(i.linked || []), key])]; });
+      S.ui.injuryId = b.injury;
+      render({ keepScroll: true });
+      openRehabPlan(key);
+      toast(`${b.name} bewaard. Kies nu wanneer je ze doet.`);
+      return;
+    }
     if (!b.key && b.k) { addSessionTo(b.k, key, ''); return; }
     closeSheet();
     render({ keepScroll: true });
@@ -2235,7 +2260,7 @@
     const tab = S.ui.statsTab || 'overzicht';
     const body = { overzicht: statsOverview, herstel: statsRecovery, kracht: statsStrength, matchen: statsMatches }[tab]();
     main.innerHTML = `
-      ${pageHead('Statistieken')}
+      <header class="page-head"><div><span class="eyebrow">Het grotere plaatje</span><h1>Jouw vooruitgang.</h1><p>Kleine stappen. Zichtbaar resultaat.</p></div></header>
       <div class="seg" role="tablist">${STATS_TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" role="tab" aria-selected="${k === tab}" data-action="stats-tab" data-t="${k}">${l}</button>`).join('')}</div>
       ${body}`;
   }
@@ -2494,7 +2519,7 @@
     const lastExp = S.settings.lastExport;
 
     main.innerHTML = `
-      ${pageHead('Account')}
+      ${subHead('Account', 'vandaag')}
       <section class="card">
         <div class="profile-top">
           <button class="photo-btn" data-action="pick-photo" aria-label="Profielfoto kiezen"><span class="avatar lg">${avatarInner()}</span><em>${icon('camera')}</em></button>
@@ -2522,17 +2547,9 @@
         <p class="label">Een evaluatiedatum is een moment om te bekijken waar je staat, geen automatisch oordeel.</p>
       </section>
 
-      <div class="section"><span>Blessures & herstel</span></div>
+      <div class="section"><span>Blessures</span></div>
       <section class="card">
-        ${act.length ? '' : `<div class="none-row">${icon('check')}<div><b>Geen actieve blessure</b><span>Home toont geen blessurevragen of herstelkaart.</span></div></div>`}
-        ${list.map(i => `<button class="list-row tap row-btn" data-action="open-injury" data-id="${i.id}">
-          <span class="ico">${icon(i.program ? 'calf' : 'heart')}</span>
-          <span class="body"><b>${esc(injuryLabel(i))}</b><span>${esc([injurySideText(i), `sinds ${i.start ? fmtFull(i.start) : '?'}`, i.end ? `afgerond ${fmtFull(i.end)}` : ''].filter(Boolean).join(' · '))}</span></span>
-          <span class="end"><span class="tag ${i.status === 'afgerond' ? '' : 'adapted'}">${STATUS_LABEL[i.status]}</span>${icon('chevR')}</span></button>`).join('')}
-        <div class="row" style="margin-top:12px">
-          <button class="btn" data-action="inj-new">${icon('plus')} Nieuw traject</button>
-          ${act.length ? `<button class="btn" data-action="inj-none">Geen actieve blessure</button>` : ''}
-        </div>
+        <button class="list-row tap row-btn" data-action="go" data-to="blessures"><span class="ico">${icon('heart')}</span><span class="body"><b>Blessures en herstelplannen</b><span>${act.length ? `${act.length} actief: ${esc(act.map(injuryLabel).join(', '))}` : 'Geen actieve blessure'}</span></span><span class="end">${icon('chevR')}</span></button>
       </section>
 
       <div class="section"><span>Planning</span></div>
@@ -2615,16 +2632,180 @@
     await setSetting('injuries', list);
   }
 
-  async function newInjury() {
-    const inj = { id: 'inj' + newId(), location: 'andere', label: '', side: 'nvt', status: 'actief', start: dkey(today()), end: null, notes: '', program: null, painLimit: null, agreements: [], evals: [], checklist: [], maintenance: [], linked: [] };
+  // Nieuwe blessure: korte sheet met het belangrijkste, de rest vul je later aan
+  function openNewInjury() {
+    S.ui.newInj = { location: '', side: 'nvt', status: 'actief' };
+    renderNewInjury();
+  }
+  function renderNewInjury() {
+    const n = S.ui.newInj;
+    const progFree = !injuries().some(i => i.program === 'kuitpees' && i.status !== 'afgerond');
+    openSheet(`<form id="inj-form">
+      <div class="sheet-head"><div><span class="eyebrow">Nieuwe blessure</span><h3>Wat is er aan de hand?</h3><p>Je vorige blessures en metingen blijven apart bewaard.</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <p class="field-label">Plaats</p>
+      <div class="type-chips">${Object.entries(LOC_LABEL).map(([v, l]) => `<button type="button" class="tchip ${n.location === v ? 'on' : ''}" data-action="ni-pick" data-f="location" data-v="${v}" aria-pressed="${n.location === v}">${l}</button>`).join('')}</div>
+      <p class="field-label">Kant</p>
+      <div class="seg">${Object.entries({ links: 'Links', rechts: 'Rechts', beide: 'Beide', nvt: 'N.v.t.' }).map(([v, l]) => `<button type="button" class="${n.side === v ? 'on' : ''}" data-action="ni-pick" data-f="side" data-v="${v}" aria-pressed="${n.side === v}">${l}</button>`).join('')}</div>
+      <p class="field-label">Status</p>
+      <div class="seg">${[['actief', 'Actief'], ['opbouw', 'In opbouw']].map(([v, l]) => `<button type="button" class="${n.status === v ? 'on' : ''}" data-action="ni-pick" data-f="status" data-v="${v}" aria-pressed="${n.status === v}">${l}</button>`).join('')}</div>
+      <div class="form-grid">
+        <label class="field"><span>Sinds</span><input class="input" type="date" name="start" value="${dkey(today())}" max="${dkey(today())}"></label>
+        <label class="field"><span>Max pijn (0–10)</span><input class="input" name="painLimit" inputmode="numeric" placeholder="Optioneel"></label>
+      </div>
+      <label class="field"><span>Naam (optioneel)</span><input class="input" name="label" maxlength="40" placeholder="${esc(LOC_LABEL[n.location] || 'Bv. Rechterkuit')}"></label>
+      <label class="field"><span>Afspraak met je kinesist (optioneel)</span><input class="input" name="agreement" maxlength="160" placeholder="Bv. 2 weken geen sprints"></label>
+      ${progFree && ['kuit', 'achillespees'].includes(n.location) ? `<label class="check"><input type="checkbox" name="program"><span class="box">${icon('check')}</span><span class="t">Kuit- en peesprogramma uit je schema gebruiken<small>Holds, kuitkracht en veerkracht in fases, zoals in je oorspronkelijke plan</small></span></label>` : ''}
+      <button class="btn accent block lg" type="submit">${icon('check')} Blessure toevoegen</button>
+      <p class="label" style="margin-top:10px">Een grens of datum is een persoonlijke afspraak, geen medische regel of vrijgave.</p>
+    </form>`);
+  }
+  async function saveNewInjury(form) {
+    const n = S.ui.newInj, f = new FormData(form);
+    if (!n.location) { toast('Kies eerst waar de blessure zit'); return; }
+    const start = f.get('start') || dkey(today());
+    const lim = num(f.get('painLimit'));
+    const agr = (f.get('agreement') || '').trim();
+    const inj = {
+      id: 'inj' + newId(), location: n.location, label: (f.get('label') || '').trim(), side: n.side, status: n.status, start, end: null, notes: '',
+      program: f.get('program') ? 'kuitpees' : null, painLimit: lim == null ? null : clamp(Math.round(lim), 0, 10),
+      agreements: agr ? [{ id: newId(), date: dkey(today()), text: agr }] : [], evals: [], checklist: [], maintenance: [], linked: [], schedule: []
+    };
     await setSetting('injuries', [...injuries(), inj]);
+    if (inj.program) { await setSetting('phase', C.phases[0].id); await setSetting('phaseSince', start); }
+    closeSheet();
     S.ui.injuryId = inj.id;
     go('blessure');
+    toast(`${injuryLabel(inj)} toegevoegd. Vul je pijn dagelijks in op Vandaag.`);
+  }
+
+  // Herstelplan van een blessure: workouts die je wekelijks of eenmalig inplant
+  const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
+  const daysText = days => days && days.length ? WD_ORDER.filter(d => days.includes(d)).map(d => DAY_S[d]).join(' · ') : 'niet wekelijks ingepland';
+  function rehabPlanHtml(inj) {
+    const done = inj.status === 'afgerond';
+    const linked = (inj.linked || []).filter(id => C.sessions[id]);
+    const sch = id => (inj.schedule || []).find(s => s.id === id);
+    const others = Object.keys(C.sessions).filter(id => C.sessions[id].custom && !linked.includes(id));
+    return `<p class="small muted" style="margin-bottom:6px">${done
+        ? 'Wat je als onderhoud houdt, blijft in je planning staan. De rest verdwijnt, je geschiedenis niet.'
+        : 'Stel je oefeningen samen zoals je kinesist ze voorschrijft en plan ze in. De app schrijft zelf geen behandeling voor.'}</p>
+      ${linked.map(id => {
+        const s = sch(id), keep = (inj.maintenance || []).includes(id);
+        return `<div class="list-row"><div class="ico">${icon('heart')}</div>
+          <div class="body"><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span><span>${done ? (keep ? `Onderhoud · ${daysText(s && s.days)}` : 'Niet meer ingepland') : esc(daysText(s && s.days))}</span></div>
+          <div class="end"><button class="btn sm" data-action="rehab-plan" data-id="${id}">${icon('calendar')} Inplannen</button></div></div>`;
+      }).join('') || `<p class="empty">Nog geen herstelplan.</p>`}
+      <div class="row" style="margin-top:10px"><button class="btn" data-action="rehab-new">${icon('plus')} Oefeningen samenstellen</button></div>
+      ${others.length ? `<details class="more"><summary>Bestaande workout koppelen</summary>
+        ${others.map(id => `<label class="check"><input type="checkbox" data-change="inj-link" value="${id}"><span class="box">${icon('check')}</span><span class="t">${esc(sessionTitle(id))}<small>${esc(sessionDesc(id))}</small></span></label>`).join('')}</details>` : ''}`;
+  }
+
+  function openRehabPlan(id) {
+    const inj = injuryById(S.ui.injuryId); if (!inj || !C.sessions[id]) return;
+    const s = (inj.schedule || []).find(x => x.id === id) || { days: [] };
+    S.ui.rehabDays = [...(s.days || [])];
+    const keep = (inj.maintenance || []).includes(id);
+    openSheet(`<div class="sheet-head"><div><span class="eyebrow">Herstelplan · ${esc(injuryLabel(inj))}</span><h3>${esc(sessionTitle(id))}</h3><p>${esc(sessionDesc(id))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <p class="field-label">Elke week op</p>
+      <div class="wd-pick" id="wd-pick">${WD_ORDER.map(d => `<button type="button" class="tchip ${S.ui.rehabDays.includes(d) ? 'on' : ''}" data-action="wd-toggle" data-d="${d}" aria-pressed="${S.ui.rehabDays.includes(d)}" aria-label="${DAY[d]}">${cap(DAY_S[d])}</button>`).join('')}</div>
+      <p class="label" style="margin:2px 2px 12px">Verschijnt als voorstel in je planning zolang de blessure loopt, vanaf vandaag. Verplaatsen of overslaan kan per dag.</p>
+      <label class="check ${keep ? 'on' : ''}"><input type="checkbox" id="rehab-keep" ${keep ? 'checked' : ''}><span class="box">${icon('check')}</span><span class="t">Als onderhoud houden na herstel<small>Blijft ingepland als je de blessure afrondt</small></span></label>
+      <button class="btn accent block lg" data-action="rehab-save" data-id="${id}">${icon('check')} Bewaren</button>
+      <p class="field-label" style="margin-top:20px">Of één keer</p>
+      <div class="add-row two"><input class="input" type="date" id="rehab-date" value="${dkey(today())}" aria-label="Datum"><button class="btn" data-action="rehab-once" data-id="${id}">${icon('plus')} Inplannen</button></div>
+      <details class="more"><summary>Meer opties</summary>
+        <div class="menu-list">
+          <button class="menu-btn" data-action="edit-custom" data-key="${id}">${icon('edit')}<span><b>Oefeningen aanpassen</b></span></button>
+          <button class="btn danger block" data-action="rehab-unlink" data-id="${id}">Loskoppelen van deze blessure</button>
+        </div>
+      </details>`);
+  }
+
+  async function saveRehabPlan(id) {
+    const days = S.ui.rehabDays || [];
+    const keep = !!($('#rehab-keep') || {}).checked;
+    await updateInjury(S.ui.injuryId, i => {
+      const list = (i.schedule || []).filter(s => s.id !== id);
+      const prev = (i.schedule || []).find(s => s.id === id);
+      if (days.length) list.push({ id, days: [...days].sort(), since: prev && prev.since ? prev.since : dkey(today()) });
+      i.schedule = list;
+      const m = new Set(i.maintenance || []); keep ? m.add(id) : m.delete(id); i.maintenance = [...m];
+      i.linked = [...new Set([...(i.linked || []), id])];
+    });
+    closeSheet();
+    render({ keepScroll: true });
+    toast(days.length ? `${sessionTitle(id)}: elke ${daysText(days)}` : `${sessionTitle(id)}: niet wekelijks ingepland`);
+  }
+
+  // Blessures-tab: wat nu loopt, je pijn, je herstelplan en je afspraken; afgeronde blessures eronder
+  function painSeries(inj, n = 7) {
+    const t = today();
+    return Array.from({ length: n }, (_, i) => {
+      const d = addDays(t, i - n + 1), c = checkFor(dkey(d));
+      const vals = injurySides(inj).map(s => checkVal(c, inj.id, 'pain', s)).filter(v => v != null);
+      return { label: DAY_LETTER[d.getDay()], v: vals.length ? Math.max(...vals) : null };
+    });
+  }
+  function injuryHero(inj) {
+    const tk = dkey(today()), c = checkFor(tk);
+    const vals = injurySides(inj).map(s => checkVal(c, inj.id, 'pain', s)).filter(v => v != null);
+    const painNow = vals.length ? Math.max(...vals) : null;
+    const series = painSeries(inj);
+    const has = series.some(x => x.v != null);
+    const agr = latestAgreement(inj);
+    const lim = num(inj.painLimit);
+    const plan = inj.program ? `${phaseObj(currentPhase()).label} · ${phaseObj(currentPhase()).title}`
+      : (inj.schedule || []).filter(s => C.sessions[s.id]).map(s => `${sessionTitle(s.id)} · ${daysText(s.days)}`).join(' — ');
+    const planSub = inj.program ? phaseObj(currentPhase()).summary : plan ? 'Staat als voorstel in je planning' : 'Stel je oefeningen samen en plan ze in';
+    return `<section class="card inj-hero">
+        <button class="inj-hero-top" data-action="open-injury" data-id="${inj.id}" aria-label="${esc(injuryLabel(inj))}: details">
+          <span class="eyebrow">${esc(STATUS_LABEL[inj.status])}  /  sinds ${esc(fmtShort(inj.start || tk))}</span>
+          <span class="inj-name">${esc(injuryLabel(inj))}</span>
+          <span class="muted small">${esc([injurySideText(inj), inj.notes].filter(Boolean).join(' · ') || 'Tik voor details en afspraken')}</span>
+        </button>
+        <div class="inj-pain">
+          <div><span class="label">Pijn vandaag</span><div class="num md">${painNow == null ? '–' : painNow}<span class="unit">/ 10${lim != null ? ` · afspraak max ${lim}` : ''}</span></div></div>
+          <button class="btn ${painNow == null ? 'accent' : ''} sm" data-action="open-check">${painNow == null ? 'Invullen' : 'Aanpassen'}</button>
+        </div>
+        <p class="label" style="margin-top:14px;margin-bottom:4px">Pijn, laatste 7 dagen</p>
+        ${has ? Charts.line({ labels: series.map(x => x.label), series: [{ color: 'var(--accent)', values: series.map(x => x.v) }], step: false, height: 96, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10] }) : '<p class="empty">Nog geen pijnscores. Vul ze in bij je dagelijkse check.</p>'}
+      </section>
+      <button class="card inj-plan" data-action="open-injury" data-id="${inj.id}">
+        <span class="label">Herstelplan</span><b>${esc(plan || 'Nog geen plan')}</b><span class="muted small">${esc(planSub)}</span>
+      </button>
+      ${agr ? `<section class="card quote-card"><span class="label">Afspraak met je kinesist</span><p class="quote-text">“${esc(agr.text)}”</p><span class="label">${esc(fmtFull(agr.date))}</span></section>` : ''}`;
+  }
+
+  function renderInjuries() {
+    const list = injuries().slice().sort((a, b) => String(b.start).localeCompare(String(a.start)));
+    const act = list.filter(i => i.status !== 'afgerond'), past = list.filter(i => i.status === 'afgerond');
+    const maint = past.flatMap(i => (i.maintenance || []).filter(id => C.sessions[id] || String(id).includes(':')));
+    main.innerHTML = `
+      <header class="page-head"><div><span class="eyebrow">Zorg voor je basis</span><h1>Herstel is progressie.</h1><p>Luister naar je lichaam. Bouw bewust op.</p></div>
+        <button class="icon-btn" data-action="inj-new" aria-label="Blessure toevoegen">${icon('plus')}</button></header>
+      ${act.map(injuryHero).join('')}
+      ${!list.length ? `<section class="card empty-state">
+          <span class="es-ico">${icon('shield')}</span>
+          <h2>Nog geen blessures.</h2>
+          <p>Houden zo. Je kunt hier klachten en je herstel bijhouden.</p>
+          <button class="btn accent block lg" data-action="inj-new">${icon('plus')} Blessure toevoegen</button>
+        </section>` : !act.length ? `<section class="card empty-state">
+          <span class="es-ico">${icon('check')}</span>
+          <h2>Geen actieve blessure.</h2>
+          <p>Je traint zonder blessure. ${maint.length ? `${maint.length} oefening${maint.length === 1 ? '' : 'en'} blijf${maint.length === 1 ? 't' : 'en'} als onderhoud in je planning.` : 'Vandaag toont geen blessurevragen.'}</p>
+          <button class="btn block" data-action="inj-new">${icon('plus')} Nieuwe blessure</button>
+        </section>` : ''}
+      ${past.length ? `<div class="section"><span>Hersteld</span><span>${past.length}</span></div>
+        <section class="card">${past.map(i => `<button class="list-row tap row-btn" data-action="open-injury" data-id="${i.id}">
+          <span class="body"><b>${esc(injuryLabel(i))}</b><span>${esc([injurySideText(i), `${fmtShort(i.start)} – ${i.end ? fmtFull(i.end) : '?'}`].filter(Boolean).join(' · '))}</span></span>
+          <span class="end"><span class="tag">Hersteld</span>${icon('chevR')}</span></button>`).join('')}</section>` : ''}
+      ${act.length > 0 ? `<button class="btn ghost block" style="margin-top:6px" data-action="inj-none">Geen actieve blessure meer</button>` : ''}
+      <p class="footer-note">Pijngrenzen, fases en evaluatiedata zijn persoonlijke afspraken. De app geeft geen medische vrijgave.</p>`;
   }
 
   // Programma-oefeningen die je na afronden als onderhoud kan houden
   function maintenanceOptions(inj) {
-    if (!inj.program) return [];
+    if (!inj.program) return (inj.linked || []).filter(id => C.sessions[id]).map(id => ({ id, label: sessionTitle(id) }));
     const opts = Object.keys(C.sessions).filter(id => C.sessions[id].program === inj.program).map(id => ({ id, label: sessionTitle(id) }));
     Object.keys(C.sessions).forEach(sid => (C.sessions[sid].items || []).forEach(it => {
       if (it.program === inj.program) opts.push({ id: `${sid}:${it.ex}`, label: `${C.exercises[it.ex].name} (in ${sessionTitle(sid)})` });
@@ -2634,13 +2815,13 @@
 
   function renderInjury() {
     const inj = injuryById(S.ui.injuryId);
-    if (!inj) { location.hash = 'account'; return; }
+    if (!inj) { location.hash = 'blessures'; return; }
     const done = inj.status === 'afgerond';
     const sel = (name, opts, cur) => `<select class="select" data-change="inj" name="${name}">${Object.entries(opts).map(([v, l]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
     const custom = Object.keys(C.sessions).filter(id => !C.sessions[id].program);
     const crit = inj.checklist || [];
     main.innerHTML = `
-      ${subHead(esc(injuryLabel(inj)), 'account', `${STATUS_LABEL[inj.status]}${inj.start ? ' · sinds ' + fmtFull(inj.start) : ''}`)}
+      ${subHead(esc(injuryLabel(inj)), 'blessures', `${STATUS_LABEL[inj.status]}${inj.start ? ' · sinds ' + fmtFull(inj.start) : ''}`)}
       ${inj.program ? '' : `<p class="hint">${icon('info')}<span>De app stelt geen behandelprogramma voor. Leg je oefeningen en afspraken vast zoals je ze met je kinesist maakt.</span></p>`}
       <section class="card">
         <div class="form-grid">
@@ -2691,13 +2872,11 @@
         <p class="label" style="margin-top:8px">Afvinken is een notitie voor jezelf. Het is geen medische vrijgave om (volledig) te spelen.</p>
       </section>
 
-      <div class="section"><span>${inj.program ? 'Hersteloefeningen' : 'Gekoppelde oefeningen'}</span></div>
+      <div class="section"><span>Herstelplan</span></div>
       <section class="card">
         ${inj.program ? `<p class="small muted" style="margin-bottom:8px">${done ? 'Kies welke hersteloefeningen je als onderhoud in je schema houdt.' : 'Deze oefeningen staan in je schema zolang dit traject loopt. Vink aan wat je na afronden als onderhoud wil houden.'}</p>
           ${maintenanceOptions(inj).map(o => `<label class="check ${(inj.maintenance || []).includes(o.id) ? 'on' : ''}"><input type="checkbox" data-change="inj-maint" value="${esc(o.id)}" ${(inj.maintenance || []).includes(o.id) ? 'checked' : ''}><span class="box">${icon('check')}</span><span class="t">${esc(o.label)}</span></label>`).join('')}`
-        : `<p class="small muted" style="margin-bottom:8px">Kies de workouts die bij dit traject horen. Je plant ze zelf in via de kalender.</p>
-          ${custom.map(id => `<label class="check ${(inj.linked || []).includes(id) ? 'on' : ''}"><input type="checkbox" data-change="inj-link" value="${id}" ${(inj.linked || []).includes(id) ? 'checked' : ''}><span class="box">${icon('check')}</span><span class="t">${esc(sessionTitle(id))}<small>${esc(actKindOf(id))}</small></span></label>`).join('')}
-          <button class="btn block" style="margin-top:10px" data-action="new-custom" data-k="">${icon('plus')} Eigen hersteloefeningen samenstellen</button>`}
+        : rehabPlanHtml(inj)}
       </section>
 
       <div style="margin-top:18px">
@@ -3385,7 +3564,14 @@
     'edit-entry': el => el.dataset.store === 'workouts' ? openWorkoutEdit(+el.dataset.id) : openLog(null, null, +el.dataset.id),
     'stats-inj': el => { S.ui.statsInjury = el.dataset.id; render({ keepScroll: true }); },
     'open-injury': el => { S.ui.injuryId = el.dataset.id; go('blessure'); },
-    'inj-new': newInjury,
+    'inj-new': openNewInjury,
+    'ni-pick': el => { const f = $('#inj-form'); const keep = f ? Object.fromEntries(new FormData(f)) : {}; S.ui.newInj[el.dataset.f] = el.dataset.v; renderNewInjury(); const g = $('#inj-form'); if (g) Object.entries(keep).forEach(([k, v]) => { if (g.elements[k] && g.elements[k].type !== 'checkbox') g.elements[k].value = v; }); },
+    'rehab-plan': el => openRehabPlan(el.dataset.id),
+    'rehab-save': el => saveRehabPlan(el.dataset.id),
+    'rehab-once': el => { const d = ($('#rehab-date') || {}).value; if (!d) { toast('Kies eerst een datum'); return; } addItemTo(d, { type: 'session', id: el.dataset.id }, `Herstel · ${injuryLabel(injuryById(S.ui.injuryId))}`); },
+    'rehab-new': () => openBuilder(null, null, S.ui.injuryId),
+    'rehab-unlink': async el => { const id = el.dataset.id; await updateInjury(S.ui.injuryId, i => { i.linked = (i.linked || []).filter(x => x !== id); i.schedule = (i.schedule || []).filter(x => x.id !== id); i.maintenance = (i.maintenance || []).filter(x => x !== id); }); closeSheet(); render({ keepScroll: true }); toast('Losgekoppeld. De workout zelf blijft bewaard.'); },
+    'wd-toggle': el => { const d = +el.dataset.d, l = S.ui.rehabDays; const i = l.indexOf(d); if (i >= 0) l.splice(i, 1); else l.push(d); el.classList.toggle('on', i < 0); el.setAttribute('aria-pressed', String(i < 0)); },
     'inj-none': async () => {
       if (!await ask('Alle lopende trajecten afronden? Hun metingen en afspraken blijven bewaard.', { ok: 'Afronden' })) return;
       const list = clone(injuries()); list.forEach(i => { if (i.status !== 'afgerond') { i.status = 'afgerond'; i.end = dkey(today()); } });
@@ -3615,6 +3801,7 @@
     if (e.target.id === 'adapted-form') saveAdapted(e.target);
     if (e.target.id === 'wedit-form') saveWorkoutEdit(e.target);
     if (e.target.id === 'item-form') saveItemForm(e.target);
+    if (e.target.id === 'inj-form') saveNewInjury(e.target);
   });
 
   window.addEventListener('hashchange', () => { closeSheet(); render(); });
@@ -3783,7 +3970,9 @@
       // Veiligheidskopie van je oude ochtendscores, voor het geval dat
       await setSetting('backupBeforeV4', { at: Date.now(), checks: (S.raw.checks || []).filter(c => !c.sample) });
       // v4: het oorspronkelijke plan wordt een hersteltraject 'Achillespees en kuit' met eigen afspraken
-      if (!injuries().length) {
+      // Alleen wie al gegevens van het oorspronkelijke plan had, krijgt het traject "Achillespees en kuit"
+      const legacy = (S.raw.checks || []).some(c => !c.sample) || (S.raw.workouts || []).some(w => !w.sample) || !!S.settings.phase || !!S.settings.criteria;
+      if (!injuries().length && legacy) {
         const crit = S.settings.criteria || {};
         const start = C.phases[0].start;
         await setSetting('injuries', [{

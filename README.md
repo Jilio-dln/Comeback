@@ -81,7 +81,9 @@ Onderaan staan vijf tabs met alleen een icoon:
 | **Kalender** | Maandoverzicht met een stip per type (kracht, herstel, training, match, rust). Tik op een dag om te starten, te loggen, te verplaatsen, over te slaan of iets aangepast te registreren. |
 | **Workout** | Alle sessies. Tijdens een workout zie je vooral de huidige oefening, set, timer en rust; de volledige setlijst klap je open. |
 | **Statistieken** | Overzicht (gepland, uitgevoerd, aangepast, overgeslagen, gemist), Herstel (stijfheid en pijn per traject naast trainingsduur en zwaarte), Kracht en Matchen. |
-| **Account** | Profiel, doel, blessures & herstel, thema, matchen en gegevens (back-up, demostand). |
+| **Blessures** | Je lopende blessures met pijn van vandaag en de laatste 7 dagen, je herstelplan en je afspraken met de kinesist. Afgeronde blessures blijven eronder bewaard. |
+
+**Account** (tik op je avatar op Vandaag): profiel, doel, synchronisatie, thema, planning, matchen en gegevens (back-up, demostand).
 
 **Registreren:** bij een training, match of workout noteer je de ervaren zwaarte (0–10), of je volledig, gedeeltelijk of aangepast meedeed en eventueel je pijn per blessure. Ondergrond en schoenen onthoudt de app; pijn vult hij nooit zelf in. Bij een gepland item kies je ook **Gedaan zonder details**, **Aangepast uitgevoerd**, **Overslaan** of **Verplaatsen**. Elke registratie kun je later bewerken; verwijderen staat onder **Meer opties** en kun je even ongedaan maken.
 

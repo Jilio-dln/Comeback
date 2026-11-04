@@ -35,7 +35,7 @@ Het bepaalt wat blijft, wat verandert en wat er (voorlopig) niet in komt, met de
    (stippellijn), bevestigd (volle rand), uitgevoerd, aangepast en overgeslagen (met reden) duidelijk verschillend;
    sessietypes fitness, voetbaltraining, match, kine, herstel/mobiliteit, rust en eigen types; *vervangen door*
    een ander type; notitie per sessie; waarschuwing bij te veel zware dagen op rij of zwaar vlak voor een match.
-4. **Blessures** – eigen tab; elk traject krijgt een eigen herstelplan met oefeningen die je als sessie inplant.
+4. **Blessures** (klaar) – eigen tab; elk traject krijgt een eigen herstelplan met oefeningen die je als sessie inplant.
    Het kuit/pees-programma wordt het herstelplan van het bestaande traject. Afronden verbergt alles op Vandaag;
    oefeningen kun je als onderhoud houden.
 5. **Vandaag** – eerst wat er vandaag gepland staat met één startknop, daarna dagelijkse check, weekritme en streak.
