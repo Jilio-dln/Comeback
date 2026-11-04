@@ -3575,8 +3575,16 @@
       primary = `<button class="btn primary block lg" data-action="confirm-item" data-k="${k}" data-key="${esc(key)}">${icon('check')} Bevestigen</button>`;
     }
     const rec = recordFor(it, k);
+    const viaOther = done && !rec;   // ingehaald door een workout op een andere dag
+    // Duidelijke keuze: nog te doen of afgerond (niet voor rust)
+    const statusSeg = it.type === 'rest' ? '' : `<div class="seg status-seg" role="radiogroup" aria-label="Status">
+        <button type="button" role="radio" aria-checked="${!done}" class="${done ? '' : 'on'}" ${done ? `data-action="item-undone" data-k="${k}" data-key="${esc(key)}"` : ''} ${viaOther ? 'disabled' : ''}>Nog te doen</button>
+        <button type="button" role="radio" aria-checked="${done}" class="${done ? 'on' : ''}" ${done ? '' : `data-action="item-done" data-k="${k}" data-key="${esc(key)}"`} ${!done && k > tk ? 'disabled' : ''}>Afgerond</button>
+      </div>
+      ${viaOther ? `<p class="label" style="margin:-6px 2px 12px">Telt als ingehaald door dezelfde workout later in de week.</p>` : !done && k > tk ? `<p class="label" style="margin:-6px 2px 12px">Afronden kan vanaf de dag zelf.</p>` : ''}`;
     openSheet(`<form id="item-form" data-k="${k}" data-key="${esc(key)}">
       <div class="sheet-head"><div><span class="eyebrow">${esc(actKind(it))}  ·  ${esc(st.label)}</span><h3>${esc(it.type === 'session' ? sessionTitle(it.id) : m.title)}</h3><p>${cap(fmtDay(k))}${it.note ? ` · ${esc(it.note)}` : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${statusSeg}
       ${primary}
       ${rec ? `<button type="button" class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : ''}
       ${fixed ? `<p class="label" style="margin:14px 2px 0">Deze match komt uit de RBFA-kalender. Datum en uur pas je aan via Account → Matchen beheren.</p>` : `
@@ -3605,6 +3613,32 @@
         </div>
       </details>
     </form>`);
+  }
+
+  // Afronden vanuit de sheet: sessie of eenvoudig type met één tik, training/match via het logformulier
+  function setItemDone(k, key) {
+    const it = findItem(k, key); if (!it) return;
+    if (it.type === 'session') markDone(k, it.id);
+    else if (SIMPLE.includes(it.type)) markSimpleDone(k, key);
+    else if (it.type === 'match' && it.fixture && played(it.fixture)) { closeSheet(); openMinutes(k); }
+    else { closeSheet(); openLog(it.type, k); }
+  }
+
+  // Terug naar "nog te doen": de registratie(s) van die dag verwijderen, met Ongedaan.
+  // Staan er gelogde sets of details in, dan eerst bevestigen.
+  async function setItemUndone(k, key) {
+    const it = findItem(k, key); if (!it) return;
+    const store = it.type === 'session' ? 'workouts' : 'activities';
+    const recs = store === 'workouts' ? workoutsOn(k).filter(w => w.sessionKey === it.id) : activitiesOn(k).filter(a => actMatches(a, it));
+    if (!recs.length) return;
+    const detailed = recs.some(r => store === 'workouts' ? (r.exercises || []).some(e => (e.sets || []).length) || r.rpe != null || r.note : r.rpe != null || r.note || Object.keys(r.pains || {}).length);
+    if (detailed && !await ask(`Je registratie van ${itemMeta(it).title} op ${fmtDay(k)} bevat details (${store === 'workouts' ? 'sets, zwaarte of notitie' : 'minuten, zwaarte of pijn'}). Die worden verwijderd. Je kunt het meteen ongedaan maken.`, { ok: 'Terug naar nog te doen', title: 'Nog te doen?' })) return;
+    for (const r of recs) await DB.del(store, r.id);
+    S[store] = S[store].filter(x => !recs.includes(x));
+    S.ui.undoRecs = { store, recs };
+    closeSheet();
+    render({ keepScroll: true });
+    toast(`${itemMeta(it).title} staat weer op nog te doen`, { action: 'undo-recs', label: 'Ongedaan' });
   }
 
   async function saveItemForm(form) {
@@ -3827,6 +3861,13 @@
     'confirm-item': el => confirmItems([[el.dataset.k, el.dataset.key]], 'Bevestigd'),
     'confirm-week': () => { const l = pendingSuggestions(parseKey(S.ui.planWeek || weekKey(today()))); confirmItems(l, `${l.length} voorstel${l.length === 1 ? '' : 'len'} bevestigd`); },
     'mark-simple': el => markSimpleDone(el.dataset.k, el.dataset.key),
+    'item-done': el => setItemDone(el.dataset.k, el.dataset.key),
+    'item-undone': el => setItemUndone(el.dataset.k, el.dataset.key),
+    'undo-recs': async () => {
+      const u = S.ui.undoRecs; if (!u) return;
+      for (const r of u.recs) { await DB.put(u.store, r); S[u.store].push(r); }
+      S.ui.undoRecs = null; $('#toast').hidden = true; render({ keepScroll: true }); toast('Teruggezet');
+    },
     'off-item': el => openOffItem(el.dataset.k, el.dataset.key),
     'plan-view': el => { S.ui.planView = el.dataset.v; render(); },
     'wk-prev': () => { S.ui.planWeek = dkey(addDays(parseKey(S.ui.planWeek || weekKey(today())), -7)); render(); },

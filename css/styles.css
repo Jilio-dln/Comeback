@@ -892,6 +892,10 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .wk-legend .lg-done::before { background: var(--card-3); border-color: transparent; }
 
 /* ---------- Sessie aanpassen / toevoegen ---------- */
+.status-seg { margin-bottom: 14px; }
+.status-seg button { min-height: 44px; }
+.status-seg button:disabled { opacity: .45; cursor: default; }
+:root .status-seg button.on:last-child { background: var(--accent); color: var(--accent-ink); }
 .field-label { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 18px 2px 8px; }
 .type-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
 .tchip { min-height: 44px; padding: 0 10px; border-radius: var(--r-chip); border: 1px solid var(--border); background: var(--card-fill); color: var(--ink-2); font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
