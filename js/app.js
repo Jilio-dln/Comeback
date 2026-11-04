@@ -280,6 +280,11 @@
       if (!programOn((C.sessions[id] || {}).program, id)) return;
       if (!items.some(it => it.type === 'session' && it.id === id)) items = [{ type: 'session', id, note: 'Dagelijks in deze fase' }, ...items];
     });
+    // Eigen workouts die je zelf op vaste weekdagen zette (Workout → Inplannen)
+    if (opts.mine !== false) (S.settings.workoutSchedule || []).forEach(sc => {
+      if (!C.sessions[sc.id] || !(sc.days || []).includes(wd) || (sc.since && k < sc.since)) return;
+      if (!items.some(it => it.type === 'session' && it.id === sc.id)) items.push({ type: 'session', id: sc.id, mine: true, note: 'Jouw weekplanning' });
+    });
     // Herstelplannen: wekelijks ingeplande workouts van een lopende blessure (of als onderhoud na herstel)
     if (opts.rehab !== false) injuries().forEach(inj => {
       const done = inj.status === 'afgerond';
@@ -313,7 +318,7 @@
     // Per dag: bevestigd of nog voorgesteld, en je eigen uur, duur en notitie
     items.forEach(it => {
       const key = itemKey(it), ed = edits[key];
-      it.confirmed = !!(confirmed[key] || it.from || it.extra || it.fixture);
+      it.confirmed = !!(confirmed[key] || it.from || it.extra || it.fixture || it.mine);
       if (ed) { if (ed.time) it.time = ed.time; if (ed.min) it.min = ed.min; if (ed.note) it.userNote = ed.note; }
     });
     const off = base.filter(it => removed[itemKey(it)] && exists(it)).map(it => ({ item: it, reason: removed[itemKey(it)] })).concat(offAdded);
@@ -1773,7 +1778,7 @@
       ${mine.length ? `<div class="section" style="margin-top:14px"><span>Mijn oefeningen</span></div><div class="group-grid"><button class="group-tile" data-action="b-group" data-id="mine"><b>Mijn oefeningen</b><span>Zelf gemaakt</span><em>${mine.length} oefeningen</em></button></div>` : ''}
       <div class="b-add" style="margin-top:14px">
         ${b.adding ? `<label class="field"><span>Naam van je eigen oefening</span><input class="input" id="b-new-name" placeholder="Bv. Hamstring curl"></label>
-          <div class="seg">${radio('b-kind', 'reps', 'Herhalingen + kg', 'reps')}${radio('b-kind', 'time', 'Op tijd', 'reps')}</div>
+          <div class="seg">${radio('b-kind', 'reps', 'Herh. + kg', 'reps')}${radio('b-kind', 'bw', 'Herh.', 'reps')}${radio('b-kind', 'time', 'Op tijd', 'reps')}</div>
           <button type="button" class="btn block" data-action="b-new-add">${icon('plus')} Toevoegen</button>`
           : `<button type="button" class="btn ghost block" data-action="b-new-toggle">${icon('plus')} Staat je oefening er niet bij? Maak ze zelf</button>`}
       </div>`;
@@ -1819,9 +1824,9 @@
     if (!name) { toast('Geef de oefening een naam'); return; }
     const kind = (document.querySelector('input[name="b-kind"]:checked') || {}).value || 'reps';
     const key = 'cx' + newId();
-    C.exercises[key] = kind === 'reps'
-      ? { name, kind: 'reps', reps: [10, 10], load: 'kg', increment: 2.5, rest: 75, custom: true }
-      : { name, kind: 'time', duration: 30, load: 'bw', rest: 45, custom: true };
+    C.exercises[key] = kind === 'reps' ? { name, kind: 'reps', reps: [10, 10], load: 'kg', increment: 2.5, rest: 75, custom: true }
+      : kind === 'bw' ? { name, kind: 'reps', reps: [12, 12], load: 'bw', rest: 60, custom: true }
+        : { name, kind: 'time', duration: 30, load: 'bw', rest: 45, custom: true };
     S.ui.builder.items.push(builderItem(key));
     S.ui.builder.adding = false;
     renderBuilder();
@@ -1854,9 +1859,67 @@
       return;
     }
     if (!b.key && b.k) { addSessionTo(b.k, key, ''); return; }
+    render({ keepScroll: true });
+    if (!b.key) { openWorkoutPlan(key, true); toast(`${b.name} bewaard. Kies nu wanneer je hem doet.`); return; }
+    closeSheet();
+    toast('Eigen workout aangepast');
+  }
+
+  /* ---------- Eigen workouts inplannen: wekelijks op vaste dagen of één keer ---------- */
+  const mySchedule = id => (S.settings.workoutSchedule || []).find(x => x.id === id);
+  function planText(id) {
+    const sc = mySchedule(id);
+    const rehab = injuries().filter(i => i.status !== 'afgerond').map(i => (i.schedule || []).find(x => x.id === id)).filter(Boolean)[0];
+    const days = [...new Set([...((sc && sc.days) || []), ...((rehab && rehab.days) || [])])];
+    return days.length ? `Elke ${daysText(days)}` : '';
+  }
+  function openWorkoutPlan(id, fresh = false) {
+    if (!C.sessions[id]) return;
+    S.ui.planDays = [...((mySchedule(id) || {}).days || [])];
+    S.ui.planOnce = [];
+    renderWorkoutPlan(id, fresh);
+  }
+  function renderWorkoutPlan(id, fresh) {
+    const tk = dkey(today());
+    openSheet(`<div class="sheet-head"><div><span class="eyebrow">${fresh ? 'Nieuwe workout' : 'Inplannen'}</span><h3>${esc(sessionTitle(id))}</h3><p>${esc(sessionDesc(id))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <p class="field-label">Elke week op</p>
+      <div class="wd-pick">${WD_ORDER.map(d => `<button type="button" class="tchip ${S.ui.planDays.includes(d) ? 'on' : ''}" data-action="plan-wd" data-d="${d}" aria-pressed="${S.ui.planDays.includes(d)}" aria-label="${DAY[d]}">${cap(DAY_S[d])}</button>`).join('')}</div>
+      <p class="label" style="margin:2px 2px 14px">Staat vanaf vandaag in je planning. Per dag kun je hem nog verplaatsen, vervangen of overslaan.</p>
+      <p class="field-label">Of op losse dagen</p>
+      <div class="add-row two"><input class="input" type="date" id="plan-once" min="${tk}" value="${tk}" aria-label="Datum"><button class="btn" data-action="plan-once-add">${icon('plus')}<span class="sr">Datum toevoegen</span></button></div>
+      <div class="chips" id="plan-once-list" style="margin-top:8px">${S.ui.planOnce.map(d => `<button class="loc-chip on" data-action="plan-once-del" data-d="${d}" aria-label="${fmtDay(d)} weghalen">${esc(cap(fmtDay(d)))} ${icon('x')}</button>`).join('')}</div>
+      <button class="btn accent block lg" data-action="plan-save" data-key="${id}">${icon('check')} Inplannen</button>
+      ${fresh ? `<button class="btn ghost block" data-action="close-sheet">Later</button>` : ''}`);
+  }
+  async function saveWorkoutPlan(id) {
+    const days = [...S.ui.planDays].sort();
+    const prev = mySchedule(id);
+    const list = (S.settings.workoutSchedule || []).filter(x => x.id !== id);
+    if (days.length) list.push({ id, days, since: prev && prev.since && prev.days.length ? prev.since : dkey(today()) });
+    await setSetting('workoutSchedule', list);
+    const once = S.ui.planOnce.filter(d => !findItem(d, `session:${id}`));
+    if (once.length) {
+      const all = clone(overrides());
+      once.forEach(d => editOv(all, d, o => {
+        if (o.removed[`session:${id}`]) delete o.removed[`session:${id}`];
+        else o.added.push({ type: 'session', id, extra: true, note: 'Jouw planning' });
+        o.confirmed[`session:${id}`] = true;
+      }));
+      await setSetting('overrides', all);
+    }
     closeSheet();
     render({ keepScroll: true });
-    toast(b.key ? 'Eigen workout aangepast' : 'Eigen workout bewaard');
+    const parts = [days.length ? `elke ${daysText(days)}` : '', once.length ? `${once.length} losse dag${once.length === 1 ? '' : 'en'}` : ''].filter(Boolean);
+    toast(parts.length ? `${sessionTitle(id)} ingepland: ${parts.join(' en ')}` : `${sessionTitle(id)} staat niet meer wekelijks ingepland`);
+  }
+  function openWorkoutSheet(id) {
+    const s = sessInfo(id), exs = (C.sessions[id].items || []).map(it => C.exercises[it.ex]).filter(Boolean);
+    openSheet(`<div class="sheet-head"><div><span class="eyebrow">Mijn workout</span><h3>${esc(s.name)}</h3><p>${s.exercises} oefeningen · ±${s.minutes} min${planText(id) ? ` · ${esc(planText(id))}` : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <button class="btn accent block lg" data-action="start-session" data-key="${id}">${icon('play')} Nu starten</button>
+      <div class="row" style="margin-top:8px"><button class="btn" data-action="workout-plan" data-key="${id}">${icon('calendar')} Inplannen</button><button class="btn" data-action="edit-custom" data-key="${id}">${icon('edit')} Aanpassen</button></div>
+      <p class="field-label" style="margin-top:20px">Oefeningen</p>
+      <section class="card" style="padding:4px 16px">${(C.sessions[id].items || []).map(it => { const ex = C.exercises[it.ex]; return ex ? `<div class="list-row"><div class="body"><b>${esc(ex.name)}</b><span>${esc(prescription({ ...it, sets: it.sets || 3 }, { ...ex, ...(it.reps ? { reps: [it.reps, it.reps], repsText: null } : {}), ...(it.duration ? { duration: it.duration } : {}) }))}${it.weight ? ` · ${fmtNum(it.weight)} kg` : ''}</span></div></div>` : ''; }).join('') || '<p class="empty">Nog geen oefeningen.</p>'}</section>
+      <details class="more"><summary>Meer opties</summary><button class="btn danger block" data-action="delete-custom" data-key="${id}">${icon('trash')} Workout verwijderen</button></details>`);
   }
 
   async function deleteCustom(key) {
@@ -1864,6 +1927,10 @@
     if (!cs[key] || !await ask(`"${cs[key].name}" verwijderen? Hij verdwijnt ook uit je planning. Afgewerkte workouts blijven bewaard.`, { ok: 'Verwijderen', danger: true })) return;
     delete cs[key];
     await setSetting('customSessions', cs);
+    await setSetting('workoutSchedule', (S.settings.workoutSchedule || []).filter(x => x.id !== key));
+    if (injuries().some(i => (i.linked || []).includes(key))) {
+      await setSetting('injuries', injuries().map(i => ({ ...i, linked: (i.linked || []).filter(x => x !== key), schedule: (i.schedule || []).filter(x => x.id !== key), maintenance: (i.maintenance || []).filter(x => x !== key) })));
+    }
     // Uit de planning halen
     const all = clone(overrides());
     Object.keys(all).forEach(k => editOv(all, k, o => { o.added = o.added.filter(a => a.id !== key); delete o.removed[`session:${key}`]; }));
@@ -1966,7 +2033,8 @@
     const rec = relevantSession(todays, k);
     const sm = S.ui.summary;
     const rising = activeInjuries().some(i => checkRise(i).length);
-    const groups = [['Kracht', id => !C.sessions[id].program && !C.sessions[id].custom], ['Herstel', id => !!C.sessions[id].program], ['Eigen workouts', id => !!C.sessions[id].custom]];
+    const groups = [['Kracht', id => !C.sessions[id].program && !C.sessions[id].custom], ['Herstel', id => !!C.sessions[id].program]];
+    const own = Object.keys(C.sessions).filter(id => C.sessions[id].custom);
 
     main.innerHTML = `
       ${pageHead('Workout', activeInjuries().length ? `${esc(phaseObj(currentPhase()).label)} · ${esc(phaseObj(currentPhase()).title)}` : esc(GOAL_LABEL[goal().type]))}
@@ -1982,6 +2050,19 @@
         <div class="act-meta"><span>${icon('clock')} ±${sessInfo(rec.id).minutes} min</span><span>${icon('list')} ${sessInfo(rec.id).exercises} oefeningen</span></div>
         <button class="btn accent block lg" data-action="start-session" data-key="${rec.id}">${icon('play')} Start workout</button>
       </section>` : ''}
+      <div class="section"><span>Mijn workouts</span><button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button></div>
+      ${own.length ? `<section class="card">${own.map(key => {
+        const s = sessInfo(key);
+        return `<div class="list-row">
+          <button class="body row-btn" data-action="workout-sheet" data-key="${key}" aria-label="${esc(s.name)}: inplannen of aanpassen"><b>${esc(s.name)}</b><span>${s.exercises} oefeningen · ±${s.minutes} min</span><span class="${planText(key) ? 'accent-text' : ''}">${esc(planText(key) || 'Nog niet ingepland')}</span></button>
+          <div class="end"><button class="icon-btn" style="background:transparent" data-action="workout-plan" data-key="${key}" aria-label="${esc(s.name)} inplannen">${icon('calendar')}</button>
+            <button class="icon-btn" style="background:var(--card-2)" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
+        </div>`;
+      }).join('')}</section>` : `<section class="card empty-state compact">
+          <h2>Stel je eigen workout samen.</h2>
+          <p>Kies oefeningen per spiergroep of start van een voorgestelde workout, zet je sets, herhalingen en kg, en plan hem op de dagen die jij wil.</p>
+          <button class="btn accent block lg" data-action="new-workout">${icon('plus')} Nieuwe workout</button>
+        </section>`}
       ${groups.map(([title, fn]) => {
         const ids = Object.keys(C.sessions).filter(fn);
         if (!ids.length) return '';
@@ -3881,6 +3962,13 @@
     'wk-jump': el => { const n = document.getElementById(`day-${el.dataset.k}`); if (n) window.scrollTo({ top: n.getBoundingClientRect().top + window.scrollY - 90, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); },
     'del-item': async el => { if (!await ask('Uit de planning halen? Je kan het terugzetten in de kalender.', { ok: 'Uit planning halen', danger: true })) return; deleteItem(el.dataset.k, el.dataset.key); },
     'new-custom': el => openBuilder(el.dataset.k),
+    'new-workout': () => openBuilder(null),
+    'workout-sheet': el => openWorkoutSheet(el.dataset.key),
+    'workout-plan': el => openWorkoutPlan(el.dataset.key),
+    'plan-wd': el => { const d = +el.dataset.d, l = S.ui.planDays, i = l.indexOf(d); if (i >= 0) l.splice(i, 1); else l.push(d); el.classList.toggle('on', i < 0); el.setAttribute('aria-pressed', String(i < 0)); },
+    'plan-once-add': el => { const v = ($('#plan-once') || {}).value; if (!v) { toast('Kies eerst een datum'); return; } if (v < dkey(today())) { toast('Kies vandaag of later'); return; } if (!S.ui.planOnce.includes(v)) S.ui.planOnce.push(v); S.ui.planOnce.sort(); const box = $('#plan-once-list'); if (box) box.innerHTML = S.ui.planOnce.map(d => `<button class="loc-chip on" data-action="plan-once-del" data-d="${d}" aria-label="${fmtDay(d)} weghalen">${esc(cap(fmtDay(d)))} ${icon('x')}</button>`).join(''); },
+    'plan-once-del': el => { S.ui.planOnce = S.ui.planOnce.filter(d => d !== el.dataset.d); el.remove(); },
+    'plan-save': el => saveWorkoutPlan(el.dataset.key),
     'edit-custom': el => openBuilder(null, el.dataset.key),
     'delete-custom': el => deleteCustom(el.dataset.key),
     'b-step': el => builderStep(+el.dataset.i, el.dataset.f, +el.dataset.d),
