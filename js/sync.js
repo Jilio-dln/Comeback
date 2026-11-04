@@ -315,6 +315,17 @@ window.Sync = (() => {
     subscribe: fn => { listeners.add(fn); return () => listeners.delete(fn); },
     // Ander account op dit toestel: lokale gegevens en wachtrij wissen
     resetLocal: async () => { for (const s of STORES) await DB.raw.clear(s); await DB.outbox.clear(); meta = {}; saveMeta(); await refreshPending(); },
-    signIn, signOut, recover, setPassword, consumeRedirect, syncNow, start, schedule
+    signIn, signOut, recover, setPassword, consumeRedirect, syncNow, start, schedule,
+    // Een Supabase Edge Function aanroepen als de ingelogde gebruiker (bv. de AI-coach)
+    callFunction: async (name, body) => {
+      if (!configured() || !session) throw new Error('Log in om deze functie te gebruiken.');
+      if (!navigator.onLine) throw new Error('Geen verbinding. De coach werkt alleen online.');
+      try { return await api(`/functions/v1/${encodeURIComponent(name)}`, { method: 'POST', body }); }
+      catch (e) {
+        if (e.status === 404) throw new Error('De coach is nog niet geïnstalleerd in Supabase (Edge Function "coach").');
+        if (e.status === 429) throw new Error('Even te veel vragen. Probeer het zo opnieuw.');
+        throw new Error((e.body && (e.body.error || e.body.message)) || nice(e.body || e, 'De coach is nu niet bereikbaar. Je planning blijft gewoon werken.'));
+      }
+    }
   };
 })();

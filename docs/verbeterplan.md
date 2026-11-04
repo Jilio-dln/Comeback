@@ -40,7 +40,7 @@ Het bepaalt wat blijft, wat verandert en wat er (voorlopig) niet in komt, met de
    oefeningen kun je als onderhoud houden.
 5. **Vandaag** (motivatie klaar) – eerst wat er vandaag gepland staat met één startknop, daarna dagelijkse check, weekritme en streak.
    Rust- en hersteldagen tellen mee als *volgens plan*, nooit als gemist.
-6. **Workout en voortgang** – vorige prestatie per oefening terug zichtbaar; streak, weekritme en mijlpalen.
+6. **Workout en voortgang** (klaar) – vorige prestatie per oefening terug zichtbaar; streak, weekritme en mijlpalen.
 
 Navigatie onderaan (alleen iconen, met toegankelijke namen): **Vandaag, Planning, Workout, Voortgang, Blessures**.
 Profiel en instellingen open je via je avatar op Vandaag.
@@ -56,7 +56,7 @@ Profiel en instellingen open je via je avatar op Vandaag.
 | Inloggen | alleen als Supabase ingesteld is | zonder project zou een loginscherm niets beveiligen; met project is het verplicht |
 | Passkey/Face ID | niet | geen controleerbare passkey-login in Supabase Auth; geen knop die veiligheid suggereert |
 | Tabelmodel | één tabel `user_records` (record per rij, JSON) | volgt de lokale opslag één op één, zodat offline synchroniseren eenvoudig en betrouwbaar blijft; de vorm van planning en blessures verandert nog in de volgende fases |
-| AI-coach | nog niet, later achter `AI_ENABLED` | geen chat zonder echte koppeling via een server-functie |
+| AI-coach | klaar maar uit (`AI_ENABLED: false`) | werkt pas na het installeren van de Edge Function met je eigen OpenAI-sleutel, zie [ai-coach.md](ai-coach.md) |
 | Gewicht, hartslag, Apple Health | weggelaten | een webapp kan Apple Health niet lezen; geen schijnkoppeling |
 | Sportfoto's uit Figma | niet gebruikt | licentie onbekend; de bestaande Unsplash-foto (vrij te gebruiken) blijft, in zwart-wit |
 | "Private membership" | alleen als sfeer in de typografie | geen abonnement, betaalmuur of extra accountstappen |

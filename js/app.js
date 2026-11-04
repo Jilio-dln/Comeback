@@ -97,6 +97,7 @@
     list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
     arrowL: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
     arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    coach: '<path d="M4 5.5h16v10H9l-5 4z"/><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01" stroke-width="2.4"/>',
     shield: '<path d="M12 3.5l7 2.8v5.2c0 4.3-3 7.6-7 9-4-1.4-7-4.7-7-9V6.3z"/><path d="M9 12l2 2 4-4"/>',
     magic: '<path d="M5 19L17 7M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>',
     eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
@@ -552,6 +553,7 @@
     closeSheet();
     render({ keepScroll: true });
     toast(`${sessionTitle(id)}: gedaan zonder details`, { action: 'undo-done', label: 'Ongedaan' });
+    checkMilestones();
   }
 
   // Kine, herstel of een eigen type afvinken: één tik, duur vooraf ingevuld
@@ -565,6 +567,7 @@
     closeSheet();
     render({ keepScroll: true });
     toast(`${itemMeta(it).title}: gedaan`, { action: 'undo-done', label: 'Ongedaan' });
+    checkMilestones();
   }
 
   // Verwijderen: weg uit de planning (telt niet als gemist). Terugzetten kan in de planning.
@@ -783,6 +786,7 @@
     }
     main.innerHTML = `
       ${homeHeader()}
+      ${progressTiles()}
       ${resumeCard()}
       ${checkCard()}
       <div class="section"><span>${k === tk ? 'Vandaag gepland' : cap(fmtDay(k))}</span>${k !== tk ? `<button class="link-btn" data-action="home-day" data-k="${tk}">Naar vandaag</button>` : ''}</div>
@@ -977,6 +981,121 @@
       off.forEach(o => { if (isSkip(o.reason)) c.skipped++; });
     }
     return c;
+  }
+
+  /* ================= Streak, weekritme en mijlpalen ================= */
+  // Hoe een dag telt:
+  //  'active'  er is iets uitgevoerd (workout, training, match, kine, herstel…)
+  //  'rest'    een geplande rust- of herstelonafhankelijke dag zonder openstaande bevestigde sessies (telt mee: rust hoort bij het plan)
+  //  'neutral' alleen voorstellen niet gedaan, of alles bewust overgeslagen/verplaatst: breekt niets, telt niet mee
+  //  'broken'  een bevestigde sessie die niet gedaan werd (en niets anders gedaan)
+  //  'pending' vandaag, nog niets gedaan
+  function firstUseDate() {
+    const ds = [...S.workouts, ...S.activities, ...S.checks].filter(x => !x.sample).map(x => x.date).filter(Boolean);
+    return ds.length ? ds.reduce((a, b) => a < b ? a : b) : null;
+  }
+  function dayStatus(d) {
+    const k = dkey(d), tk = dkey(today());
+    if (workoutsOn(k).length || activitiesOn(k).length) return 'active';
+    const { items: all, off } = planDetail(d);
+    const items = all.filter(it => it.type !== 'rest');
+    // Alles bewust overgeslagen (ziek, geen tijd…): breekt niets, telt ook niet mee
+    if (!items.length) return off.some(o => isSkip(o.reason)) ? 'neutral' : 'rest';
+    if (items.some(it => doneOrCaughtUp(it, k))) return 'active';
+    if (k === tk) return 'pending';
+    if (items.some(it => it.confirmed && !doneOrCaughtUp(it, k))) return 'broken';
+    return 'neutral';
+  }
+  function streakInfo() {
+    const first = firstUseDate();
+    if (!first) return { days: 0, active: 0, broken: null };
+    let days = 0, active = 0, broken = null;
+    for (let i = 0; i < 400; i++) {
+      const d = addDays(today(), -i), k = dkey(d);
+      if (k < first) break;
+      const st = dayStatus(d);
+      if (st === 'broken') { broken = k; break; }
+      if (st === 'active') { days++; active++; } else if (st === 'rest') days++;
+    }
+    return { days, active, broken };
+  }
+  // Weekritme: uitgevoerd tegenover gepland (zonder rust, overgeslagen of verplaatst)
+  function weekProgress(ws = startOfWeek(today())) {
+    let done = 0, total = 0;
+    const bars = [];
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i), k = dkey(d);
+      const items = planFor(d).filter(it => it.type !== 'rest');
+      items.forEach(it => { total++; if (doneOrCaughtUp(it, k)) done++; });
+      bars.push(items.length ? (items.every(it => doneOrCaughtUp(it, k)) ? 'done' : items.some(it => doneOrCaughtUp(it, k)) ? 'part' : k < dkey(today()) ? 'open' : 'planned') : 'rest');
+    }
+    return { done, total, bars };
+  }
+  function progressTiles() {
+    const s = streakInfo(), w = weekProgress();
+    const marks = Array.from({ length: Math.min(12, Math.max(s.days, 1)) }, (_, i) => `<i class="${i < s.days ? 'on' : ''}"></i>`).join('');
+    return `<div class="tiles mini">
+      <button class="tile tap" data-action="go" data-to="statistieken" aria-label="Streak: ${s.days} dagen volgens plan. Naar voortgang">
+        <span class="label">Streak</span><b class="tile-num">${s.days} ${s.days === 1 ? 'dag' : 'dagen'}</b><span class="mini-bars">${marks}</span></button>
+      <button class="tile tap" data-action="go" data-to="planning" aria-label="Deze week ${w.done} van ${w.total} uitgevoerd. Naar planning">
+        <span class="label">Deze week</span><b class="tile-num">${w.done} / ${w.total}</b><span class="mini-bars">${w.bars.map(b => `<i class="${b}"></i>`).join('')}</span></button>
+    </div>`;
+  }
+
+  // Mijlpalen: streak en aantal uitgevoerde sessies
+  const BADGES = [
+    { id: 's3', kind: 'streak', n: 3, title: '3 dagen.', sub: 'Het ritme zit erin.' },
+    { id: 's7', kind: 'streak', n: 7, title: '7 dagen.', sub: 'Een volle week volgens plan.' },
+    { id: 's10', kind: 'streak', n: 10, title: '10 dagen.', sub: 'Geen excuses.' },
+    { id: 's14', kind: 'streak', n: 14, title: '14 dagen.', sub: 'Twee weken op koers.' },
+    { id: 's21', kind: 'streak', n: 21, title: '21 dagen.', sub: 'Dit is een gewoonte geworden.' },
+    { id: 's30', kind: 'streak', n: 30, title: '30 dagen.', sub: 'Een maand bouwen aan je comeback.' },
+    { id: 's60', kind: 'streak', n: 60, title: '60 dagen.', sub: 'Volhouden is jouw sterkte.' },
+    { id: 'w10', kind: 'total', n: 10, title: '10 sessies.', sub: 'De eerste tien staan erop.' },
+    { id: 'w25', kind: 'total', n: 25, title: '25 sessies.', sub: 'Elke herhaling telt.' },
+    { id: 'w50', kind: 'total', n: 50, title: '50 sessies.', sub: 'Halfweg naar honderd.' },
+    { id: 'w100', kind: 'total', n: 100, title: '100 sessies.', sub: 'Honderd keer gekozen voor jezelf.' }
+  ];
+  const totalDone = () => S.workouts.filter(w => !w.sample).length + S.activities.filter(a => !a.sample).length;
+  function badgeValue(b, s = streakInfo().days, t = totalDone()) { return b.kind === 'streak' ? s : t; }
+  // Na elke registratie: nieuwe mijlpaal? Kort vieren en onthouden (één keer per mijlpaal)
+  async function checkMilestones() {
+    const seen = { ...(S.settings.badges || {}) };
+    const s = streakInfo().days, t = totalDone();
+    const fresh = BADGES.filter(b => !seen[b.id] && badgeValue(b, s, t) >= b.n);
+    if (!fresh.length) return;
+    fresh.forEach(b => { seen[b.id] = dkey(today()); });
+    await setSetting('badges', seen);
+    const top = fresh[fresh.length - 1];
+    // Na de felicitatie van de sessie, niet erover
+    setTimeout(() => celebrate(`Mijlpaal: ${top.title}`, top.sub), document.querySelector('.celebrate') ? 2500 : 300);
+  }
+  function badgesHtml() {
+    const seen = S.settings.badges || {};
+    const s = streakInfo().days, t = totalDone();
+    const got = BADGES.filter(b => seen[b.id]).sort((a, b) => String(seen[b.id]).localeCompare(String(seen[a.id])));
+    const last = got[0];
+    const next = BADGES.filter(b => !seen[b.id]).sort((a, b) => (a.n - badgeValue(a, s, t)) - (b.n - badgeValue(b, s, t)))[0];
+    return `${last ? `<section class="badge-brand"><span class="label">Mijlpaal ontgrendeld · ${esc(fmtShort(seen[last.id]))}</span><b>${esc(last.title)} ${esc(last.sub)}</b></section>` : ''}
+      <section class="card">
+        <div class="card-head"><h2>Mijlpalen</h2><span class="label">${got.length} van ${BADGES.length}</span></div>
+        <div class="badge-grid">${BADGES.map(b => `<div class="badge ${seen[b.id] ? 'on' : ''}" aria-label="${esc(b.title + ' ' + b.sub)}${seen[b.id] ? ', behaald' : ', nog niet behaald'}">
+          <b>${b.n}</b><span>${b.kind === 'streak' ? 'dagen' : 'sessies'}</span></div>`).join('')}</div>
+        ${next ? `<p class="status-line">Volgende: ${esc(next.title)} Nog ${Math.max(0, next.n - badgeValue(next, s, t))} ${next.kind === 'streak' ? 'dag' : 'sessie'}${next.n - badgeValue(next, s, t) === 1 ? '' : next.kind === 'streak' ? 'en' : 's'}.</p>` : ''}
+        <p class="label" style="margin-top:8px">Rustdagen en bewust overgeslagen sessies breken je streak niet.</p>
+      </section>`;
+  }
+  function streakHero() {
+    const s = streakInfo(), w = weekProgress();
+    const pct = w.total ? w.done / w.total : 0;
+    const R = 46, Cc = 2 * Math.PI * R;
+    return `<section class="streak-hero">
+      <div><span class="label">Jouw streak</span><div class="streak-num">${s.days}<span>${s.days === 1 ? 'dag' : 'dagen'}</span></div>
+        <p class="small muted">${s.days ? 'Dagen volgens plan, rust inbegrepen.' : 'Begint bij je eerste sessie.'}</p></div>
+      <div class="ring" role="img" aria-label="Deze week ${w.done} van ${w.total} uitgevoerd">
+        <svg viewBox="0 0 110 110"><circle class="c-track" cx="55" cy="55" r="${R}" fill="none" stroke-width="8"/><circle class="c-prog" cx="55" cy="55" r="${R}" fill="none" stroke-width="8" stroke-linecap="round" stroke-dasharray="${Cc.toFixed(1)}" stroke-dashoffset="${(Cc * (1 - pct)).toFixed(1)}" transform="rotate(-90 55 55)"/></svg>
+        <div><b>${w.done} / ${w.total}</b><span>deze week</span></div></div>
+    </section>`;
   }
 
   function weekCard() {
@@ -1377,7 +1496,7 @@
     const isThis = weekKey(t) === weekKey(ws);
     main.innerHTML = `
       <header class="page-head"><div><span class="eyebrow">Jouw ritme</span><h1>${view === 'week' ? (isThis ? 'Deze week.' : `Week ${isoWeek(ws)}.`) : 'Kalender.'}</h1><p>${view === 'week' ? range : 'Tik op een dag om te zien wat er gepland of gedaan is'}</p></div>
-        <button class="icon-btn" data-action="add-menu" data-k="${S.ui.planFocus || dkey(t)}" aria-label="Iets toevoegen">${icon('plus')}</button></header>
+        <div class="row">${SUBS.coach ? `<button class="icon-btn" data-action="go" data-to="coach" aria-label="Coach (AI)">${icon('coach')}</button>` : ''}<button class="icon-btn" data-action="add-menu" data-k="${S.ui.planFocus || dkey(t)}" aria-label="Iets toevoegen">${icon('plus')}</button></div></header>
       <div class="seg" role="tablist">${[['week', 'Week'], ['maand', 'Maand']].map(([v, l]) => `<button role="tab" aria-selected="${view === v}" class="${view === v ? 'on' : ''}" data-action="plan-view" data-v="${v}">${l}</button>`).join('')}</div>
       ${view === 'week' ? weekHtml() : monthHtml()}`;
     const focus = S.ui.planFocus;
@@ -1939,6 +2058,18 @@
       ${steppers}${buttons}`;
   }
 
+  // Vorige keer bij deze oefening (beste set per kant), om meteen te weten waar je staat
+  function prevLine(e) {
+    const w = draft();
+    const prev = S.workouts.filter(x => !x.sample && (!w || x.startedAt !== w.startedAt)).sort((a, b) => b.date.localeCompare(a.date) || (b.finishedAt || 0) - (a.finishedAt || 0))
+      .map(x => ({ date: x.date, e: (x.exercises || []).find(y => y.exId === e.exId && y.sets && y.sets.length) })).find(x => x.e);
+    if (!prev) return `<p class="ex-prev muted">Eerste keer: kies een gewicht waarmee de laatste herhalingen zwaar maar netjes gaan.</p>`;
+    const sets = prev.e.sets;
+    const txt = sets.map(s => setText(s, e.kind)).filter(Boolean);
+    const best = e.kind === 'reps' ? sets.reduce((a, b) => ((num(b.weight) || 0) > (num(a.weight) || 0) || ((num(b.weight) || 0) === (num(a.weight) || 0) && (num(b.reps) || 0) > (num(a.reps) || 0))) ? b : a) : null;
+    return `<p class="ex-prev">${icon('clock')}<span><b>Vorige keer (${esc(relDay(prev.date))}):</b> ${esc(txt.slice(0, 4).join(' · '))}${txt.length > 4 ? ' …' : ''}${best && num(best.weight) ? ` · beste set ${esc(setText(best, e.kind))}` : ''}</span></p>`;
+  }
+
   // Tijdens de workout: vooral de huidige oefening, set, timer en rust
   function renderActive(w) {
     w.current = clamp(w.current, 0, w.exercises.length - 1);
@@ -1954,6 +2085,7 @@
       <div class="wo-progress">${w.exercises.map((x, i) => `<button class="${i === w.current ? 'cur' : x.sets.every(s => s.done) ? 'done' : ''}" data-action="wo-goto" data-i="${i}" aria-label="Oefening ${i + 1}: ${esc(x.name)}"></button>`).join('')}</div>
       <h2 class="ex-title display">${esc(e.name)}</h2>
       <p class="ex-presc">${esc(e.presc)}</p>
+      ${prevLine(e)}
       ${e.cue ? `<p class="ex-cue">${esc(e.cue)}</p>` : ''}
       <div id="wo-hints" style="margin-top:12px">${hintsHtml(e)}</div>
       <section class="editor" id="editor">${editorHtml(e)}</section>
@@ -2109,6 +2241,7 @@
     S.ui.woView = 'picker';
     render();
     celebrate('Workout opgeslagen', afterText());
+    checkMilestones();
   }
 
   async function cancelWorkout() {
@@ -2128,6 +2261,7 @@
     el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
   }
   function celebrate(text, sub = '') {
+    document.querySelectorAll('.celebrate').forEach(n => n.remove());
     const el = document.createElement('div');
     el.className = 'celebrate';
     el.setAttribute('role', 'status');
@@ -2343,6 +2477,9 @@
   }
 
   function statsOverview() {
+    return streakHero() + badgesHtml() + statsOverviewBody();
+  }
+  function statsOverviewBody() {
     const t = today();
     const weeks = [];
     for (let i = 7; i >= 0; i--) {
@@ -3377,6 +3514,7 @@
     render({ keepScroll: true });
     const high = Object.entries(rec.pains).some(([iid, v]) => { const l = num((injuryById(iid) || {}).painLimit); return l != null && v > l; });
     toast(old ? 'Wijzigingen opgeslagen' : high ? 'Opgeslagen. Pijn boven je afspraak: let morgen op je check.' : `${rec.type === 'match' ? 'Match' : 'Training'} opgeslagen`);
+    checkMilestones();
   }
 
   /* ---------- Aangepast uitgevoerd en meer opties ---------- */
@@ -3410,6 +3548,7 @@
     closeSheet();
     render({ keepScroll: true });
     toast(`${sessionTitle(id)}: aangepast uitgevoerd`, { action: 'undo-done', label: 'Ongedaan' });
+    checkMilestones();
   }
 
   // Sessie aanpassen: starten of afvinken, bevestigen, type vervangen, dag en uur, notitie, overslaan met reden
@@ -3867,8 +4006,10 @@
     }
   });
 
+  const EXT_SUBMIT = {};
   document.addEventListener('submit', e => {
     e.preventDefault();
+    if (EXT_SUBMIT[e.target.id]) { EXT_SUBMIT[e.target.id](e.target); return; }
     if (e.target.id === 'login-form') submitLogin(e.target);
     if (e.target.id === 'password-form') submitPassword(e.target);
     if (e.target.id === 'log-form') saveLog(e.target);
@@ -4109,6 +4250,30 @@
       main.innerHTML = `<div class="alert" style="margin-top:40px">${icon('alert')}<div><strong>De app kon niet starten</strong>Je browser blokkeert mogelijk lokale opslag (bv. privévenster). ${esc(err && err.message)}</div></div>`;
     }
     registerSW();
+    loadExtensions();
+  }
+
+  /* ================= Optionele uitbreidingen (AI-coach) ================= */
+  // De AI-module krijgt een kleine, vaste set hulpfuncties. Staat AI_ENABLED uit, dan wordt js/ai.js niet geladen.
+  window.ComebackApp = {
+    main,
+    rerender: () => render({ keepScroll: true }),
+    addSub: (name, def) => { SUBS[name] = def; },
+    addActions: map => Object.assign(actions, map),
+    addSubmit: (id, fn) => { EXT_SUBMIT[id] = fn; },
+    helpers: {
+      esc, icon, iconBtn, cap, today, addDays, dkey, DAY, fmtDay, C, planFor, itemKey, itemMeta, itemStatus, findItem, newItemOf,
+      workoutsOn, activitiesOn, woMinutes, activeInjuries, injuryLabel, injurySides, checkFor, checkVal, sessionTitle,
+      moveItem, replaceItem, skipItem, addItemTo, doneOrCaughtUp
+    }
+  };
+  function loadExtensions() {
+    const env = window.COMEBACK_ENV || {};
+    if (!env.AI_ENABLED || !Sync.configured()) return;
+    const sc = document.createElement('script');
+    sc.src = 'js/ai.js';
+    sc.defer = true;
+    document.body.appendChild(sc);
   }
 
   // Alleen voor tests in de browserconsole

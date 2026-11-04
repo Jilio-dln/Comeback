@@ -906,6 +906,52 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .add-row.two { grid-template-columns: 1fr auto; }
 .sheet .eyebrow { margin-bottom: 4px; }
 
+/* ---------- Streak, weekritme, mijlpalen ---------- */
+.tiles.mini { margin-bottom: 12px; }
+button.tile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; color: var(--ink); cursor: pointer; }
+.tile-num { font-size: 19px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.mini-bars { display: flex; gap: 3px; width: 100%; margin-top: 4px; }
+.mini-bars i { flex: 1; height: 6px; border-radius: 2px; background: var(--card-3); }
+.mini-bars i.on, .mini-bars i.done { background: var(--accent); }
+.mini-bars i.part { background: linear-gradient(90deg, var(--accent) 50%, var(--card-3) 50%); }
+.mini-bars i.rest { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
+.mini-bars i.planned { background: var(--card-3); }
+.badge-brand { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
+.badge-brand .label { color: rgba(249, 249, 249, .85); text-transform: uppercase; letter-spacing: .1em; font-size: 10.5px; font-weight: 600; }
+.badge-brand b { font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+.badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
+.badge { border-radius: 14px; padding: 10px 4px; text-align: center; border: 1px dashed var(--border-strong); color: var(--muted); }
+.badge b { display: block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.badge span { font-size: 10.5px; }
+.badge.on { border: 0; background: var(--brand-gradient); color: var(--white); }
+.badge.on span { color: rgba(249, 249, 249, .85); }
+.streak-hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; }
+.streak-num { font-size: 64px; font-weight: 500; letter-spacing: -.05em; line-height: 1; font-variant-numeric: tabular-nums; margin: 6px 0 6px; }
+.streak-num span { font-size: 17px; font-weight: 400; letter-spacing: 0; color: var(--muted); margin-left: 6px; }
+.ring { position: relative; width: 118px; height: 118px; flex: none; }
+.ring svg { width: 100%; height: 100%; }
+.ring > div { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring b { font-size: 24px; font-weight: 500; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.ring span { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.ex-prev { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--card-2); color: var(--ink-2); }
+.ex-prev .ic { width: 16px; height: 16px; margin-top: 1px; color: var(--accent-text); flex: none; }
+.ex-prev.muted { color: var(--muted); }
+
+/* ---------- AI-coach (alleen als de module geladen is) ---------- */
+.msgs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.msg { max-width: 88%; padding: 12px 14px; border-radius: 18px; font-size: 14.5px; line-height: 1.45; }
+.msg.me { align-self: flex-end; background: var(--card-3); border-bottom-right-radius: 6px; }
+.msg.coach { align-self: flex-start; max-width: 100%; width: 100%; background: var(--card-fill); border: 1px solid var(--border); }
+.msg.coach p { margin-top: 4px; }
+.msg.busy p { color: var(--muted); }
+.proposal { margin-top: 12px; padding: 12px; border-radius: 14px; border: 1px dashed var(--border-strong); display: flex; flex-direction: column; gap: 4px; }
+.proposal b { font-size: 15px; font-weight: 600; }
+.proposal .row { margin-top: 8px; }
+.proposal.done { border-style: solid; border-color: var(--accent); }
+.proposal.no { opacity: .6; }
+.ai-input { position: sticky; bottom: calc(var(--safe-bottom) + var(--tabbar-h) + 18px); display: grid; grid-template-columns: 1fr 52px; gap: 8px; padding: 8px; margin: 0 -8px; border-radius: 20px; background: var(--bg); }
+.ai-input .btn { padding: 0; min-height: 50px; }
+
 /* ---------- Blessures ---------- */
 .inj-hero { padding: 0; overflow: hidden; }
 .inj-hero > *:not(.inj-hero-top) { margin-left: 18px; margin-right: 18px; }

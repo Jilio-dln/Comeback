@@ -15,6 +15,8 @@ js/config.js          ← JOUW SCHEMA: fases, oefeningen, sessies, weekschema
 js/app.js             app-logica
 js/db.js              lokale opslag (IndexedDB) met wachtrij voor de sync
 js/sync.js            inloggen en synchroniseren met Supabase
+js/ai.js              optionele AI-coach (alleen geladen met AI_ENABLED)
+quotes.json           eigen motivatieteksten voor Vandaag
 js/charts.js          grafieken (eigen SVG, geen internet nodig)
 js/sample.js          voorbeelddata
 icons/                app-iconen (ook apple-touch-icon)

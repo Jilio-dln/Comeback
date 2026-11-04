@@ -19,7 +19,13 @@
  *   Security volledig: wie hem heeft, kan alle gegevens lezen, wijzigen en wissen.
  *   Die hoort alleen in het Supabase-dashboard of in server-code (bv. een Edge Function).
  */
+/*
+ * AI_ENABLED  true = de optionele AI-coach laden (vereist Supabase en de Edge Function "coach",
+ *             zie docs/ai-coach.md). false = de coach bestaat niet in de app.
+ */
 window.COMEBACK_ENV = {
   SUPABASE_URL: 'https://ynlqtqmickexjajmkwbd.supabase.co',
-  SUPABASE_ANON_KEY: 'sb_publishable_v_WYfYR5SqnReCL8QCq1Xg_5VGA40Vw'
+  SUPABASE_ANON_KEY: 'sb_publishable_v_WYfYR5SqnReCL8QCq1Xg_5VGA40Vw',
+  AI_ENABLED: false,
+  AI_FUNCTION: 'coach'
 };
