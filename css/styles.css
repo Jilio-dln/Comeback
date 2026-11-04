@@ -869,6 +869,14 @@ button.list-row:first-child { border-top: 0; }
 .pc-grip { flex: none; width: 44px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; touch-action: none; cursor: grab; }
 .pc-grip .ic { width: 20px; height: 20px; }
 .pc-done { flex: none; width: 44px; display: grid; place-items: center; color: var(--accent-text); }
+/* Vinkje-schakelaar: rondje = nog te doen, oranje = afgerond */
+.pc-check { flex: none; width: 48px; border: 0; background: transparent; display: grid; place-items: center; color: transparent; padding: 0; }
+.pc-check::before { content: ""; grid-area: 1 / 1; width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 0 0 1.75px var(--border-strong); transition: background .15s, box-shadow .15s; }
+.pc-check .ic { grid-area: 1 / 1; width: 16px; height: 16px; stroke-width: 2.6; position: relative; }
+.pc-check:hover::before { box-shadow: inset 0 0 0 1.75px var(--accent); }
+.pc-check.on::before { background: var(--accent); box-shadow: none; }
+.pc-check.on { color: var(--accent-ink); }
+.pc-check:active::before { transform: scale(.9); }
 .pc-done .ic { width: 18px; height: 18px; stroke-width: 2.2; }
 /* Voorgesteld = stippellijn, bevestigd = volle rand, uitgevoerd = gedempt met vinkje */
 .pcard.st-suggested { border-style: dashed; border-color: var(--border-strong); background: transparent; box-shadow: none; }

@@ -1440,14 +1440,19 @@
     const cls = it.type === 'rest' ? 'st-rest' : done ? 'st-done' : st.cls === 'missed' ? 'st-missed' : k < tk ? 'st-past' : it.confirmed ? 'st-confirmed' : 'st-suggested';
     const draggable = it.type !== 'rest' && !it.fixture && !done;
     const title = it.type === 'match' && it.fixture ? `${it.fixture.home ? 'Thuis' : 'Uit'} · ${it.fixture.opponent}` : it.type === 'session' ? sessionTitle(it.id) : m.title;
+    // Vinkje als schakelaar: leeg rondje = nog te doen, oranje vinkje = afgerond (vanaf de dag zelf)
+    const viaOther = done && !recordFor(it, k);
+    const toggle = it.type === 'rest' ? '' : done
+      ? `<button class="pc-check on" data-action="${viaOther ? 'item-actions' : 'item-undone'}" data-k="${k}" data-key="${esc(key)}" role="checkbox" aria-checked="true" aria-label="${esc(title)}: afgerond${viaOther ? ' (ingehaald)' : '. Tik om terug te zetten naar nog te doen'}">${icon('check')}</button>`
+      : k <= tk ? `<button class="pc-check" data-action="item-done" data-k="${k}" data-key="${esc(key)}" role="checkbox" aria-checked="false" aria-label="${esc(title)}: nog te doen. Tik om af te ronden">${icon('check')}</button>` : '';
     return `<div class="pcard ${cls} t-${itemType(it)}" data-k="${k}" data-key="${esc(key)}">
       <button class="pc-main" data-action="item-actions" data-k="${k}" data-key="${esc(key)}" aria-label="${esc(title)}, ${esc(st.label)}. Aanpassen">
         <span class="pc-kind">${esc(actKind(it))}${it.userNote ? ` · ${icon('edit')}` : ''}</span>
         <b>${esc(title)}</b>
         <span class="pc-meta">${meta.filter(Boolean).map(esc).join('  ·  ')}</span>
       </button>
-      ${draggable ? `<button class="pc-grip" data-action="open-move" data-k="${k}" data-key="${esc(key)}" aria-label="${esc(title)} verplaatsen (slepen of tikken)">${icon('grip')}</button>`
-        : done ? `<span class="pc-done" aria-hidden="true">${icon('check')}</span>` : ''}
+      ${toggle}
+      ${draggable ? `<button class="pc-grip" data-action="open-move" data-k="${k}" data-key="${esc(key)}" aria-label="${esc(title)} verplaatsen (slepen of tikken)">${icon('grip')}</button>` : ''}
     </div>`;
   }
 
