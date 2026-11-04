@@ -118,8 +118,8 @@
     const p = themePref();
     const dark = p === 'dark' || (p === 'auto' && darkQuery && darkQuery.matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', dark ? '#000000' : '#e8e8e5');
+    // Gekozen thema wint van de systeeminstelling, ook voor de statusbalk
+    document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.setAttribute('content', dark ? '#090909' : '#EFEFEF'); m.removeAttribute('media'); });
   }
   function setTheme(p) {
     try { localStorage.setItem('comeback-theme', p); } catch (_) { }
