@@ -1,7 +1,7 @@
 # Comeback: voetbal, fitness en herstel
 
 Persoonlijke Progressive Web App (PWA) om je voetbal, fitness en het herstel van je achillespees en kuit bij te houden.
-Werkt offline, installeerbaar op Android (Chrome) en iPhone (Safari). Alle data blijft lokaal op je toestel (IndexedDB).
+Werkt offline, installeerbaar op Android (Chrome) en iPhone (Safari). Je data staat lokaal op je toestel (IndexedDB) en kan optioneel synchroniseren met je eigen Supabase-project (zie [docs/supabase.md](docs/supabase.md)).
 
 ## Bestanden
 
@@ -10,14 +10,18 @@ index.html            de app
 manifest.json         app-naam, iconen, standalone-modus
 sw.js                 service worker (offline)
 css/styles.css        vormgeving
+js/env.js             Supabase-koppeling (leeg = alleen lokaal)
 js/config.js          ← JOUW SCHEMA: fases, oefeningen, sessies, weekschema
 js/app.js             app-logica
-js/db.js              lokale opslag (IndexedDB)
+js/db.js              lokale opslag (IndexedDB) met wachtrij voor de sync
+js/sync.js            inloggen en synchroniseren met Supabase
 js/charts.js          grafieken (eigen SVG, geen internet nodig)
 js/sample.js          voorbeelddata
 icons/                app-iconen (ook apple-touch-icon)
 assets/hero.jpg       foto voor de header (Unsplash License)
 .nojekyll             zorgt dat GitHub Pages alles ongewijzigd serveert
+supabase/migrations/  SQL voor de tabel en Row Level Security
+docs/                 verbeterplan en Supabase-handleiding
 ```
 
 De map `.claude/` heb je niet nodig op GitHub.
@@ -65,7 +69,7 @@ De map `.claude/` heb je niet nodig op GitHub.
 - Open de app één keer met internet. Daarna werkt ze ook offline (bv. in de fitness zonder bereik).
 - Op iPhone hebben de geïnstalleerde app en Safari elk **eigen** data. Gebruik dus altijd het icoon.
 - Op iPhone kan een webapp niet trillen, en het piepje van de timers hoor je alleen als je belsignaal aanstaat (de stilteschakelaar staat uit).
-- Je data staat alleen op je toestel. Maak geregeld een back-up via **Account → Gegevens → Back-up maken**. Op een nieuwe gsm zet je ze terug met **Terugzetten**.
+- Zonder Supabase staat je data alleen op je toestel. Maak geregeld een back-up via **Account → Gegevens → Back-up maken**. Op een nieuwe gsm zet je ze terug met **Terugzetten**.
 
 ## 3. De app in het kort
 

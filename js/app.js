@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '3.0.0';
+  const APP_VERSION = '4.0.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -98,6 +98,8 @@
     arrowL: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
     arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
     magic: '<path d="M5 19L17 7M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+    sync: '<path d="M20 11a8 8 0 0 0-14.3-4.3L4 9M4 4v5h5M4 13a8 8 0 0 0 14.3 4.3L20 15M20 20v-5h-5"/>',
     // Sessie-iconen
     legs: '<path d="M9.5 3.5v6.5L7 15l2.5 5.5M14.5 3.5v6.5L17 15l-2.5 5.5M9.5 9h5"/>',
     barbell: '<path d="M2.5 12h19M6 7.5v9M18 7.5v9M3.5 9.5v5M20.5 9.5v5"/>',
@@ -556,6 +558,8 @@
   };
 
   function render({ keepScroll = false } = {}) {
+    if (S.auth) return renderAuth();
+    $('#tabbar').hidden = false;
     const r = currentRoute();
     const y = window.scrollY;
     if (r !== lastRoute && r === 'workout') S.ui.woView = null;
@@ -2183,9 +2187,12 @@
         <button class="list-row tap row-btn" data-action="open-minutes"><span class="ico">${icon('clock')}</span><span class="body"><b>Mijn minuten van een match</b><span>Van het wedstrijdblad op rbfa.be</span></span><span class="end">${icon('chevR')}</span></button>
       </section>
 
+      <div class="section"><span>Account & synchronisatie</span></div>
+      <section class="card">${syncCardHtml()}</section>
+
       <div class="section"><span>Gegevens</span></div>
       <section class="card">
-        <p class="small ${lastExp ? 'muted' : 'warn-text'}" style="margin-bottom:12px">${lastExp ? `Laatste back-up: ${fmtFull(dkey(new Date(lastExp)))} om ${fmtTime(lastExp)}.` : 'Nog geen back-up gemaakt.'} Je gegevens staan alleen op deze gsm.</p>
+        <p class="small ${lastExp ? 'muted' : 'warn-text'}" style="margin-bottom:12px">${lastExp ? `Laatste back-up: ${fmtFull(dkey(new Date(lastExp)))} om ${fmtTime(lastExp)}.` : 'Nog geen back-up gemaakt.'} ${Sync.user() ? 'Een back-up is een JSON-bestand met al je gegevens.' : 'Je gegevens staan alleen op deze gsm.'}</p>
         <div class="row"><button class="btn primary" data-action="export">${icon('download')} Back-up maken</button><button class="btn" data-action="import">${icon('upload')} Terugzetten</button></div>
         <input type="file" id="import-file" accept="application/json,.json" hidden data-change="import">
         <div class="divider"></div>
@@ -2197,7 +2204,7 @@
         </details>
       </section>
 
-      <p class="footer-note">${esc(C.appName)} v${APP_VERSION} · werkt offline<br>Foto: John Money via Unsplash</p>
+      <p class="footer-note">${esc(C.appName)} v${APP_VERSION} · werkt offline · jouw data blijft van jou<br>Foto: John Money via Unsplash</p>
     `;
   }
 
@@ -2883,7 +2890,7 @@
     if (!data || !Array.isArray(data.checks) || !Array.isArray(data.workouts) || !Array.isArray(data.activities)) {
       toast('Dit lijkt geen Comeback-back-up'); return;
     }
-    if (!await ask(`Back-up van ${data.exportedAt ? new Date(data.exportedAt).toLocaleDateString('nl-BE') : 'onbekende datum'} terugzetten? Dit vervangt alle huidige gegevens op deze gsm.`, { ok: 'Terugzetten' })) return;
+    if (!await ask(`Back-up van ${data.exportedAt ? new Date(data.exportedAt).toLocaleDateString('nl-BE') : 'onbekende datum'} terugzetten? Dit vervangt alle huidige gegevens op deze gsm${Sync.user() ? ' en in je account, dus ook op je andere toestellen' : ''}.`, { ok: 'Terugzetten' })) return;
     for (const s of DB.stores) await DB.clear(s);
     await DB.bulkPut('checks', data.checks);
     await DB.bulkPut('workouts', data.workouts);
@@ -2923,7 +2930,7 @@
   }
 
   async function clearAll() {
-    if (!await ask('Echt ALLE data wissen (ook je eigen workouts, checks en instellingen)? Maak eerst een back-up.')) return;
+    if (!await ask(`Echt ALLE data wissen (ook je eigen workouts, checks en instellingen)${Sync.user() ? ', ook in je account en op je andere toestellen' : ''}? Maak eerst een back-up.`)) return;
     if (!await ask('Laatste bevestiging: alles wissen?')) return;
     for (const s of DB.stores) await DB.clear(s);
     await DB.setSetting('seeded', true);
@@ -3053,7 +3060,12 @@
     'clear-sample': clearSample,
     'load-sample': async () => { await setSetting('demo', true); await seedSample(); render({ keepScroll: true }); toast('Demostand aan'); },
     'clear-all': clearAll,
-    'reload': () => location.reload()
+    'reload': () => location.reload(),
+    'pw-toggle': el => { const i = el.parentElement.querySelector('input'); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.setAttribute('aria-pressed', String(show)); el.setAttribute('aria-label', show ? 'Wachtwoord verbergen' : 'Wachtwoord tonen'); i.focus(); },
+    'auth-forgot': forgotPassword,
+    'auth-relogin': () => { $('#toast').hidden = true; S.auth = { view: 'login', email: '' }; render(); },
+    'sync-now': async () => { await Sync.syncNow(); const st = Sync.state(); if (st.status === 'ok') toast('Gesynchroniseerd'); else if (st.error) toast(st.error); },
+    'sign-out': signOutFlow
   };
 
   function shiftMonth(n) {
@@ -3152,6 +3164,8 @@
 
   document.addEventListener('submit', e => {
     e.preventDefault();
+    if (e.target.id === 'login-form') submitLogin(e.target);
+    if (e.target.id === 'password-form') submitPassword(e.target);
     if (e.target.id === 'log-form') saveLog(e.target);
     if (e.target.id === 'minutes-form') saveMinutes(e.target);
     if (e.target.id === 'match-form') saveMatch(e.target);
@@ -3161,6 +3175,8 @@
   });
 
   window.addEventListener('hashchange', () => { closeSheet(); render(); });
+  window.addEventListener('online', () => { if (S.auth) render(); });
+  window.addEventListener('offline', () => { if (S.auth) render(); });
   // Onthouden of de setlijst open staat
   document.addEventListener('toggle', e => { if (e.target.matches && e.target.matches('details[data-fold="sets"]')) S.ui.setsOpen = e.target.open; }, true);
 
@@ -3176,6 +3192,136 @@
       if (reg.installing) notify(reg.installing);
       reg.addEventListener('updatefound', () => notify(reg.installing));
     }).catch(() => { });
+  }
+
+  /* ================= Inloggen en synchronisatie (alleen als Supabase ingesteld is) ================= */
+  // S.auth = null (app open) of { view: 'login' | 'password' | 'sent', error, info, busy, email }
+  function renderAuth() {
+    const a = S.auth;
+    $('#tabbar').hidden = true;
+    stopRest();
+    const err = a.error ? `<p class="auth-msg err" role="alert">${icon('alert')}<span>${esc(a.error)}</span></p>` : '';
+    const info = a.info ? `<p class="auth-msg" role="status">${icon('info')}<span>${esc(a.info)}</span></p>` : '';
+    const offline = !navigator.onLine ? `<p class="auth-msg" role="status">${icon('info')}<span>Je bent offline. Inloggen kan pas met internet.</span></p>` : '';
+    const brand = `<div class="auth-brand"><span class="wordmark">comeback</span><span class="eyebrow">Persoonlijke ruimte</span></div>`;
+    let body;
+    if (a.view === 'password') {
+      body = `<h1 class="auth-title">${a.reason === 'invite' ? 'Welkom.' : 'Nieuw wachtwoord.'}</h1>
+        <p class="auth-sub">${a.reason === 'invite' ? 'Kies een wachtwoord om je account af te werken.' : 'Kies een nieuw wachtwoord voor'} <b>${esc((Sync.user() || {}).email || '')}</b></p>
+        ${err}
+        <form id="password-form" novalidate>
+          <label class="field"><span>Nieuw wachtwoord</span>
+            <div class="pw-wrap"><input class="input" type="password" name="password" id="auth-pw" autocomplete="new-password" minlength="8" required aria-describedby="pw-hint">
+            <button type="button" class="pw-toggle" data-action="pw-toggle" aria-label="Wachtwoord tonen" aria-pressed="false">${icon('eye')}</button></div></label>
+          <p class="label" id="pw-hint" style="margin:-6px 2px 16px">Minstens 8 tekens.</p>
+          <button class="btn accent block lg" type="submit" ${a.busy ? 'disabled' : ''}>${a.busy ? 'Bewaren…' : 'Wachtwoord bewaren'}</button>
+        </form>`;
+    } else {
+      body = `<h1 class="auth-title">Welkom terug.</h1>
+        <p class="auth-sub">Jouw plek. Jouw ritme. Jouw comeback.</p>
+        ${offline}${err}${info}
+        <form id="login-form" novalidate>
+          <label class="field"><span>E-mail</span><input class="input" type="email" name="email" id="auth-email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" required value="${esc(a.email || '')}"></label>
+          <label class="field"><span>Wachtwoord</span>
+            <div class="pw-wrap"><input class="input" type="password" name="password" id="auth-pw" autocomplete="current-password" required>
+            <button type="button" class="pw-toggle" data-action="pw-toggle" aria-label="Wachtwoord tonen" aria-pressed="false">${icon('eye')}</button></div></label>
+          <button type="button" class="link-btn auth-forgot" data-action="auth-forgot">Wachtwoord vergeten?</button>
+          <button class="btn accent block lg" type="submit" ${a.busy ? 'disabled' : ''}>${a.busy ? 'Inloggen…' : 'Inloggen'}</button>
+        </form>
+        <p class="auth-foot">Accounts worden alleen op uitnodiging aangemaakt. Je gegevens blijven ook offline op dit toestel.</p>`;
+    }
+    main.innerHTML = `<section class="auth">${brand}<div class="auth-body">${body}</div></section>`;
+    const first = $(a.view === 'password' ? '#auth-pw' : (a.email ? '#auth-pw' : '#auth-email'));
+    if (first && !a.busy && !matchMedia('(pointer: coarse)').matches) first.focus();
+  }
+  function setAuth(patch) { S.auth = { ...(S.auth || { view: 'login' }), ...patch }; render(); }
+
+  async function submitLogin(form) {
+    const email = form.email.value.trim(), pw = form.password.value;
+    if (!email || !pw) { setAuth({ email, error: 'Vul je e-mailadres en wachtwoord in.', info: null }); return; }
+    setAuth({ email, busy: true, error: null, info: null });
+    try {
+      const user = await Sync.signIn(email, pw);
+      await afterSignIn(user);
+    } catch (e) { setAuth({ busy: false, error: e.message }); }
+  }
+
+  async function submitPassword(form) {
+    const pw = form.password.value;
+    if (pw.length < 8) { setAuth({ error: 'Gebruik minstens 8 tekens.' }); return; }
+    setAuth({ busy: true, error: null });
+    try { await Sync.setPassword(pw); await afterSignIn(Sync.user(), 'Wachtwoord bewaard'); }
+    catch (e) { setAuth({ busy: false, error: e.message }); }
+  }
+
+  async function forgotPassword() {
+    const email = (($('#auth-email') || {}).value || '').trim();
+    if (!email) { setAuth({ error: 'Vul eerst je e-mailadres in.', info: null }); return; }
+    setAuth({ email, busy: true, error: null, info: null });
+    try { await Sync.recover(email); setAuth({ busy: false, info: 'Als dit adres een account heeft, krijg je zo een mail met een link om een nieuw wachtwoord te kiezen.' }); }
+    catch (e) { setAuth({ busy: false, error: e.message }); }
+  }
+
+  // Na inloggen: bij een ander account eerst de lokale gegevens wissen, dan synchroniseren
+  async function afterSignIn(user, msg) {
+    const prev = Sync.lastUserId();
+    if (prev && user && prev !== user.id) {
+      const own = ['checks', 'workouts', 'activities'].some(s => (S.raw[s] || []).some(x => !x.sample));
+      if (own && !await ask('Op dit toestel staan gegevens van een ander account. Die worden gewist voor je verdergaat. Maak eventueel eerst een back-up.', { ok: 'Wissen en verdergaan', danger: true, title: 'Ander account' })) {
+        await Sync.signOut(); setAuth({ view: 'login', busy: false }); return;
+      }
+      await Sync.resetLocal();
+      await reloadData();
+    }
+    S.auth = null;
+    startSync();
+    render();
+    toast(msg || `Ingelogd als ${user.email}`);
+    await Sync.syncNow();
+    await reloadData();
+  }
+
+  function startSync() {
+    Sync.start({
+      onRemoteChange: reloadData,
+      onAuthLost: msg => { if (!S.auth) { toast(msg, { action: 'auth-relogin', label: 'Inloggen' }); if (currentRoute() === 'account') render({ keepScroll: true }); } }
+    });
+  }
+
+  async function reloadData() {
+    await loadAll();
+    await migrate();
+    registerCustom();
+    // Niet hertekenen terwijl je iets aan het typen bent
+    const a = document.activeElement;
+    if (!S.auth && !(a && main.contains(a) && a.matches('input, textarea, select'))) render({ keepScroll: true });
+  }
+
+  async function signOutFlow() {
+    const n = Sync.state().pending;
+    if (navigator.onLine && n) await Sync.syncNow();
+    const left = Sync.state().pending;
+    if (!await ask(`Je gegevens blijven op dit toestel staan.${left ? ` ${left} wijziging${left === 1 ? '' : 'en'} kon${left === 1 ? '' : 'den'} nog niet verstuurd worden; dat gebeurt zodra je weer inlogt.` : ''}`, { ok: 'Uitloggen', title: 'Uitloggen?' })) return;
+    await Sync.signOut();
+    S.auth = { view: 'login', email: '' };
+    location.hash = 'vandaag';
+    render();
+  }
+
+  // Blok in Account: met wie je ingelogd bent en hoe de synchronisatie loopt
+  function syncCardHtml() {
+    if (!Sync.configured()) {
+      return `<p class="small muted">Je gegevens staan alleen op dit toestel. Synchronisatie met Supabase is niet ingesteld (zie <code>js/env.js</code>).</p>`;
+    }
+    const u = Sync.user(), st = Sync.state(), last = Sync.lastSyncAt();
+    if (!u) return `<p class="small warn-text">Je sessie is verlopen. Wijzigingen blijven bewaard op dit toestel.</p>
+      <button class="btn accent block" style="margin-top:12px" data-action="auth-relogin">Opnieuw inloggen</button>`;
+    const line = st.status === 'syncing' ? 'Bezig met synchroniseren…'
+      : st.status === 'offline' ? 'Offline. Je wijzigingen worden verstuurd zodra je weer verbinding hebt.'
+        : st.status === 'error' ? st.error
+          : last ? `Gesynchroniseerd ${relDay(dkey(new Date(last)))} om ${fmtTime(last)}.` : 'Nog niet gesynchroniseerd.';
+    return `<div class="list-row" style="padding-top:0"><div class="ico">${icon('user')}</div><div class="body"><b>${esc(u.email)}</b><span id="sync-line" class="${st.status === 'error' ? 'warn-text' : ''}">${esc(line)}${st.pending ? ` ${st.pending} wijziging${st.pending === 1 ? '' : 'en'} wacht${st.pending === 1 ? '' : 'en'}.` : ''}</span></div></div>
+      <div class="row" style="margin-top:12px"><button class="btn" data-action="sync-now" ${st.status === 'syncing' ? 'disabled' : ''}>${icon('sync')} Synchroniseren</button><button class="btn" data-action="sign-out">Uitloggen</button></div>`;
   }
 
   /* ================= Migraties ================= */
@@ -3227,7 +3373,23 @@
       await migrate();
       registerCustom();
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
-      if (draft()) requestWakeLock();
+      if (Sync.configured()) {
+        // Link uit een uitnodigings- of herstelmail
+        const r = await Sync.consumeRedirect();
+        if (r && r.error) S.auth = { view: 'login', error: r.error };
+        else if (r && (r.type === 'invite' || r.type === 'recovery')) S.auth = { view: 'password', reason: r.type };
+        else if (r) { S.auth = null; toast(`Ingelogd als ${r.user.email}`); }
+        // Zonder sessie op dit toestel: eerst inloggen. Met sessie werkt alles ook offline.
+        else if (!Sync.session()) S.auth = { view: 'login' };
+        // Pas synchroniseren als je echt binnen bent (niet tijdens het kiezen van een wachtwoord)
+        if (!S.auth) startSync();
+        // Syncstatus in Account bijwerken (niet terwijl je in een veld typt)
+        Sync.subscribe(() => {
+          const a = document.activeElement;
+          if (currentRoute() === 'account' && !S.auth && !document.querySelector('.sheet-backdrop') && !(a && main.contains(a) && a.matches('input, textarea, select'))) render({ keepScroll: true });
+        });
+      }
+      if (draft() && !S.auth) requestWakeLock();
       render();
     } catch (err) {
       console.error(err);
@@ -3237,7 +3399,7 @@
   }
 
   // Alleen voor tests in de browserconsole
-  window.__comeback = { parseCalendar, parseMatchSheet, migrate: () => migrate() };
+  window.__comeback = { parseCalendar, parseMatchSheet, migrate: () => migrate(), reloadData };
 
   init();
 })();

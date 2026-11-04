@@ -30,7 +30,7 @@ Het bepaalt wat blijft, wat verandert en wat er (voorlopig) niet in komt, met de
 1. **Tokens en thema** – Figma-taal: Inter, `#090909` / `#EFEFEF`, kaarten met zachte gradient en 1px rand,
    radius 16–20, één oranje hoofdactie per scherm, warme gloed bovenaan, zwevende tabbar met oranje halo.
    De brand gradient alleen op de fotoheader en mijlpaal-badges.
-2. **Opslag en synchronisatie** – zie *Open vragen*.
+2. **Opslag en synchronisatie** – klaar: optionele Supabase-sync met invite-only login (e-mail + wachtwoord), Row Level Security en offline-eerst. Zie [supabase.md](supabase.md).
 3. **Planning** – weekweergave met sessiekaarten per dag, slepen én een knop *Verplaatsen*; voorgesteld
    (stippellijn), bevestigd (volle rand), uitgevoerd, aangepast en overgeslagen (met reden) duidelijk verschillend;
    sessietypes fitness, voetbaltraining, match, kine, herstel/mobiliteit, rust en eigen types; *vervangen door*
@@ -53,14 +53,10 @@ Profiel en instellingen open je via je avatar op Vandaag.
 | Oranje tekst op licht | donkerdere tint `#B33E00` | `#E85002` op `#F9F9F9` haalt maar 3,6:1; de tint haalt 5,5:1 |
 | Laadscherm met quote | niet bij elke start | de app opent in een fractie van een seconde uit lokale opslag; een kunstmatige wachttijd vertraagt dagelijks gebruik. De motivatietekst staat op Vandaag. |
 | Quotes van topsporters | eigen korte teksten zonder naam | echtheid en juiste toeschrijving kan ik niet controleren; een fout citaat is erger dan geen citaat |
-| Inloggen, passkey/Face ID | nog niet | zonder ingesteld Supabase-project (of andere server) zou een loginscherm niets beveiligen |
+| Inloggen | alleen als Supabase ingesteld is | zonder project zou een loginscherm niets beveiligen; met project is het verplicht |
+| Passkey/Face ID | niet | geen controleerbare passkey-login in Supabase Auth; geen knop die veiligheid suggereert |
+| Tabelmodel | één tabel `user_records` (record per rij, JSON) | volgt de lokale opslag één op één, zodat offline synchroniseren eenvoudig en betrouwbaar blijft; de vorm van planning en blessures verandert nog in de volgende fases |
 | AI-coach | nog niet, later achter `AI_ENABLED` | geen chat zonder echte koppeling via een server-functie |
 | Gewicht, hartslag, Apple Health | weggelaten | een webapp kan Apple Health niet lezen; geen schijnkoppeling |
 | Sportfoto's uit Figma | niet gebruikt | licentie onbekend; de bestaande Unsplash-foto (vrij te gebruiken) blijft, in zwart-wit |
 | "Private membership" | alleen als sfeer in de typografie | geen abonnement, betaalmuur of extra accountstappen |
-
-## Open vragen
-
-- **Supabase:** wil je echt synchronisatie tussen toestellen, en heb je al een Supabase-project? Zonder project
-  blijft alles lokaal en werkt de app volledig. Met project bouw ik invite-only login (e-mail + wachtwoord),
-  tabellen met Row Level Security en een eenmalige migratie van je lokale gegevens.

@@ -809,6 +809,27 @@ button.list-row:first-child { border-top: 0; }
 .badge-brand::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .15)); }
 .badge-brand > * { position: relative; }
 
+/* ---------- Inloggen ---------- */
+.auth { min-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 60px); display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding-top: 12px; }
+.auth-brand { display: flex; flex-direction: column; gap: 6px; }
+.wordmark { font-size: 28px; font-weight: 600; letter-spacing: -.04em; line-height: 1; }
+.wordmark::after { content: "."; color: var(--accent); }
+.auth-body { width: 100%; max-width: 420px; margin: 0 auto 0 0; }
+.auth-title { font-size: 34px; font-weight: 600; letter-spacing: -.03em; line-height: 1.05; }
+.auth-sub { font-size: 14px; color: var(--muted); margin: 8px 0 24px; }
+.auth-sub b { color: var(--ink); font-weight: 600; }
+.auth-msg { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; font-weight: 500; padding: 12px 14px; border-radius: var(--r-field); background: var(--card-2); margin-bottom: 16px; }
+.auth-msg .ic { width: 18px; height: 18px; margin-top: 1px; color: var(--muted); }
+.auth-msg.err { background: var(--accent-soft); color: var(--accent-text); }
+.auth-msg.err .ic { color: inherit; }
+.auth-forgot { margin: -4px 0 18px; min-height: 44px; }
+.auth-foot { font-size: 12px; color: var(--muted); margin-top: 18px; }
+.pw-wrap { position: relative; }
+.pw-wrap .input { padding-right: 52px; }
+.pw-toggle { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); display: grid; place-items: center; }
+.pw-toggle[aria-pressed="true"] { color: var(--accent-text); }
+code { font-size: .92em; padding: 1px 5px; border-radius: 6px; background: var(--card-2); }
+
 /* Kleine schermen (bv. 320–360 px breed) */
 @media (max-width: 360px) {
   :root { --gutter: 14px; }
