@@ -31,7 +31,7 @@ Het bepaalt wat blijft, wat verandert en wat er (voorlopig) niet in komt, met de
    radius 16–20, één oranje hoofdactie per scherm, warme gloed bovenaan, zwevende tabbar met oranje halo.
    De brand gradient alleen op de fotoheader en mijlpaal-badges.
 2. **Opslag en synchronisatie** – klaar: optionele Supabase-sync met invite-only login (e-mail + wachtwoord), Row Level Security en offline-eerst. Zie [supabase.md](supabase.md).
-3. **Planning** – weekweergave met sessiekaarten per dag, slepen én een knop *Verplaatsen*; voorgesteld
+3. **Planning** (klaar) – weekweergave met sessiekaarten per dag, slepen én een knop *Verplaatsen*; voorgesteld
    (stippellijn), bevestigd (volle rand), uitgevoerd, aangepast en overgeslagen (met reden) duidelijk verschillend;
    sessietypes fitness, voetbaltraining, match, kine, herstel/mobiliteit, rust en eigen types; *vervangen door*
    een ander type; notitie per sessie; waarschuwing bij te veel zware dagen op rij of zwaar vlak voor een match.

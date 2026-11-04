@@ -99,6 +99,8 @@
     arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
     magic: '<path d="M5 19L17 7M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>',
     eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+    grip: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="2.6"/>',
+    swap: '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
     sync: '<path d="M20 11a8 8 0 0 0-14.3-4.3L4 9M4 4v5h5M4 13a8 8 0 0 0 14.3 4.3L20 15M20 20v-5h-5"/>',
     // Sessie-iconen
     legs: '<path d="M9.5 3.5v6.5L7 15l2.5 5.5M14.5 3.5v6.5L17 15l-2.5 5.5M9.5 9h5"/>',
@@ -246,8 +248,14 @@
 
   /* ================= Schema ================= */
   const satMatchWeek = d => (S.settings.satMatchWeeks || []).includes(weekKey(d));
-  const itemKey = it => it.type === 'session' ? `session:${it.id}` : it.type;
+  // Soorten in de planning: session (fitness of herstel uit je schema, of een eigen workout), training (voetbal),
+  // match, kine, recovery (herstel & mobiliteit), custom (eigen type met naam) en rest
+  const slug = v => String(v || 'eigen').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'eigen';
+  const itemKey = it => it.type === 'session' ? `session:${it.id}` : it.type === 'custom' ? `custom:${slug(it.label)}` : it.type;
   const overrides = () => S.settings.overrides || {};
+  // Reden van een weggehaald item: 'skip' of 'skip:<reden>', 'del', 'moved:<datum>' of 'replaced:<sleutel>'
+  const isSkip = r => typeof r === 'string' && r.startsWith('skip');
+  const skipReason = r => isSkip(r) && r.length > 5 ? r.slice(5) : '';
 
   // Standaardschema van een dag (zonder jouw eigen wijzigingen)
   function basePlan(date, phaseId = currentPhase(), opts = {}) {
@@ -279,13 +287,24 @@
     const k = dkey(date);
     const base = basePlan(date);
     const ov = overrides()[k] || {};
-    const removed = ov.removed || {};
+    const removed = ov.removed || {}, confirmed = ov.confirmed || {}, edits = ov.edits || {};
     const exists = it => it.type !== 'session' || !!C.sessions[it.id];
     const items = base.filter(it => !removed[itemKey(it)]);
-    (ov.added || []).forEach(a => { if (exists(a) && !items.some(x => itemKey(x) === itemKey(a))) items.push({ ...a }); });
-    const off = base.filter(it => removed[itemKey(it)] && exists(it)).map(it => ({ item: it, reason: removed[itemKey(it)] }));
-    const order = { session: 0, training: 1, match: 2, rest: 3 };
-    items.sort((a, b) => order[a.type] - order[b.type]);
+    const offAdded = [];
+    (ov.added || []).forEach(a => {
+      if (!exists(a)) return;
+      if (a.skipped) { offAdded.push({ item: { ...a }, reason: a.skipped }); return; }
+      if (!items.some(x => itemKey(x) === itemKey(a))) items.push({ ...a });
+    });
+    // Per dag: bevestigd of nog voorgesteld, en je eigen uur, duur en notitie
+    items.forEach(it => {
+      const key = itemKey(it), ed = edits[key];
+      it.confirmed = !!(confirmed[key] || it.from || it.extra || it.fixture);
+      if (ed) { if (ed.time) it.time = ed.time; if (ed.min) it.min = ed.min; if (ed.note) it.userNote = ed.note; }
+    });
+    const off = base.filter(it => removed[itemKey(it)] && exists(it)).map(it => ({ item: it, reason: removed[itemKey(it)] })).concat(offAdded);
+    const order = { session: 0, kine: 1, recovery: 1, custom: 1, training: 2, match: 3, rest: 4 };
+    items.sort((a, b) => (order[a.type] ?? 1) - (order[b.type] ?? 1));
     return { items: items.filter(it => it.type !== 'rest' || items.length === 1), off };
   }
   const planFor = date => planDetail(date).items;
@@ -341,7 +360,10 @@
       const sub = sessionDesc(it.id);
       return { icon: s.icon || 'dumbbell', title: sessionTitle(it.id), sub: `${s.place ? cap(s.place) + ' · ' : ''}${st.exercises} oefeningen · ±${st.minutes} min`, note: it.note, short: s.short || it.id, stats: st, subtitle: sub };
     }
-    if (it.type === 'training') return { icon: 'whistle', title: 'Clubtraining', sub: it.time || '', note: it.note, short: 'Training' };
+    if (it.type === 'training') return { icon: 'whistle', title: 'Voetbaltraining', sub: it.time || '', note: it.note, short: 'Training' };
+    if (it.type === 'kine') return { icon: 'heart', title: it.label ? `Kine · ${it.label}` : 'Kine', sub: [it.time, it.min && `${it.min} min`].filter(Boolean).join(' · '), note: it.note, short: 'Kine' };
+    if (it.type === 'recovery') return { icon: 'pulse', title: it.label || 'Herstel & mobiliteit', sub: [it.time, `${it.min || 25} min`].filter(Boolean).join(' · '), note: it.note, short: 'Herstel' };
+    if (it.type === 'custom') return { icon: 'list', title: it.label || 'Eigen activiteit', sub: [it.time, it.min && `${it.min} min`].filter(Boolean).join(' · '), note: it.note, short: it.label || 'Eigen' };
     if (it.type === 'match') {
       const f = it.fixture;
       if (f) {
@@ -353,9 +375,12 @@
     return { icon: 'moon', title: 'Rustdag', sub: 'Wandelen, mobiliteit en goed slapen', note: it.note, short: 'rust' };
   }
 
+  const SIMPLE = ['kine', 'recovery', 'custom'];
+  // Een activiteit hoort bij een gepland item als het type (en bij een eigen type de naam) overeenkomt
+  const actMatches = (a, it) => a.type === it.type && (it.type !== 'custom' || slug(a.label) === slug(it.label));
   function itemDone(it, k) {
     if (it.type === 'session') return workoutsOn(k).some(w => w.sessionKey === it.id);
-    if (it.type === 'training' || it.type === 'match') return activitiesOn(k).some(a => a.type === it.type);
+    if (it.type === 'training' || it.type === 'match' || SIMPLE.includes(it.type)) return activitiesOn(k).some(a => actMatches(a, it));
     return false;
   }
 
@@ -368,7 +393,7 @@
       planFor(d).forEach(it => {
         if (it.type !== 'session') return;
         const s = C.sessions[it.id];
-        if (!s || s.catchUp === false || itemDone(it, k)) return;
+        if (!s || !it.confirmed || s.catchUp === false || itemDone(it, k)) return;
         if (S.workouts.some(w => w.sessionKey === it.id && w.date > k && w.date <= tk)) return;
         out.push({ date: k, item: it });
       });
@@ -385,21 +410,34 @@
     if (msg) toast(msg, undoable ? { action: 'undo', label: 'Ongedaan' } : null);
   }
   function editOv(all, k, fn) {
-    const o = all[k] ? { removed: { ...(all[k].removed || {}) }, added: [...(all[k].added || [])] } : { removed: {}, added: [] };
+    const a = all[k] || {};
+    const o = { removed: { ...(a.removed || {}) }, added: [...(a.added || [])], confirmed: { ...(a.confirmed || {}) }, edits: { ...(a.edits || {}) } };
     fn(o);
-    if (!Object.keys(o.removed).length && !o.added.length) delete all[k]; else all[k] = o;
+    ['confirmed', 'edits'].forEach(f => { if (!Object.keys(o[f]).length) delete o[f]; });
+    if (!Object.keys(o.removed).length && !o.added.length && !o.confirmed && !o.edits) delete all[k]; else all[k] = o;
   }
-  const cleanItem = it => { const c = { type: it.type }; if (it.id) c.id = it.id; if (it.time) c.time = it.time; return c; };
+  const cleanItem = it => { const c = { type: it.type }; ['id', 'time', 'label', 'min'].forEach(f => { if (it[f]) c[f] = it[f]; }); return c; };
+  // Uur, duur en notitie verhuizen mee met een item; verplaatst = bevestigd
+  function carryEdits(all, fromK, toK, key) {
+    const ed = ((all[fromK] || {}).edits || {})[key];
+    editOv(all, fromK, o => { delete o.edits[key]; delete o.confirmed[key]; });
+    editOv(all, toK, o => { if (ed) o.edits[key] = ed; o.confirmed[key] = true; });
+  }
 
   function findItem(k, key) { return planFor(parseKey(k)).find(x => itemKey(x) === key); }
 
   function moveItem(fromK, key, toK) {
     const it = findItem(fromK, key);
     if (!it) return;
+    if (it.fixture) { toast('Een match uit de RBFA-kalender pas je aan via Account → Matchen beheren'); return; }
+    if (it.type === 'rest') { toast('Een rustdag verplaats je niet. Vervang op een andere dag een sessie door rust.'); return; }
+    if (fromK === toK) { closeSheet(); return; }
+    if (findItem(toK, key)) { toast(`${itemMeta(it).title} staat al op ${fmtDay(toK)}`); return; }
     const all = clone(overrides());
     if (it.extra) {
       editOv(all, fromK, o => { o.added = o.added.filter(a => itemKey(a) !== key); });
       editOv(all, toK, o => { o.added.push({ ...cleanItem(it), extra: true, note: `Verplaatst van ${fmtDay(fromK)}` }); });
+      carryEdits(all, fromK, toK, key);
       closeSheet();
       saveOverrides(all, `${itemMeta(it).title} staat nu op ${fmtDay(toK)}`);
       return;
@@ -415,24 +453,79 @@
         o.added.push({ ...cleanItem(it), from: origin, note: `Verplaatst van ${fmtDay(origin)}` });
       });
     }
+    carryEdits(all, fromK, toK, key);
     closeSheet();
     saveOverrides(all, `${itemMeta(it).title} staat nu op ${fmtDay(toK)}`);
   }
 
-  function skipItem(k, key) {
+  // Overslaan telt nooit als gemist; een reden (geblesseerd, ziek…) is optioneel
+  function skipItem(k, key, reason = '') {
     const it = findItem(k, key);
     if (!it) return;
     const all = clone(overrides());
-    if (it.from) {
-      editOv(all, k, o => { o.added = o.added.filter(a => itemKey(a) !== key); if (!o.removed) o.removed = {}; });
-      editOv(all, it.from, o => { o.removed[key] = 'skip'; });
-    } else if (it.extra) {
-      editOv(all, k, o => { o.added = o.added.filter(a => itemKey(a) !== key); });
+    const code = reason ? `skip:${reason}` : 'skip';
+    if (it.from || it.extra) {
+      // Een verplaatst of toegevoegd item blijft op die dag zichtbaar als overgeslagen, zodat je het kan terugzetten
+      editOv(all, k, o => { o.added = o.added.map(a => itemKey(a) === key ? { ...a, skipped: code } : a); });
     } else {
-      editOv(all, k, o => { o.removed[key] = 'skip'; });
+      editOv(all, k, o => { o.removed[key] = code; });
     }
     closeSheet();
-    saveOverrides(all, `${itemMeta(it).title} overgeslagen`);
+    saveOverrides(all, `${itemMeta(it).title} overgeslagen${reason ? ` (${reason.toLowerCase()})` : ''}`);
+  }
+
+  // Vervangen door een ander type (bv. eigen fitness → kine). Het origineel blijft zichtbaar als "vervangen".
+  function replaceItem(k, key, next) {
+    const it = findItem(k, key);
+    if (!it) return;
+    const nk = itemKey(next);
+    if (nk === key) { closeSheet(); return; }
+    if (findItem(k, nk)) { toast(`${itemMeta(next).title} staat al op deze dag`); return; }
+    const all = clone(overrides());
+    const ed = ((all[k] || {}).edits || {})[key];
+    const code = `replaced:${nk}`;
+    let origKey = key;
+    if (it.extra && it.replaces) {
+      // Een vervanging opnieuw vervangen: de tussenstap verdwijnt, het origineel wijst naar de nieuwste
+      origKey = it.replaces;
+      editOv(all, k, o => {
+        o.added = o.added.filter(a => itemKey(a) !== key).map(a => itemKey(a) === origKey && a.skipped ? { ...a, skipped: code } : a);
+        if (o.removed[origKey]) o.removed[origKey] = code;
+      });
+    } else if (it.extra || it.from) {
+      editOv(all, k, o => { o.added = o.added.map(a => itemKey(a) === key ? { ...a, skipped: code } : a); });
+    } else {
+      editOv(all, k, o => { o.removed[key] = code; });
+    }
+    editOv(all, k, o => {
+      o.added.push({ ...cleanItem(next), extra: true, replaces: origKey, note: `In plaats van ${itemMeta(it).title}` });
+      o.confirmed[nk] = true;
+      delete o.edits[key];
+      if (ed && (ed.time || ed.note)) o.edits[nk] = { time: ed.time, note: ed.note };
+    });
+    closeSheet();
+    saveOverrides(all, `${itemMeta(it).title} vervangen door ${itemMeta(next).title}`);
+  }
+
+  // Voorgestelde items bevestigen: één item of alles van een week
+  function confirmItems(list, msg) {
+    if (!list.length) return;
+    const all = clone(overrides());
+    list.forEach(([k, key]) => editOv(all, k, o => { o.confirmed[key] = true; }));
+    closeSheet();
+    saveOverrides(all, msg || 'Bevestigd');
+  }
+
+  // Uur, duur en notitie van één item op één dag
+  function saveItemEdit(k, key, ed, msg = 'Opgeslagen') {
+    const all = clone(overrides());
+    editOv(all, k, o => {
+      const v = { ...(o.edits[key] || {}), ...ed };
+      Object.keys(v).forEach(f => { if (v[f] === '' || v[f] == null) delete v[f]; });
+      if (Object.keys(v).length) o.edits[key] = v; else delete o.edits[key];
+      o.confirmed[key] = true;
+    });
+    saveOverrides(all, msg, false);
   }
 
   // Voltooid zonder sets in te vullen (bv. gedaan zonder gsm). Telt als afgewerkt.
@@ -442,13 +535,26 @@
     const rec = { date: k, sessionKey: id, title: sessionTitle(id), phase: currentPhase(), startedAt: now, finishedAt: now, exercises: [], quick: true, logged: 'quick', mode: 'volledig', sample: false };
     rec.id = await DB.put('workouts', rec);
     S.workouts.push(rec);
-    S.ui.undoDone = rec.id;
+    S.ui.undoDone = { store: 'workouts', id: rec.id };
     closeSheet();
     render({ keepScroll: true });
     toast(`${sessionTitle(id)}: gedaan zonder details`, { action: 'undo-done', label: 'Ongedaan' });
   }
 
-  // Verwijderen: weg uit de planning (telt niet als gemist). Terugzetten kan in de kalender.
+  // Kine, herstel of een eigen type afvinken: één tik, duur vooraf ingevuld
+  async function markSimpleDone(k, key) {
+    const it = findItem(k, key); if (!it) return;
+    if (itemDone(it, k)) { toast('Al afgewerkt'); return; }
+    const rec = { type: it.type, label: it.label || null, date: k, minutes: num(it.min) || (it.type === 'recovery' ? 25 : it.type === 'kine' ? 30 : 0), participation: 'volledig', note: it.userNote || '', createdAt: Date.now(), sample: false };
+    rec.id = await DB.put('activities', rec);
+    S.activities.push(rec);
+    S.ui.undoDone = { store: 'activities', id: rec.id };
+    closeSheet();
+    render({ keepScroll: true });
+    toast(`${itemMeta(it).title}: gedaan`, { action: 'undo-done', label: 'Ongedaan' });
+  }
+
+  // Verwijderen: weg uit de planning (telt niet als gemist). Terugzetten kan in de planning.
   function deleteItem(k, key) {
     const it = findItem(k, key);
     if (!it) return;
@@ -456,9 +562,11 @@
     if (it.from || it.extra) {
       editOv(all, k, o => { o.added = o.added.filter(a => itemKey(a) !== key); });
       if (it.from) editOv(all, it.from, o => { o.removed[key] = 'del'; });
+      if (it.extra && it.replaces) editOv(all, k, o => { if (String(o.removed[it.replaces] || '').startsWith('replaced:')) o.removed[it.replaces] = 'del'; });
     } else {
       editOv(all, k, o => { o.removed[key] = 'del'; });
     }
+    editOv(all, k, o => { delete o.edits[key]; delete o.confirmed[key]; });
     closeSheet();
     saveOverrides(all, `${itemMeta(it).title} verwijderd uit de planning`);
   }
@@ -467,17 +575,31 @@
     const all = clone(overrides());
     const reason = ((all[k] || {}).removed || {})[key];
     if (reason && reason.startsWith('moved:')) editOv(all, reason.slice(6), o => { o.added = o.added.filter(a => itemKey(a) !== key); });
-    editOv(all, k, o => { delete o.removed[key]; });
+    const addedReason = (((all[k] || {}).added || []).find(a => itemKey(a) === key && a.skipped) || {}).skipped;
+    if ((reason && reason.startsWith('replaced:')) || (addedReason && addedReason.startsWith('replaced:'))) editOv(all, k, o => { o.added = o.added.filter(a => a.replaces !== key); });
+    editOv(all, k, o => {
+      delete o.removed[key];
+      o.added = o.added.map(a => { if (itemKey(a) !== key || !a.skipped) return a; const c = { ...a }; delete c.skipped; return c; });
+    });
     saveOverrides(all, 'Terug in de planning gezet');
   }
 
-  function addSessionTo(k, id, note = 'Extra toegevoegd') {
+  // Iets toevoegen op een dag: een sessie uit je schema/eigen workout, of een eenvoudig type
+  function addItemTo(k, item, note = 'Toegevoegd') {
+    const key = itemKey(item);
+    if (findItem(k, key)) { closeSheet(); toast(`${itemMeta(item).title} staat al op deze dag`); return; }
     const all = clone(overrides());
-    if (planFor(parseKey(k)).some(x => itemKey(x) === `session:${id}`)) { closeSheet(); toast('Die sessie staat al op deze dag'); return; }
-    editOv(all, k, o => { o.added.push({ type: 'session', id, extra: true, note }); });
+    editOv(all, k, o => {
+      // Stond het item er al maar was het weggehaald, zet het dan gewoon terug
+      if (o.removed[key] && !String(o.removed[key]).startsWith('moved:')) { delete o.removed[key]; o.confirmed[key] = true; return; }
+      o.added = o.added.filter(a => itemKey(a) !== key);
+      o.added.push({ ...cleanItem(item), extra: true, note });
+      o.confirmed[key] = true;
+    });
     closeSheet();
-    saveOverrides(all, `${sessionTitle(id)} toegevoegd op ${fmtDay(k)}`);
+    saveOverrides(all, `${itemMeta(item).title} toegevoegd op ${fmtDay(k)}`);
   }
+  const addSessionTo = (k, id, note = 'Extra toegevoegd') => addItemTo(k, { type: 'session', id }, note);
 
   // Slimme planner: geeft voor de komende 7 dagen een score en een korte reden
   function suggestDays(key, fromK) {
@@ -543,13 +665,13 @@
   // Hoofdtabs (zonder terugknop) en subschermen (met terugknop naar hun tab)
   const ROUTES = {
     vandaag: { label: 'Home', icon: 'home', render: () => renderToday() },
-    kalender: { label: 'Kalender', icon: 'calendar', render: () => renderCalendarPage() },
+    planning: { label: 'Planning', icon: 'calendar', render: () => renderPlanning() },
     workout: { label: 'Workout', icon: 'dumbbell', render: () => renderWorkout() },
-    statistieken: { label: 'Statistieken', icon: 'chart', render: () => renderStats() },
+    statistieken: { label: 'Voortgang', icon: 'chart', render: () => renderStats() },
     account: { label: 'Account', icon: 'user', render: () => renderAccount() }
   };
   const SUBS = { matchen: { parent: 'account', render: () => renderMatches() }, blessure: { parent: 'account', render: () => renderInjury() } };
-  const ALIASES = { profiel: 'account' };
+  const ALIASES = { profiel: 'account', kalender: 'planning' };
   let lastRoute = null;
   const currentRoute = () => {
     const r = location.hash.slice(1);
@@ -608,8 +730,15 @@
   };
   // Soort: herstel, kracht, eigen workout, clubtraining, match of rust
   const actKindOf = id => { const s = C.sessions[id] || {}; return s.program ? 'Herstel' : s.custom ? 'Eigen workout' : 'Kracht'; };
-  const itemType = it => it.type === 'session' ? (C.sessions[it.id] && C.sessions[it.id].program ? 'herstel' : 'kracht') : it.type === 'rest' ? 'rust' : it.type;
-  const actKind = it => it.type === 'session' ? actKindOf(it.id) : ({ training: 'Clubtraining', match: 'Match', rest: 'Rust' }[it.type] || '');
+  // Kleurgroep (stip en label): kracht, herstel, training, match, rust
+  const itemType = it => it.type === 'session' ? (C.sessions[it.id] && C.sessions[it.id].program ? 'herstel' : 'kracht')
+    : it.type === 'rest' ? 'rust' : SIMPLE.includes(it.type) ? 'herstel' : it.type;
+  const actKind = it => it.type === 'session' ? (actKindOf(it.id) === 'Kracht' ? 'Fitness' : actKindOf(it.id))
+    : ({ training: 'Voetbal', match: 'Match', rest: 'Rust', kine: 'Kine', recovery: 'Herstel', custom: 'Eigen' }[it.type] || '');
+  // Titel van een gelogde training, match of eenvoudige activiteit
+  const actTitle = a => a.type === 'match' ? (a.opponent ? `Match tegen ${a.opponent}` : 'Match') : a.type === 'training' ? 'Voetbaltraining'
+    : a.type === 'kine' ? 'Kine' : a.type === 'recovery' ? 'Herstel & mobiliteit' : (a.label || 'Activiteit');
+  const actIcon = a => ({ match: 'ball', training: 'whistle', kine: 'heart', recovery: 'pulse' }[a.type] || 'list');
 
   // De sessie die de grote startknop krijgt: eerst open krachtwerk, anders herstel
   function relevantSession(items, k) {
@@ -718,7 +847,7 @@
     // De sessie met de grote startknop komt bovenaan
     const ordered = rel ? [rel, ...items.filter(it => it !== rel)] : items;
     let html = ordered.map(it => actCard(it, k, it === rel)).join('');
-    const skipped = off.filter(o => o.reason === 'skip');
+    const skipped = off.filter(o => isSkip(o.reason));
     if (skipped.length) html += `<p class="label" style="margin:4px 2px 10px">Overgeslagen: ${skipped.map(o => esc(itemMeta(o.item).title)).join(', ')} · <button class="link-btn" style="padding:0" data-action="cal-open" data-k="${k}">bekijk</button></p>`;
     return html || `<section class="act"><p class="empty">Niets gepland.</p></section>`;
   }
@@ -726,7 +855,7 @@
   // Wat er gelogd is voor een gepland item
   function recordFor(it, k) {
     if (it.type === 'session') { const r = workoutsOn(k).find(w => w.sessionKey === it.id); return r ? { store: 'workouts', r } : null; }
-    if (it.type === 'training' || it.type === 'match') { const r = activitiesOn(k).find(a => a.type === it.type); return r ? { store: 'activities', r } : null; }
+    if (it.type === 'training' || it.type === 'match' || SIMPLE.includes(it.type)) { const r = activitiesOn(k).find(a => actMatches(a, it)); return r ? { store: 'activities', r } : null; }
     return null;
   }
   function recStatus({ store, r }) {
@@ -751,48 +880,57 @@
   function quickRow(it, k) {
     const key = itemKey(it), canMove = it.type === 'session' && C.sessions[it.id].catchUp !== false;
     return `<div class="quick">
-      <button data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')}Gedaan zonder details</button>
-      <button data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')}Aangepast uitgevoerd</button>
-      <button data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')}Overslaan</button>
-      ${canMove ? `<button data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')}Verplaatsen</button>`
-        : `<button data-action="item-actions" data-k="${k}" data-key="${esc(key)}">${icon('list')}Meer opties</button>`}
+      <button data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')}Gedaan</button>
+      <button data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')}Aangepast</button>
+      ${canMove ? `<button data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')}Verplaatsen</button>` : `<button data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')}Overslaan</button>`}
+      <button data-action="item-actions" data-k="${k}" data-key="${esc(key)}">${icon('list')}Aanpassen</button>
     </div>`;
   }
+
+  // Eigen uur en notitie onder een kaart
+  const userBits = it => `${it.userNote ? `<p class="act-note">${icon('edit')}<span>${esc(it.userNote)}</span></p>` : ''}`;
 
   function actCard(it, k, isMain) {
     const tk = dkey(today()), st = itemStatus(it, k), key = itemKey(it);
     if (it.type === 'rest') {
-      return `<section class="act"><div class="act-top"><span class="act-kind t-rust">Rust</span></div>
-        <h3>Rustdag</h3><p>${esc(it.note || 'Herstel hoort erbij: wandelen, mobiliteit en goed slapen.')}</p></section>`;
+      return `<section class="act"><div class="act-top"><span class="act-kind t-rust">Rust</span><span class="tag rest">Volgens plan</span></div>
+        <h3>Rustdag</h3><p>${esc(it.note || 'Herstel hoort erbij: wandelen, mobiliteit en goed slapen.')}</p>${userBits(it)}</section>`;
     }
     const rec = recordFor(it, k), done = doneOrCaughtUp(it, k);
+    const more = `<button class="btn" data-action="item-actions" data-k="${k}" data-key="${esc(key)}">Aanpassen</button>`;
     let body = '', actions = '';
     if (it.type === 'session') {
       const s = sessInfo(it.id);
       body = `<h3>${esc(s.name)}</h3><p>${esc(s.desc)}</p>
-        <div class="act-meta"><span>${icon('clock')} ±${s.minutes} min</span><span>${icon('list')} ${s.exercises} oefeningen</span>${s.place ? `<span>${esc(cap(s.place))}</span>` : ''}${it.note ? `<span>${esc(it.note)}</span>` : ''}</div>`;
+        <div class="act-meta">${it.time ? `<span>${icon('clock')} ${esc(it.time)}</span>` : ''}<span>${it.time ? '' : icon('clock') + ' '}±${s.minutes} min</span><span>${s.exercises} oefeningen</span>${s.place ? `<span>${esc(s.place)}</span>` : ''}${it.note ? `<span>${esc(it.note)}</span>` : ''}</div>`;
       if (!done && k <= tk) {
         actions = isMain
           ? `<button class="btn accent block lg" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Nu inhalen' : 'Start workout'}</button>${quickRow(it, k)}`
-          : `<div class="act-row"><button class="btn primary" data-action="start-session" data-key="${it.id}">${icon('play')} Start</button><button class="btn" data-action="item-actions" data-k="${k}" data-key="${esc(key)}">Andere opties</button></div>`;
-      } else if (!done) {
-        actions = `<div class="act-row"><button class="btn" data-action="item-actions" data-k="${k}" data-key="${esc(key)}">Opties</button></div>`;
-      }
+          : `<div class="act-row"><button class="btn primary" data-action="start-session" data-key="${it.id}">${icon('play')} Start</button>${more}</div>`;
+      } else if (!done) actions = `<div class="act-row">${it.confirmed ? '' : `<button class="btn" data-action="confirm-item" data-k="${k}" data-key="${esc(key)}">${icon('check')} Bevestigen</button>`}${more}</div>`;
     } else if (it.type === 'training') {
       const [from, to] = String(it.time || '').split(/[–-]/);
       body = `<div class="act-time"><b class="display">${esc(from || 'Training')}</b>${to ? `<span>tot ${esc(to)}</span>` : ''}</div>
-        <h3>Clubtraining</h3><p>Met de ploeg${plannedMinutes(it) ? ` · gepland ${plannedMinutes(it)} min` : ''}</p>`;
-      if (!done && k <= tk) actions = `<div class="act-row"><button class="btn ${isMain ? 'accent' : 'primary'}" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button><button class="btn" data-action="skip-item" data-k="${k}" data-key="training">Niet gegaan</button></div>`;
+        <h3>Voetbaltraining</h3><p>Met de ploeg${plannedMinutes(it) ? ` · gepland ${plannedMinutes(it)} min` : ''}</p>`;
+      if (!done && k <= tk) actions = `<div class="act-row"><button class="btn ${isMain ? 'accent' : 'primary'}" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button>${more}</div>`;
+      else if (!done) actions = `<div class="act-row">${it.confirmed ? '' : `<button class="btn" data-action="confirm-item" data-k="${k}" data-key="training">${icon('check')} Bevestigen</button>`}${more}</div>`;
     } else if (it.type === 'match') {
       const f = it.fixture;
       body = `${f && f.time ? `<div class="act-time"><b class="display">${esc(f.time)}</b><span>${f.home ? 'thuis' : 'uit'}</span></div>` : ''}
         <h3>${f ? esc(f.opponent) : 'Match'}</h3><p>${f && f.comp ? esc(f.comp) : 'Log na de match je minuten en hoe het voelde.'}${f && played(f) ? ` · ${f.gf}–${f.ga}` : ''}</p>`;
-      if (!done && k <= tk) actions = `<div class="act-row"><button class="btn primary" data-action="${f && played(f) ? 'open-minutes' : 'open-log'}" data-type="match" data-date="${k}">${icon('edit')} Minuten invullen</button><button class="btn" data-action="skip-item" data-k="${k}" data-key="match">Niet gespeeld</button></div>`;
+      if (!done && k <= tk) actions = `<div class="act-row"><button class="btn primary" data-action="${f && played(f) ? 'open-minutes' : 'open-log'}" data-type="match" data-date="${k}">${icon('edit')} Minuten invullen</button>${more}</div>`;
+      else if (!done && !f) actions = `<div class="act-row">${more}</div>`;
+    } else {
+      const m = itemMeta(it);
+      body = `${it.time ? `<div class="act-time"><b class="display">${esc(it.time)}</b>${it.min ? `<span>${esc(it.min)} min</span>` : ''}</div>` : ''}
+        <h3>${esc(m.title)}</h3><p>${esc(it.note || (it.type === 'kine' ? 'Afspraak bij je kinesist' : it.type === 'recovery' ? 'Mobiliteit, losfietsen of wandelen' : 'Eigen activiteit'))}</p>`;
+      if (!done && k <= tk) actions = `<div class="act-row"><button class="btn ${isMain ? 'accent' : 'primary'}" data-action="mark-simple" data-k="${k}" data-key="${esc(key)}">${icon('check')} Gedaan</button>${more}</div>`;
+      else if (!done) actions = `<div class="act-row">${it.confirmed ? '' : `<button class="btn" data-action="confirm-item" data-k="${k}" data-key="${esc(key)}">${icon('check')} Bevestigen</button>`}${more}</div>`;
     }
     const doneLine = rec ? `<button class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : '';
-    return `<section class="act ${done ? 'is-done' : ''} ${isMain && !done ? 'is-main' : ''}">
+    return `<section class="act ${done ? 'is-done' : ''} ${isMain && !done ? 'is-main' : ''} ${!done && !it.confirmed && k >= tk ? 'is-suggested' : ''}">
       <div class="act-top"><span class="act-kind t-${itemType(it)}">${esc(actKind(it))}</span><span class="tag ${st.cls}">${st.label}</span></div>
-      ${body}${doneLine}${actions}
+      ${body}${userBits(it)}${doneLine}${actions}
     </section>`;
   }
   // Geplande duur van een clubtraining uit het uur (19:45–21:30 = 105 min)
@@ -811,7 +949,7 @@
       items.forEach(it => {
         if (it.type === 'rest') return;
         const t = itemType(it);
-        const b = t === 'herstel' && C.sessions[it.id].catchUp === false ? 'holds' : t;
+        const b = t === 'herstel' && it.type === 'session' && C.sessions[it.id].catchUp === false ? 'holds' : t;
         c[b][1]++;
         if (doneOrCaughtUp(it, k)) {
           c[b][0]++;
@@ -819,7 +957,7 @@
           if (rec) { const s = recStatus(rec); if (s.cls === 'adapted') c.adapted++; if (s.label === 'Zonder details') c.quick++; }
         } else if (isMissed(it, k)) c.missed++;
       });
-      off.forEach(o => { if (o.reason === 'skip') c.skipped++; });
+      off.forEach(o => { if (isSkip(o.reason)) c.skipped++; });
     }
     return c;
   }
@@ -951,28 +1089,42 @@
   const doneOrCaughtUp = (it, k) => itemDone(it, k) || caughtUp(it, k);
 
   // Gemist = een in te halen sessie in het verleden, vanaf de start van de huidige fase, die niet gedaan is
+  // Alleen een bevestigde sessie kan "gemist" zijn; een voorstel dat je niet volgde, is geen mislukking
   function isMissed(it, k) {
-    return it.type === 'session' && C.sessions[it.id] && C.sessions[it.id].catchUp !== false
+    return it.type === 'session' && it.confirmed && C.sessions[it.id] && C.sessions[it.id].catchUp !== false
       && k < dkey(today()) && k >= planStart() && !doneOrCaughtUp(it, k);
   }
 
-  // Status zoals je ze ziet: gelogd, zonder details, aangepast, ingehaald, gemist, gepland
+  // Status zoals je ze ziet: voorgesteld, bevestigd, uitgevoerd (gelogd, zonder details, aangepast, ingehaald), gemist
   function itemStatus(it, k) {
+    if (it.type === 'rest') return { cls: 'rest', label: 'Rust' };
     const rec = recordFor(it, k);
     if (rec) return recStatus(rec);
     if (caughtUp(it, k)) return { cls: 'done', label: 'Ingehaald' };
     if (isMissed(it, k)) return { cls: 'missed', label: 'Gemist' };
-    if (k < dkey(today()) && it.type !== 'rest') return { cls: 'skip', label: 'Niet gedaan' };
-    return { cls: '', label: 'Gepland' };
+    if (k < dkey(today())) return { cls: 'skip', label: it.confirmed ? 'Niet gedaan' : 'Voorstel niet gedaan' };
+    return it.confirmed ? { cls: 'confirmed', label: 'Bevestigd' } : { cls: 'suggested', label: 'Voorgesteld' };
   }
+  // Tekst bij een weggehaald item
+  function offText(r) {
+    if (isSkip(r)) return { tag: 'Overgeslagen', txt: skipReason(r) ? `Overgeslagen · ${skipReason(r)}` : 'Overgeslagen' };
+    if (r === 'del') return { tag: 'Verwijderd', txt: 'Uit de planning gehaald' };
+    if (String(r).startsWith('replaced:')) { const k2 = r.slice(9); return { tag: 'Vervangen', txt: `Vervangen door ${replacedLabel(k2)}` }; }
+    if (String(r).startsWith('moved:')) return { tag: 'Verplaatst', txt: `Verplaatst naar ${fmtDay(r.slice(6))}` };
+    return { tag: '', txt: '' };
+  }
+  const replacedLabel = key => key.startsWith('session:') ? sessionTitle(key.slice(8)) : key.startsWith('custom:') ? key.slice(7).replace(/-/g, ' ') : itemMeta({ type: key }).title;
 
-  // Openen vanuit een ander scherm: spring naar de kalender op die dag
+  // Openen vanuit een ander scherm: spring naar de planning, in de week van die dag
   function openDay(k) {
     closeSheet();
     S.ui.calDay = k;
     const d = parseKey(k);
     S.ui.calMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-    if (currentRoute() === 'kalender') render({ keepScroll: true }); else location.hash = 'kalender';
+    S.ui.planWeek = weekKey(d);
+    S.ui.planFocus = k;
+    S.ui.planView = 'week';
+    if (currentRoute() === 'planning') render({ keepScroll: true }); else location.hash = 'planning';
   }
 
   function calDots(d) {
@@ -987,12 +1139,12 @@
       if (s) set(t, s);
     });
     workoutsOn(k).forEach(w => set(C.sessions[w.sessionKey] && C.sessions[w.sessionKey].program ? 'herstel' : 'kracht', 'done'));
-    activitiesOn(k).forEach(a => set(a.type, 'done'));
+    activitiesOn(k).forEach(a => set(SIMPLE.includes(a.type) ? 'herstel' : a.type, 'done'));
     if (fixtureOn(k) && !st.match) set('match', 'planned');
     return TYPES.filter(t => st[t]).map(t => `<i class="dot t-${t} ${st[t] === 'done' ? '' : st[t]}"></i>`).join('');
   }
 
-  function renderCalendarPage() {
+  function monthHtml() {
     const t = today(), tk = dkey(t);
     const sel = S.ui.calDay || tk;
     const m = S.ui.calMonth || new Date(t.getFullYear(), t.getMonth(), 1);
@@ -1005,8 +1157,7 @@
       cells += `<button class="cal-cell ${d.getMonth() !== m.getMonth() ? 'out' : ''} ${k === tk ? 'today' : ''} ${k === sel ? 'on' : ''}" data-action="cal-pick" data-k="${k}" aria-label="${fmtDay(k)}" aria-pressed="${k === sel}">
         ${d.getDate()}<span class="dots">${calDots(d)}</span></button>`;
     }
-    main.innerHTML = `
-      ${pageHead('Kalender', 'Tik op een dag om te zien wat er gepland of gedaan is')}
+    return `
       <section class="card">
         <div class="cal-head">
           ${iconBtn('chevL', 'cal-prev', 'Vorige maand')}
@@ -1016,7 +1167,7 @@
         <div class="cal-grid">${cells}</div>
         <div class="legend">${TYPES.map(tp => `<span><i class="dot t-${tp}"></i>${TYPE_LABEL[tp]}</span>`).join('')}</div>
         <div class="legend-states">
-          <span><i class="dot"></i>gedaan</span><span><i class="dot planned"></i>gepland</span><span><i class="dot missed"></i>gemist</span>
+          <span><i class="dot"></i>gedaan</span><span><i class="dot planned"></i>gepland</span><span><i class="dot missed"></i>gemist (bevestigd, niet gedaan)</span>
         </div>
       </section>
       <div class="section"><span>${cap(fmtDay(sel))} · ${relLong(sel).toLowerCase()}</span>${sel !== tk ? `<button class="link-btn" data-action="cal-pick" data-k="${tk}">Vandaag</button>` : ''}</div>
@@ -1077,9 +1228,9 @@
 
     off.forEach(o => {
       const m = itemMeta(o.item);
-      const txt = o.reason === 'skip' ? 'Overgeslagen' : o.reason === 'del' ? 'Uit de planning gehaald' : `Verplaatst naar ${fmtDay(o.reason.slice(6))}`;
+      const ot = offText(o.reason), txt = ot.txt;
       html += `<div class="day-item"><div class="day-item-top"><span class="type-bar" style="background:var(--line)"></span>
-        <div class="body"><b class="muted">${esc(m.title)}</b><span>${esc(txt)}</span></div><span class="tag skip">${o.reason === 'skip' ? 'Overgeslagen' : o.reason === 'del' ? 'Verwijderd' : 'Verplaatst'}</span></div>
+        <div class="body"><b class="muted">${esc(m.title)}</b><span>${esc(txt)}</span></div><span class="tag skip">${ot.tag}</span></div>
         <div class="day-item-actions"><button class="btn sm" data-action="restore-item" data-k="${k}" data-key="${esc(itemKey(o.item))}">${icon('undo')} Terugzetten</button></div></div>`;
     });
 
@@ -1090,7 +1241,7 @@
     if (chk) logged.push(`<div class="list-row tap" data-action="open-check" data-date="${k}"><div class="ico">${icon('pulse')}</div><div class="body"><b>Dagelijkse check</b><span>${checkInj.length ? checkInj.map(i => `${esc(injuryLabel(i))}: stijfheid ${valsText(chk, i, 'stiff')}`).join(' · ') : chk.fatigue != null ? `Vermoeidheid ${chk.fatigue}/5` : 'Ingevuld'}</span></div><div class="end">${icon('edit')}</div></div>`);
     else if (past) logged.push(`<div class="list-row tap" data-action="open-check" data-date="${k}"><div class="ico">${icon('pulse')}</div><div class="body"><b>Dagelijkse check</b><span>Nog niet ingevuld</span></div><div class="end">${icon('plus')}</div></div>`);
     ws.filter(w => !items.some(it => it.type === 'session' && it.id === w.sessionKey)).forEach(w => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="workouts" data-id="${w.id}"><div class="ico">${icon((C.sessions[w.sessionKey] || {}).icon || 'dumbbell')}</div><div class="body"><b>${esc(woTitle(w))}</b><span>${esc(recStatus({ store: 'workouts', r: w }).label)} · ${esc(recordLine({ store: 'workouts', r: w }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
-    acts.filter(a => !items.some(it => it.type === a.type) && !(f && a.type === 'match')).forEach(a => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="activities" data-id="${a.id}"><div class="ico">${icon(a.type === 'match' ? 'ball' : 'whistle')}</div><div class="body"><b>${a.type === 'match' ? 'Match' : 'Clubtraining'}</b><span>${esc(recordLine({ store: 'activities', r: a }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
+    acts.filter(a => !items.some(it => actMatches(a, it)) && !(f && a.type === 'match')).forEach(a => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="activities" data-id="${a.id}"><div class="ico">${icon(actIcon(a))}</div><div class="body"><b>${esc(actTitle(a))}</b><span>${esc(recordLine({ store: 'activities', r: a }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
     if (f) acts.filter(a => a.type === 'match').forEach(a => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="activities" data-id="${a.id}"><div class="ico">${icon('ball')}</div><div class="body"><b>Match · ${esc(recStatus({ store: 'activities', r: a }).label)}</b><span>${esc(recordLine({ store: 'activities', r: a }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
     if (logged.length) html += `<div class="divider"></div><p class="label" style="margin-bottom:6px">Gelogd</p>${logged.join('')}`;
 
@@ -1101,19 +1252,228 @@
     return html;
   }
 
-  function openAddMenu(k) {
+  /* ================= Planning: week (slepen of Verplaatsen) en maand ================= */
+  const DAY_UP = ['ZO', 'MA', 'DI', 'WO', 'DO', 'VR', 'ZA'];
+  const isHeavySession = it => it.type === 'session' && C.sessions[it.id] && !!C.sessions[it.id].heavy;
+  const heavyDay = d => planFor(d).some(it => isHeavySession(it) || it.type === 'match');
+
+  // Optionele waarschuwing: 3 zware dagen op rij, of een zware sessie de dag voor een match
+  function loadWarnings(ws) {
+    if (S.settings.loadWarn === false) return [];
+    const out = [];
+    let run = [];
+    const flush = () => {
+      if (run.length >= 3 && run[run.length - 1] >= ws) {
+        const a = run[0], b = run[run.length - 1];
+        out.push(`${run.length} zware dagen op rij (${DAY[a.getDay()]} tot ${DAY[b.getDay()]}). Plan er liefst een lichtere dag tussen.`);
+      }
+      run = [];
+    };
+    for (let i = -2; i < 7; i++) { const d = addDays(ws, i); if (heavyDay(d)) run.push(d); else flush(); }
+    flush();
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i);
+      if (planFor(d).some(isHeavySession) && planFor(addDays(d, 1)).some(it => it.type === 'match')) {
+        const names = planFor(d).filter(isHeavySession).map(it => sessionTitle(it.id)).join(' en ');
+        out.push(`${names} op ${DAY[d.getDay()]} is zwaar, de dag voor een match. Verplaatsen kan met één tik.`);
+      }
+    }
+    return out;
+  }
+
+  // Voorgestelde items (vandaag en later) die je nog kan bevestigen
+  function pendingSuggestions(ws) {
+    const tk = dkey(today()), out = [];
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i), k = dkey(d);
+      if (k < tk) continue;
+      planFor(d).forEach(it => { if (it.type !== 'rest' && !it.confirmed && !doneOrCaughtUp(it, k)) out.push([k, itemKey(it)]); });
+    }
+    return out;
+  }
+
+  function planCard(it, k) {
+    const key = itemKey(it), m = itemMeta(it), st = itemStatus(it, k), tk = dkey(today());
+    const done = it.type !== 'rest' && doneOrCaughtUp(it, k);
+    const mins = it.type === 'session' ? `${sessionStats(it.id).minutes} min` : it.type === 'training' ? (plannedMinutes(it) ? `${plannedMinutes(it)} min` : '') : it.min ? `${it.min} min` : '';
+    const time = it.type === 'match' && it.fixture ? it.fixture.time : it.time;
+    const meta = it.type === 'rest' ? [it.note || 'Volledig herstel'] : [time && String(time).split(/[–-]/)[0], mins, st.label];
+    const cls = it.type === 'rest' ? 'st-rest' : done ? 'st-done' : st.cls === 'missed' ? 'st-missed' : k < tk ? 'st-past' : it.confirmed ? 'st-confirmed' : 'st-suggested';
+    const draggable = it.type !== 'rest' && !it.fixture && !done;
+    const title = it.type === 'match' && it.fixture ? `${it.fixture.home ? 'Thuis' : 'Uit'} · ${it.fixture.opponent}` : it.type === 'session' ? sessionTitle(it.id) : m.title;
+    return `<div class="pcard ${cls} t-${itemType(it)}" data-k="${k}" data-key="${esc(key)}">
+      <button class="pc-main" data-action="item-actions" data-k="${k}" data-key="${esc(key)}" aria-label="${esc(title)}, ${esc(st.label)}. Aanpassen">
+        <span class="pc-kind">${esc(actKind(it))}${it.userNote ? ` · ${icon('edit')}` : ''}</span>
+        <b>${esc(title)}</b>
+        <span class="pc-meta">${meta.filter(Boolean).map(esc).join('  ·  ')}</span>
+      </button>
+      ${draggable ? `<button class="pc-grip" data-action="open-move" data-k="${k}" data-key="${esc(key)}" aria-label="${esc(title)} verplaatsen (slepen of tikken)">${icon('grip')}</button>`
+        : done ? `<span class="pc-done" aria-hidden="true">${icon('check')}</span>` : ''}
+    </div>`;
+  }
+
+  function weekHtml() {
+    const t = today(), tk = dkey(t);
+    const ws = parseKey(S.ui.planWeek || weekKey(t));
+    const strip = Array.from({ length: 7 }, (_, i) => {
+      const d = addDays(ws, i), k = dkey(d);
+      return `<button class="wk-chip ${k === tk ? 'today' : ''}" data-action="wk-jump" data-k="${k}" aria-label="${fmtDay(k)}">
+        <small>${DAY_LETTER[d.getDay()]}</small><b>${d.getDate()}</b><span class="day-dots">${dayDotsHtml(d)}</span></button>`;
+    }).join('');
+    const warns = loadWarnings(ws);
+    const pend = pendingSuggestions(ws);
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = addDays(ws, i), k = dkey(d);
+      const { items, off } = planDetail(d);
+      const offRows = off.filter(o => !String(o.reason).startsWith('moved:')).map(o => {
+        const ot = offText(o.reason);
+        return `<button class="pc-off" data-action="off-item" data-k="${k}" data-key="${esc(itemKey(o.item))}">${icon(ot.tag === 'Vervangen' ? 'swap' : 'skip')}<span>${esc(itemMeta(o.item).title)} · ${esc(ot.txt)}</span></button>`;
+      }).join('');
+      return `<section class="wk-day ${k === tk ? 'is-today' : ''} ${k < tk ? 'is-past' : ''}" data-k="${k}" id="day-${k}">
+        <div class="wk-day-head"><span class="wk-day-label">${DAY_UP[d.getDay()]} ${pad(d.getDate())}${k === tk ? '<small>Vandaag</small>' : ''}</span>
+          <button class="wk-add" data-action="add-menu" data-k="${k}" aria-label="Iets toevoegen op ${fmtDay(k)}">${icon('plus')}</button></div>
+        <div class="wk-list">${items.map(it => planCard(it, k)).join('')}${offRows}</div>
+      </section>`;
+    }).join('');
+    const isThis = weekKey(t) === weekKey(ws);
+    return `
+      <div class="wk-nav">
+        ${iconBtn('chevL', 'wk-prev', 'Vorige week')}
+        <span>${isThis ? 'Deze week' : `Week ${isoWeek(ws)}`}</span>
+        ${isThis ? '<span class="wk-nav-gap"></span>' : `<button class="link-btn" data-action="wk-today">Naar deze week</button>`}
+        ${iconBtn('chevR', 'wk-next', 'Volgende week')}
+      </div>
+      <div class="wk-strip card">${strip}</div>
+      ${warns.map(w => `<div class="hint accent" role="note">${icon('alert')}<span>${esc(w)}</span></div>`).join('')}
+      ${pend.length ? `<div class="wk-confirm"><span>${pend.length} voorstel${pend.length === 1 ? '' : 'len'} nog niet bevestigd</span><button class="btn sm" data-action="confirm-week">${icon('check')} Alles bevestigen</button></div>` : ''}
+      <p class="wk-help">Sleep aan ${icon('grip')} naar een andere dag, of tik op ${icon('grip')} om te verplaatsen.</p>
+      <div class="wk-days" id="wk-days">${days}</div>
+      <div class="wk-legend"><span class="lg-sug">Voorgesteld</span><span class="lg-con">Bevestigd</span><span class="lg-done">Uitgevoerd</span></div>`;
+  }
+
+  function renderPlanning() {
+    const t = today();
+    const view = S.ui.planView || 'week';
+    const ws = parseKey(S.ui.planWeek || weekKey(t));
+    const we = addDays(ws, 6);
+    const range = ws.getMonth() === we.getMonth() ? `${ws.getDate()} – ${we.getDate()} ${MONTH[we.getMonth()]} ${we.getFullYear()}` : `${ws.getDate()} ${MON[ws.getMonth()]} – ${we.getDate()} ${MON[we.getMonth()]} ${we.getFullYear()}`;
+    const isThis = weekKey(t) === weekKey(ws);
+    main.innerHTML = `
+      <header class="page-head"><div><span class="eyebrow">Jouw ritme</span><h1>${view === 'week' ? (isThis ? 'Deze week.' : `Week ${isoWeek(ws)}.`) : 'Kalender.'}</h1><p>${view === 'week' ? range : 'Tik op een dag om te zien wat er gepland of gedaan is'}</p></div>
+        <button class="icon-btn" data-action="add-menu" data-k="${S.ui.planFocus || dkey(t)}" aria-label="Iets toevoegen">${icon('plus')}</button></header>
+      <div class="seg" role="tablist">${[['week', 'Week'], ['maand', 'Maand']].map(([v, l]) => `<button role="tab" aria-selected="${view === v}" class="${view === v ? 'on' : ''}" data-action="plan-view" data-v="${v}">${l}</button>`).join('')}</div>
+      ${view === 'week' ? weekHtml() : monthHtml()}`;
+    const focus = S.ui.planFocus;
+    if (view === 'week' && focus) {
+      S.ui.planFocus = null;
+      const el = document.getElementById(`day-${focus}`);
+      if (el) requestAnimationFrame(() => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 90));
+    }
+  }
+
+  /* ---------- Slepen in de weekweergave (aan de greep; tikken op de greep = Verplaatsen) ---------- */
+  let drag = null;
+  function dragTarget(x, y) {
+    const el = document.elementFromPoint(x, y);
+    return el ? el.closest('.wk-day') : null;
+  }
+  function dragEnd(commit) {
+    if (!drag) return;
+    const d = drag; drag = null;
+    cancelAnimationFrame(d.raf);
+    document.body.classList.remove('is-dragging');
+    document.querySelectorAll('.wk-day.drop').forEach(n => n.classList.remove('drop'));
+    if (d.ghost) d.ghost.remove();
+    if (d.card) d.card.classList.remove('dragging');
+    if (d.moved) {
+      S.ui.dragEndedAt = Date.now();
+      if (commit && d.over && d.over.dataset.k !== d.k) moveItem(d.k, d.key, d.over.dataset.k);
+    }
+  }
+  document.addEventListener('pointerdown', e => {
+    const g = e.target.closest('.pc-grip');
+    if (!g || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const card = g.closest('.pcard');
+    drag = { card, grip: g, k: card.dataset.k, key: card.dataset.key, x0: e.clientX, y0: e.clientY, y: e.clientY, moved: false, over: null, raf: 0 };
+    try { g.setPointerCapture(e.pointerId); } catch (_) { }
+  });
+  document.addEventListener('pointermove', e => {
+    if (!drag) return;
+    drag.y = e.clientY;
+    if (!drag.moved) {
+      if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 8) return;
+      drag.moved = true;
+      const r = drag.card.getBoundingClientRect();
+      const ghost = drag.card.cloneNode(true);
+      ghost.classList.add('pc-ghost');
+      Object.assign(ghost.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px` });
+      document.body.appendChild(ghost);
+      drag.ghost = ghost; drag.top = r.top;
+      drag.card.classList.add('dragging');
+      document.body.classList.add('is-dragging');
+      try { navigator.vibrate && navigator.vibrate(10); } catch (_) { }
+      // Automatisch scrollen bij de rand van het scherm
+      const tick = () => {
+        if (!drag) return;
+        const edge = 90, h = window.innerHeight;
+        if (drag.y < edge) window.scrollBy(0, -Math.ceil((edge - drag.y) / 6));
+        else if (drag.y > h - edge - 70) window.scrollBy(0, Math.ceil((drag.y - (h - edge - 70)) / 6));
+        drag.raf = requestAnimationFrame(tick);
+      };
+      drag.raf = requestAnimationFrame(tick);
+    }
+    e.preventDefault();
+    drag.ghost.style.transform = `translateY(${e.clientY - drag.y0}px)`;
+    const over = dragTarget(e.clientX, e.clientY);
+    if (over !== drag.over) {
+      if (drag.over) drag.over.classList.remove('drop');
+      drag.over = over;
+      if (over && over.dataset.k !== drag.k) over.classList.add('drop');
+    }
+  }, { passive: false });
+  document.addEventListener('pointerup', () => dragEnd(true));
+  document.addEventListener('pointercancel', () => dragEnd(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && drag) dragEnd(false); });
+
+  /* ---------- Toevoegen of vervangen ---------- */
+  const QUICK_TYPES = [
+    ['training', 'Voetbaltraining', 'whistle', 'Met de ploeg'],
+    ['kine', 'Kine', 'heart', 'Afspraak bij je kinesist'],
+    ['recovery', 'Herstel & mobiliteit', 'pulse', 'Losfietsen, mobiliteit, wandelen'],
+    ['match', 'Match', 'ball', 'Zonder RBFA-kalender'],
+    ['rest', 'Rustdag', 'moon', 'Telt nooit als gemist']
+  ];
+  // Standaardinhoud van een nieuw item van een type
+  function newItemOf(type) {
+    if (type === 'training') { const tpl = Object.values(C.week).flat().find(x => x.type === 'training'); return { type, time: tpl ? tpl.time : '' }; }
+    if (type === 'kine') return { type, min: 30 };
+    if (type === 'recovery') return { type, min: 25 };
+    return { type };
+  }
+
+  // replaceKey gezet = vervangen in plaats van toevoegen
+  function openAddMenu(k, replaceKey = null) {
     const ids = Object.keys(C.sessions);
-    const own = ids.filter(id => C.sessions[id].custom), std = ids.filter(id => !C.sessions[id].custom);
-    const small = 'style="width:36px;height:36px;background:transparent"';
+    const own = ids.filter(id => C.sessions[id].custom), std = ids.filter(id => !C.sessions[id].custom && programOn(C.sessions[id].program, id));
+    const cur = replaceKey ? findItem(k, replaceKey) : null;
+    const rep = replaceKey ? ` data-replace="${esc(replaceKey)}"` : '';
+    const small = 'style="width:40px;height:40px;background:transparent"';
     const row = id => `<div class="list-row"><div class="ico">${icon(C.sessions[id].icon)}</div>
-        <div class="body" style="cursor:pointer" data-action="add-session" data-k="${k}" data-id="${id}"><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span></div>
-        <div class="end">${C.sessions[id].custom ? `<button class="icon-btn" ${small} data-action="edit-custom" data-key="${id}" aria-label="Aanpassen">${icon('edit')}</button><button class="icon-btn" ${small} data-action="delete-custom" data-key="${id}" aria-label="Verwijderen">${icon('trash')}</button>` : ''}
-          <button class="icon-btn" style="width:36px;height:36px" data-action="add-session" data-k="${k}" data-id="${id}" aria-label="Toevoegen">${icon('plus')}</button></div></div>`;
-    openSheet(`<div class="sheet-head"><div><h3>Toevoegen</h3><p>${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      <button class="btn accent block lg" data-action="new-custom" data-k="${k}">${icon('plus')} Eigen workout maken</button>
-      <p class="label" style="margin:6px 2px 0">Kies zelf je oefeningen, sets, herhalingen of tijd en kg.</p>
+        <div class="body" style="cursor:pointer" data-action="add-session" data-k="${k}" data-id="${id}"${rep}><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span></div>
+        <div class="end">${!replaceKey && C.sessions[id].custom ? `<button class="icon-btn" ${small} data-action="edit-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} aanpassen">${icon('edit')}</button><button class="icon-btn" ${small} data-action="delete-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} verwijderen">${icon('trash')}</button>` : ''}
+          <button class="icon-btn" style="width:40px;height:40px" data-action="add-session" data-k="${k}" data-id="${id}"${rep} aria-label="${esc(sessionTitle(id))} ${replaceKey ? 'kiezen' : 'toevoegen'}">${icon(replaceKey ? 'check' : 'plus')}</button></div></div>`;
+    const types = QUICK_TYPES.filter(([t]) => !(replaceKey && cur && cur.type === t)).map(([t, l, ic, sub]) =>
+      `<button class="type-tile" data-action="add-type" data-k="${k}" data-type="${t}"${rep}>${icon(ic)}<b>${l}</b><span>${sub}</span></button>`).join('');
+    openSheet(`<div class="sheet-head"><div><h3>${replaceKey ? 'Vervangen door' : 'Toevoegen'}</h3><p>${replaceKey && cur ? `${esc(itemMeta(cur).title)} · ` : ''}${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <div class="type-grid">${types}</div>
+      <div class="add-row two" style="margin-top:12px"><input class="input" id="custom-label" placeholder="Eigen type, bv. Zwemmen" aria-label="Naam van een eigen type" maxlength="40"><button class="btn" data-action="add-custom" data-k="${k}"${rep}>${icon(replaceKey ? 'check' : 'plus')}<span class="sr">${replaceKey ? 'Vervangen' : 'Toevoegen'}</span></button></div>
       ${own.length ? `<div class="section"><span>Mijn workouts</span></div>${own.map(row).join('')}` : ''}
-      <div class="section"><span>Uit je schema</span></div>${std.map(row).join('')}`);
+      <div class="section"><span>Fitness en herstel uit je schema</span></div>${std.map(row).join('')}
+      ${replaceKey ? '' : `<button class="btn block" style="margin-top:14px" data-action="new-custom" data-k="${k}">${icon('plus')} Eigen workout maken</button>`}`);
+  }
+  function addOrReplace(el, item) {
+    if (el.dataset.replace) replaceItem(el.dataset.k, el.dataset.replace, item);
+    else addItemTo(el.dataset.k, item);
   }
 
   /* ================= Eigen workouts ================= */
@@ -2027,8 +2387,8 @@
       });
     });
     S.activities.forEach(a => list.push({
-      store: 'activities', id: a.id, date: a.date, ts: a.createdAt || 0, icon: a.type === 'match' ? 'ball' : 'whistle',
-      title: a.type === 'match' ? (a.opponent ? `Match tegen ${a.opponent}` : 'Match') : 'Clubtraining',
+      store: 'activities', id: a.id, date: a.date, ts: a.createdAt || 0, icon: actIcon(a),
+      title: actTitle(a),
       sub: `${cap(relDay(a.date))} · ${recStatus({ store: 'activities', r: a }).label} · ${recordLine({ store: 'activities', r: a })}`, sample: a.sample
     }));
     return list.sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
@@ -2057,7 +2417,7 @@
     const menu = `<details class="more"><summary>Meer opties</summary>
         <button class="btn danger block" data-action="del-entry" data-store="${store}" data-id="${rec.id}">${icon('trash')} Verwijderen</button></details>`;
     if (store === 'activities') {
-      openSheet(`<div class="sheet-head"><div><h3>${rec.type === 'match' ? (rec.opponent ? 'Tegen ' + esc(rec.opponent) : 'Match') : 'Clubtraining'}</h3><p>${cap(fmtDay(rec.date))} · ${esc(st.label)}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      openSheet(`<div class="sheet-head"><div><h3>${esc(actTitle(rec))}</h3><p>${cap(fmtDay(rec.date))} · ${esc(st.label)}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
         <div class="num" style="margin-bottom:14px">${rec.minutes}<span class="unit">min${rec.plannedMinutes && rec.plannedMinutes !== rec.minutes ? ` van ${rec.plannedMinutes} gepland` : ''}</span></div>
         <div class="chips">${rec.score ? `<span class="chip">${esc(rec.score)}</span>` : ''}${rec.role ? `<span class="chip">${esc(rec.role)}</span>` : ''}${rec.rpe != null ? `<span class="chip">Zwaarte ${rec.rpe}/10</span>` : ''}${rec.fatigue != null ? `<span class="chip">Vermoeidheid ${rec.fatigue}/5</span>` : ''}<span class="chip">${esc(rec.surface || '')}</span><span class="chip">${esc(rec.shoes || '')}</span><span class="chip">Pijn achteraf: ${esc(painText(rec))}</span>${rec.source === 'rbfa' ? '<span class="chip">via RBFA</span>' : ''}</div>
         ${rec.note ? `<p class="small" style="margin-top:12px">${esc(rec.note)}</p>` : ''}
@@ -2173,6 +2533,12 @@
           <button class="btn" data-action="inj-new">${icon('plus')} Nieuw traject</button>
           ${act.length ? `<button class="btn" data-action="inj-none">Geen actieve blessure</button>` : ''}
         </div>
+      </section>
+
+      <div class="section"><span>Planning</span></div>
+      <section class="card">
+        <label class="switch-row"><span><b>Waarschuwing bij zware belasting</b><small>Bij 3 zware dagen op rij of een zware sessie de dag voor een match. Een hulp, geen regel.</small></span>
+          <input type="checkbox" class="switch" data-change="load-warn" ${S.settings.loadWarn === false ? '' : 'checked'}></label>
       </section>
 
       <div class="section"><span>Weergave</span></div>
@@ -2784,30 +3150,89 @@
     };
     rec.id = await DB.put('workouts', rec);
     S.workouts.push(rec);
-    S.ui.undoDone = rec.id;
+    S.ui.undoDone = { store: 'workouts', id: rec.id };
     closeSheet();
     render({ keepScroll: true });
     toast(`${sessionTitle(id)}: aangepast uitgevoerd`, { action: 'undo-done', label: 'Ongedaan' });
   }
 
-  // Alle keuzes voor een gepland item; verwijderen staat apart onderaan
+  // Sessie aanpassen: starten of afvinken, bevestigen, type vervangen, dag en uur, notitie, overslaan met reden
+  const SKIP_REASONS = ['Geblesseerd', 'Ziek', 'Geen tijd', 'Rust nodig', 'Andere'];
+  const TYPE_CHIPS = [['session', 'Fitness'], ['training', 'Voetbal'], ['kine', 'Kine'], ['recovery', 'Herstel'], ['match', 'Match'], ['rest', 'Rust']];
   function openItemActions(k, key) {
     const it = findItem(k, key); if (!it) return;
-    const m = itemMeta(it), tk = dkey(today());
+    const m = itemMeta(it), tk = dkey(today()), st = itemStatus(it, k);
     const s = it.type === 'session' ? C.sessions[it.id] : null;
-    const b = (attrs, ic, title, sub) => `<button class="menu-btn" ${attrs}>${icon(ic)}<span><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span></button>`;
-    openSheet(`<div class="sheet-head"><div><h3>${esc(m.title)}</h3><p>${esc(actKind(it))} · ${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      <div class="menu-list">
-        ${s ? b(`data-action="start-session" data-key="${it.id}"`, 'play', 'Start workout', 'Je vult je sets in tijdens het trainen') : b(`data-action="open-log" data-type="${it.type}" data-date="${k}"`, 'edit', 'Loggen', 'Minuten, zwaarte en pijn')}
-        ${s && k <= tk ? b(`data-action="mark-done" data-k="${k}" data-key="${it.id}"`, 'check', 'Gedaan zonder details', 'Telt als uitgevoerd, zonder sets') : ''}
-        ${k <= tk ? b(`data-action="adapted" data-k="${k}" data-key="${esc(key)}"`, 'edit', 'Aangepast uitgevoerd', 'Anders gedaan dan gepland') : ''}
-        ${b(`data-action="skip-item" data-k="${k}" data-key="${esc(key)}"`, 'skip', 'Overslaan', 'Telt niet als gemist')}
-        ${!s || s.catchUp !== false ? b(`data-action="open-move" data-k="${k}" data-key="${esc(key)}"`, 'move', 'Verplaatsen', 'Met advies per dag') : ''}
-        ${s && s.custom ? b(`data-action="edit-custom" data-key="${it.id}"`, 'edit', 'Eigen workout aanpassen', '') : ''}
+    const done = it.type !== 'rest' && doneOrCaughtUp(it, k);
+    const fixed = !!it.fixture;
+    const curType = it.type === 'custom' ? 'custom' : it.type;
+    const startTime = String(it.time || '').split(/[–-]/)[0].trim();
+    let primary = '';
+    if (!done && k <= tk) {
+      if (s) primary = `<button class="btn accent block lg" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Nu inhalen' : 'Start workout'}</button>
+        <div class="row" style="margin-top:8px"><button class="btn" data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')} Gedaan</button><button class="btn" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')} Aangepast</button></div>`;
+      else if (it.type === 'training' || it.type === 'match') primary = `<button class="btn accent block lg" data-action="${it.type === 'match' && it.fixture && played(it.fixture) ? 'open-minutes' : 'open-log'}" data-type="${it.type}" data-date="${k}">${icon('edit')} ${it.type === 'match' ? 'Minuten invullen' : 'Training loggen'}</button>`;
+      else if (SIMPLE.includes(it.type)) primary = `<button class="btn accent block lg" data-action="mark-simple" data-k="${k}" data-key="${esc(key)}">${icon('check')} Gedaan</button>`;
+    } else if (!done && !it.confirmed && it.type !== 'rest') {
+      primary = `<button class="btn primary block lg" data-action="confirm-item" data-k="${k}" data-key="${esc(key)}">${icon('check')} Bevestigen</button>`;
+    }
+    const rec = recordFor(it, k);
+    openSheet(`<form id="item-form" data-k="${k}" data-key="${esc(key)}">
+      <div class="sheet-head"><div><span class="eyebrow">${esc(actKind(it))}  ·  ${esc(st.label)}</span><h3>${esc(it.type === 'session' ? sessionTitle(it.id) : m.title)}</h3><p>${cap(fmtDay(k))}${it.note ? ` · ${esc(it.note)}` : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${primary}
+      ${rec ? `<button type="button" class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : ''}
+      ${fixed ? `<p class="label" style="margin:14px 2px 0">Deze match komt uit de RBFA-kalender. Datum en uur pas je aan via Account → Matchen beheren.</p>` : `
+      <p class="field-label">Sessietype</p>
+      <div class="type-chips">${TYPE_CHIPS.map(([t, l]) => `<button type="button" class="tchip ${curType === t ? 'on' : ''}" ${curType === t ? 'aria-pressed="true"' : `data-action="replace-type" data-k="${k}" data-key="${esc(key)}" data-type="${t}"`}>${l}</button>`).join('')}
+        <button type="button" class="tchip ${curType === 'custom' ? 'on' : ''}" data-action="replace-type" data-k="${k}" data-key="${esc(key)}" data-type="custom">${curType === 'custom' ? esc(it.label) : 'Eigen…'}</button></div>
+      <p class="label" style="margin:-4px 2px 14px">Een ander type kiezen vervangt deze sessie alleen op deze dag.</p>`}
+      ${it.type === 'rest' || fixed ? '' : `
+      <p class="field-label">Dag en uur</p>
+      <div class="form-grid">
+        <label class="field"><span class="sr">Datum</span><input class="input" type="date" name="date" value="${k}" required></label>
+        <label class="field"><span class="sr">Uur</span><input class="input" type="time" name="time" value="${esc(/^\d{1,2}:\d{2}$/.test(startTime) ? startTime.padStart(5, '0') : '')}"></label>
       </div>
+      ${it.type === 'session' ? '' : `<label class="field"><span>Duur (minuten)</span><input class="input" type="number" inputmode="numeric" min="0" max="300" name="min" value="${esc(it.min || (it.type === 'training' ? plannedMinutes(it) || '' : ''))}" placeholder="Optioneel"></label>`}
+      ${done ? '' : `<button type="button" class="btn block" style="margin:-4px 0 14px" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('magic')} Verplaatsen met advies</button>`}`}
+      <label class="field"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. focus op techniek, kuit rustig opbouwen">${esc(it.userNote || '')}</textarea></label>
+      <button class="btn primary block lg" type="submit">${icon('check')} Wijzigingen opslaan</button>
+      ${!done && it.type !== 'rest' ? `<p class="field-label" style="margin-top:20px">Overslaan met reden</p>
+      <div class="chip-pick">${SKIP_REASONS.map(r => `<button type="button" class="tchip" data-action="skip-reason" data-k="${k}" data-key="${esc(key)}" data-reason="${r}">${r}</button>`).join('')}</div>
+      <p class="label" style="margin:-6px 2px 0">Overslaan telt niet als gemist, ook niet in je streak.</p>` : ''}
       <details class="more"><summary>Meer opties</summary>
-        <button class="btn danger block" data-action="del-item" data-k="${k}" data-key="${esc(key)}">${icon('trash')} Uit de planning halen</button>
-      </details>`);
+        <div class="menu-list">
+          ${!done && k <= tk && it.type !== 'session' && it.type !== 'rest' && !SIMPLE.includes(it.type) ? `<button type="button" class="menu-btn" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')}<span><b>Aangepast uitgevoerd</b><small>Anders gedaan dan gepland</small></span></button>` : ''}
+          ${s && s.custom ? `<button type="button" class="menu-btn" data-action="edit-custom" data-key="${it.id}">${icon('edit')}<span><b>Eigen workout aanpassen</b></span></button>` : ''}
+          ${fixed ? '' : `<button type="button" class="btn danger block" data-action="del-item" data-k="${k}" data-key="${esc(key)}">${icon('trash')} Uit de planning halen</button>`}
+        </div>
+      </details>
+    </form>`);
+  }
+
+  async function saveItemForm(form) {
+    const k = form.dataset.k, key = form.dataset.key;
+    const it = findItem(k, key); if (!it) { closeSheet(); return; }
+    const f = new FormData(form);
+    const ed = { note: (f.get('note') || '').trim() };
+    if (f.has('time')) {
+      const t = f.get('time') || '';
+      const cur = String(it.time || '').split(/[–-]/)[0].trim();
+      // Alleen bewaren als je het uur echt veranderde (zo blijft bv. 19:45–21:30 staan)
+      if (t !== (/^\d{1,2}:\d{2}$/.test(cur) ? cur.padStart(5, '0') : '')) ed.time = t;
+    }
+    if (f.has('min')) ed.min = num(f.get('min')) || '';
+    const to = f.get('date') || k;
+    saveItemEdit(k, key, ed, 'Opgeslagen');
+    closeSheet();
+    if (to !== k) moveItem(k, key, to);
+  }
+
+  // Een weggehaald item (overgeslagen, vervangen of verwijderd): terugzetten
+  async function openOffItem(k, key) {
+    const { off } = planDetail(parseKey(k));
+    const o = off.find(x => itemKey(x.item) === key); if (!o) return;
+    const ot = offText(o.reason);
+    if (await ask(`${itemMeta(o.item).title} · ${ot.txt}. Terug in de planning zetten?${ot.tag === 'Vervangen' ? ' De vervanging verdwijnt dan.' : ''}`, { ok: 'Terugzetten', title: cap(fmtDay(k)) })) restoreItem(k, key);
   }
 
   /* ================= Sheets, menu, toast ================= */
@@ -2989,7 +3414,20 @@
     'restore-item': el => restoreItem(el.dataset.k, el.dataset.key),
     'cal-pick': el => { S.ui.calDay = el.dataset.k; const d = parseKey(el.dataset.k); S.ui.calMonth = new Date(d.getFullYear(), d.getMonth(), 1); render({ keepScroll: true }); },
     'add-menu': el => openAddMenu(el.dataset.k),
-    'add-session': el => addSessionTo(el.dataset.k, el.dataset.id),
+    'add-session': el => addOrReplace(el, { type: 'session', id: el.dataset.id }),
+    'add-type': el => addOrReplace(el, newItemOf(el.dataset.type)),
+    'add-custom': el => { const v = ($('#custom-label').value || '').trim(); if (!v) { toast('Geef je eigen type eerst een naam'); $('#custom-label').focus(); return; } addOrReplace(el, { type: 'custom', label: v.slice(0, 40) }); },
+    'replace-type': el => { const t = el.dataset.type; if (t === 'session' || t === 'custom') openAddMenu(el.dataset.k, el.dataset.key); else replaceItem(el.dataset.k, el.dataset.key, newItemOf(t)); },
+    'skip-reason': el => skipItem(el.dataset.k, el.dataset.key, el.dataset.reason),
+    'confirm-item': el => confirmItems([[el.dataset.k, el.dataset.key]], 'Bevestigd'),
+    'confirm-week': () => { const l = pendingSuggestions(parseKey(S.ui.planWeek || weekKey(today()))); confirmItems(l, `${l.length} voorstel${l.length === 1 ? '' : 'len'} bevestigd`); },
+    'mark-simple': el => markSimpleDone(el.dataset.k, el.dataset.key),
+    'off-item': el => openOffItem(el.dataset.k, el.dataset.key),
+    'plan-view': el => { S.ui.planView = el.dataset.v; render(); },
+    'wk-prev': () => { S.ui.planWeek = dkey(addDays(parseKey(S.ui.planWeek || weekKey(today())), -7)); render(); },
+    'wk-next': () => { S.ui.planWeek = dkey(addDays(parseKey(S.ui.planWeek || weekKey(today())), 7)); render(); },
+    'wk-today': () => { S.ui.planWeek = weekKey(today()); S.ui.planFocus = dkey(today()); render(); },
+    'wk-jump': el => { const n = document.getElementById(`day-${el.dataset.k}`); if (n) window.scrollTo({ top: n.getBoundingClientRect().top + window.scrollY - 90, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); },
     'del-item': async el => { if (!await ask('Uit de planning halen? Je kan het terugzetten in de kalender.', { ok: 'Uit planning halen', danger: true })) return; deleteItem(el.dataset.k, el.dataset.key); },
     'new-custom': el => openBuilder(el.dataset.k),
     'edit-custom': el => openBuilder(null, el.dataset.key),
@@ -3008,8 +3446,8 @@
     'b-save': saveBuilder,
     'mark-done': el => markDone(el.dataset.k, el.dataset.key),
     'undo-done': async () => {
-      const id = S.ui.undoDone; if (id == null) return;
-      await DB.del('workouts', id); S.workouts = S.workouts.filter(w => w.id !== id); S.ui.undoDone = null;
+      const u = S.ui.undoDone; if (!u) return;
+      await DB.del(u.store, u.id); S[u.store] = S[u.store].filter(w => w.id !== u.id); S.ui.undoDone = null;
       $('#toast').hidden = true; render({ keepScroll: true }); toast('Ongedaan gemaakt');
     },
     'undo': async () => { if (!S.ui.undo) return; await setSetting('overrides', S.ui.undo); S.ui.undo = null; $('#toast').hidden = true; render({ keepScroll: true }); toast('Ongedaan gemaakt'); },
@@ -3077,6 +3515,8 @@
 
   document.addEventListener('click', e => {
     unlockAudio();
+    // De klik die op het slepen volgt, mag niets openen
+    if (S.ui.dragEndedAt && Date.now() - S.ui.dragEndedAt < 450) { e.preventDefault(); return; }
     const el = e.target.closest('[data-action]');
     if (!el || el.disabled) return;
     const fn = actions[el.dataset.action];
@@ -3122,6 +3562,8 @@
       if (el.checked && !(S.raw.workouts || []).some(w => w.sample)) await seedSample(); else await loadAll();
       render({ keepScroll: true });
       toast(el.checked ? 'Demostand aan: voorbeelddata telt mee' : 'Demostand uit: alleen je eigen gegevens');
+    } else if (kind === 'load-warn') {
+      await setSetting('loadWarn', el.checked); toast(el.checked ? 'Waarschuwing aan' : 'Waarschuwing uit');
     } else if (kind === 'goal-type') {
       await setSetting('goal', { ...goal(), type: el.value }); render({ keepScroll: true });
     } else if (kind === 'goal') {
@@ -3172,6 +3614,7 @@
     if (e.target.id === 'finish-form') saveFinish(e.target);
     if (e.target.id === 'adapted-form') saveAdapted(e.target);
     if (e.target.id === 'wedit-form') saveWorkoutEdit(e.target);
+    if (e.target.id === 'item-form') saveItemForm(e.target);
   });
 
   window.addEventListener('hashchange', () => { closeSheet(); render(); });
