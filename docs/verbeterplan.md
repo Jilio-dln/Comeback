@@ -38,7 +38,7 @@ Het bepaalt wat blijft, wat verandert en wat er (voorlopig) niet in komt, met de
 4. **Blessures** (klaar) – eigen tab; elk traject krijgt een eigen herstelplan met oefeningen die je als sessie inplant.
    Het kuit/pees-programma wordt het herstelplan van het bestaande traject. Afronden verbergt alles op Vandaag;
    oefeningen kun je als onderhoud houden.
-5. **Vandaag** – eerst wat er vandaag gepland staat met één startknop, daarna dagelijkse check, weekritme en streak.
+5. **Vandaag** (motivatie klaar) – eerst wat er vandaag gepland staat met één startknop, daarna dagelijkse check, weekritme en streak.
    Rust- en hersteldagen tellen mee als *volgens plan*, nooit als gemist.
 6. **Workout en voortgang** – vorige prestatie per oefening terug zichtbaar; streak, weekritme en mijlpalen.
 
@@ -60,3 +60,10 @@ Profiel en instellingen open je via je avatar op Vandaag.
 | Gewicht, hartslag, Apple Health | weggelaten | een webapp kan Apple Health niet lezen; geen schijnkoppeling |
 | Sportfoto's uit Figma | niet gebruikt | licentie onbekend; de bestaande Unsplash-foto (vrij te gebruiken) blijft, in zwart-wit |
 | "Private membership" | alleen als sfeer in de typografie | geen abonnement, betaalmuur of extra accountstappen |
+
+## Motivatieteksten
+
+`quotes.json` bevat eigen korte teksten zonder naam, per soort dag (training, herstel, rust, match, mindset).
+Vandaag toont er één per dag, nooit een van de laatste 10. Wil je later een citaat van een sporter toevoegen,
+vul dan `name` en in `context` de bron in, en alleen als je de juiste herkomst gecontroleerd hebt.
+

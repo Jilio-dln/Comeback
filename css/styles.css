@@ -141,7 +141,19 @@ a { color: inherit; }
     calc(var(--safe-left) + var(--gutter));
 }
 .app.resting { padding-bottom: calc(var(--safe-bottom) + var(--tabbar-h) + 116px); }
-.boot { padding: 40vh 0; text-align: center; color: var(--muted); }
+.boot { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; background: #090909; color: var(--white); }
+.boot .wordmark { font-size: 32px; }
+/* Laadscherm: alleen zichtbaar terwijl er echt geladen wordt */
+.loading-screen { position: fixed; inset: 0; z-index: 95; display: flex; flex-direction: column; justify-content: space-between; color: var(--white);
+  padding: calc(var(--safe-top) + 32px) calc(var(--safe-right) + 24px) calc(var(--safe-bottom) + 40px) calc(var(--safe-left) + 24px);
+  background: linear-gradient(180deg, rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .2) 40%, rgba(0, 0, 0, .9) 100%), var(--brand-gradient); animation: ls-in .25s ease-out; }
+.ls-bottom p { font-size: 15px; font-weight: 500; margin-bottom: 14px; }
+.ls-rail { position: relative; width: 160px; height: 3px; border-radius: 2px; background: rgba(249, 249, 249, .2); overflow: hidden; }
+.loading-screen .ls-rail { width: 100%; }
+.ls-rail i { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: 2px; background: var(--orange); animation: ls-run 1.1s ease-in-out infinite; }
+@keyframes ls-run { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+@keyframes ls-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ls-rail i { width: 100%; opacity: .6; } }
 
 .eyebrow { display: block; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-text); }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 8px 0 20px; min-height: 44px; }
@@ -804,6 +816,8 @@ button.list-row:first-child { border-top: 0; }
 .celebrate span { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); }
 .celebrate .ic { width: 30px; height: 30px; stroke-width: 2.6; }
 .celebrate b { font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+.celebrate small { font-size: 14px; color: var(--gray-light); max-width: 240px; text-align: center; line-height: 1.35; }
+.quote-card.daily { margin-top: 4px; }
 @keyframes celebrate { 0% { opacity: 0; transform: translate(-50%, -46%) scale(.94); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
 
 /* Mijlpaal-badge: de brand gradient, met een donkere waas voor leesbare tekst */

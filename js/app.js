@@ -788,6 +788,7 @@
       <div class="section"><span>${k === tk ? 'Vandaag gepland' : cap(fmtDay(k))}</span>${k !== tk ? `<button class="link-btn" data-action="home-day" data-k="${tk}">Naar vandaag</button>` : ''}</div>
       <div class="day-strip" id="day-strip">${strip}</div>
       ${activitiesHtml(k)}
+      ${quoteCard()}
       <div class="section"><span>Deze week</span><span>week ${isoWeek(t)}</span></div>
       ${weekCard()}
       ${activeInjuries().length ? '' : progressCard()}
@@ -1842,7 +1843,7 @@
 
     main.innerHTML = `
       ${pageHead('Workout', activeInjuries().length ? `${esc(phaseObj(currentPhase()).label)} · ${esc(phaseObj(currentPhase()).title)}` : esc(GOAL_LABEL[goal().type]))}
-      ${sm ? `<div class="hint">${icon('check')}<span><b>${esc(sm.title)} opgeslagen.</b> ${sm.sets} sets in ${sm.minutes} min${sm.rpe != null ? `, zwaarte ${sm.rpe}/10` : ''}.</span></div>` : ''}
+      ${sm ? `<div class="hint">${icon('check')}<span><b>${esc(sm.title)} opgeslagen.</b> ${sm.sets} set${sm.sets === 1 ? "" : "s"} in ${sm.minutes} min${sm.rpe != null ? `, zwaarte ${sm.rpe}/10` : ''}.</span></div>` : ''}
       ${rising ? `<div class="hint warn">${icon('alert')}<span>Je dagelijkse check is hoger dan de vorige meting. Volg je afspraak met je kinesist.</span></div>` : ''}
       ${w ? `<section class="card resume">
         <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
@@ -2107,7 +2108,7 @@
     releaseWakeLock();
     S.ui.woView = 'picker';
     render();
-    celebrate('Workout opgeslagen');
+    celebrate('Workout opgeslagen', afterText());
   }
 
   async function cancelWorkout() {
@@ -2126,15 +2127,91 @@
     const el = $(sel); if (!el) return;
     el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
   }
-  function celebrate(text) {
+  function celebrate(text, sub = '') {
     const el = document.createElement('div');
     el.className = 'celebrate';
     el.setAttribute('role', 'status');
-    el.innerHTML = `<span>${icon('check')}</span><b>${esc(text)}</b>`;
+    el.innerHTML = `<span>${icon('check')}</span><b>${esc(text)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}`;
     document.body.appendChild(el);
     signal(1);
-    setTimeout(() => el.remove(), 1400);
+    setTimeout(() => el.remove(), sub ? 2400 : 1400);
   }
+
+  /* ---------- Motivatie: eigen korte teksten (quotes.json), zonder toeschrijving ---------- */
+  // Ingebouwde reserve als quotes.json (nog) niet geladen is
+  const Q = {
+    quotes: [
+      { text: 'Elke herhaling telt.', context: 'training' },
+      { text: 'Herstel is ook training. Alleen stiller.', context: 'herstel' },
+      { text: 'Rust is geen pauze van je plan. Het is een deel van je plan.', context: 'rust' },
+      { text: 'Ritme verslaat motivatie. Doe vandaag gewoon wat gepland staat.', context: 'mindset' }
+    ],
+    after: ['Gedaan. Dat is wat telt.', 'Weer een dag volgens plan.']
+  };
+  const lsJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch (_) { return d; } };
+  const lsPut = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { } };
+  function loadQuotes() {
+    return fetch('quotes.json').then(r => r.ok ? r.json() : null).then(d => {
+      if (d && Array.isArray(d.quotes) && d.quotes.length) { Q.quotes = d.quotes.filter(q => q && q.text); if (Array.isArray(d.after) && d.after.length) Q.after = d.after; }
+    }).catch(() => { }).finally(() => {
+      Q.loaded = true;
+      const card = document.querySelector('.quote-card.daily');
+      if (card) card.outerHTML = quoteCard();
+    });
+  }
+  // Waar gaat vandaag over? Match, herstel (lopende blessure), rust of training
+  function dayContext() {
+    const items = planFor(today());
+    if (items.some(it => it.type === 'match')) return 'match';
+    if (activeInjuries().length) return 'herstel';
+    if (items.every(it => it.type === 'rest')) return 'rust';
+    return 'training';
+  }
+  // Eén tekst per dag; geen van de laatste 10 opnieuw
+  function dailyQuote() {
+    const tk = dkey(today());
+    const cur = lsJSON('comeback-quote', null);
+    if (cur && cur.date === tk && cur.text) return cur;
+    const hist = lsJSON('comeback-quote-hist', []);
+    const ctx = dayContext();
+    let pool = Q.quotes.filter(q => (q.context === ctx || q.context === 'mindset') && !hist.includes(q.text));
+    if (!pool.length) pool = Q.quotes.filter(q => !hist.slice(-10).includes(q.text));
+    if (!pool.length) pool = Q.quotes;
+    const q = Q.loaded ? pool[Math.floor(Math.random() * pool.length)] : pool[0];
+    const pick = { date: tk, text: q.text, name: q.name || null, context: q.context || 'mindset' };
+    // Pas vastleggen als alle teksten geladen zijn
+    if (!Q.loaded) return pick;
+    lsPut('comeback-quote', pick);
+    lsPut('comeback-quote-hist', [...hist.filter(t => t !== q.text), q.text].slice(-10));
+    return pick;
+  }
+  const CTX_LABEL = { herstel: 'Herstel', rust: 'Rust', match: 'Matchdag', training: 'Focus', mindset: 'Mindset' };
+  function quoteCard() {
+    const q = dailyQuote();
+    return `<section class="card quote-card daily" aria-label="Motivatie van de dag">
+      <span class="label">${esc(CTX_LABEL[q.context] || 'Mindset')}</span>
+      <p class="quote-text">${esc(q.text)}</p>
+      <span class="label">${q.name ? esc(q.name) : 'Jouw dagelijkse reminder'}</span>
+    </section>`;
+  }
+  const afterText = () => Q.after[Math.floor(Math.random() * Q.after.length)] || '';
+
+  /* ---------- Laden: alleen tonen als er echt iets geladen wordt ---------- */
+  let loadTimer = null;
+  function showLoading(text, delay = 350) {
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => {
+      if (document.getElementById('loading')) return;
+      const el = document.createElement('div');
+      el.id = 'loading';
+      el.className = 'loading-screen';
+      el.setAttribute('role', 'status');
+      el.innerHTML = `<div class="ls-brand"><span class="wordmark">comeback</span></div>
+        <div class="ls-bottom"><p>${esc(text)}</p><div class="ls-rail"><i></i></div></div>`;
+      document.body.appendChild(el);
+    }, delay);
+  }
+  function hideLoading() { clearTimeout(loadTimer); const el = document.getElementById('loading'); if (el) el.remove(); }
 
   /* ---------- Rusttimer ---------- */
   const rest = { endAt: 0, total: 0, iv: null };
@@ -3907,7 +3984,9 @@
     startSync();
     render();
     toast(msg || `Ingelogd als ${user.email}`);
-    await Sync.syncNow();
+    const first = !Sync.lastSyncAt();
+    if (first) showLoading('Je gegevens worden gesynchroniseerd…');
+    try { await Sync.syncNow(); } finally { hideLoading(); }
     await reloadData();
   }
 
@@ -4001,6 +4080,8 @@
   /* ================= Start ================= */
   async function init() {
     try {
+      // Teksten op de achtergrond laden: de app opent er niet trager door
+      loadQuotes();
       await loadAll();
       await migrate();
       registerCustom();
