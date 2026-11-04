@@ -20,6 +20,6 @@
  *   Die hoort alleen in het Supabase-dashboard of in server-code (bv. een Edge Function).
  */
 window.COMEBACK_ENV = {
-  SUPABASE_URL: '',
-  SUPABASE_ANON_KEY: ''
+  SUPABASE_URL: 'https://ynlqtqmickexjajmkwbd.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_v_WYfYR5SqnReCL8QCq1Xg_5VGA40Vw'
 };
