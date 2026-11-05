@@ -819,7 +819,7 @@
     const g = goal(), act = activeInjuries();
     const sub = act.length ? `${GOAL_LABEL[g.type]} · ${act.map(injuryLabel).join(', ')}` : `${GOAL_LABEL[g.type]} · geen actieve blessure`;
     return `<header class="photo-head">
-      <img src="assets/hero.jpg" alt="" class="photo-img" decoding="async" onerror="this.remove()">
+      <img src="assets/hero.webp" alt="" class="photo-img" decoding="async" onerror="this.remove()">
       <div class="photo-shade"></div>
       <div class="photo-top"><span class="photo-date">${cap(fmtLong(t))}</span><button class="avatar" data-action="go" data-to="account" aria-label="Account">${avatarInner()}</button></div>
       <div class="photo-bottom"><h1 class="display">${greet}, ${esc(p.name)}</h1><p>${esc(sub)}</p></div>

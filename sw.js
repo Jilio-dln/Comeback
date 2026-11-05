@@ -1,6 +1,6 @@
 /* Comeback: service worker voor offline gebruik.
  * Verhoog CACHE_VERSION als je bestanden toevoegt of hernoemt. */
-const CACHE_VERSION = 'comeback-v27';
+const CACHE_VERSION = 'comeback-v28';
 const FONT_CACHE = 'comeback-fonts';
 const ASSETS = [
   './',
@@ -20,7 +20,7 @@ const ASSETS = [
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
-  './assets/hero.jpg'
+  './assets/hero.webp'
 ];
 
 self.addEventListener('install', event => {
