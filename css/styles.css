@@ -21,6 +21,7 @@
   --photo-overlay:
     linear-gradient(180deg, rgba(11, 14, 18, .05) 0%, rgba(11, 14, 18, .2) 45%, rgba(11, 14, 18, .88) 100%),
     linear-gradient(0deg, rgba(37, 46, 57, .32), rgba(37, 46, 57, .32));
+  --photo-card-h: 340px;          /* alle fotokaarten even hoog */
   --photo-card-overlay:
     linear-gradient(180deg, rgba(11, 14, 18, .35) 0%, rgba(11, 14, 18, .15) 30%, rgba(11, 14, 18, .55) 62%, rgba(11, 14, 18, .92) 100%),
     linear-gradient(0deg, rgba(37, 46, 57, .25), rgba(37, 46, 57, .25));   /* fotokaart: beeld boven, tekst onder leesbaar */
@@ -1156,7 +1157,7 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 .empty-row .btn, .wk-confirm .btn { white-space: nowrap; flex: none; }
 
 /* ================= Voortgang: stats-fotokaart ================= */
-.stats-hero { position: relative; overflow: hidden; min-height: 176px; margin-bottom: var(--gap); border-radius: var(--r-card); border: 1px solid var(--border); background: var(--photo-base); color: var(--photo-text); display: flex; align-items: flex-end; }
+.stats-hero { position: relative; overflow: hidden; height: var(--photo-card-h); margin-bottom: var(--gap); border-radius: var(--r-card); border: 1px solid var(--border); background: var(--photo-base); color: var(--photo-text); display: flex; align-items: flex-end; }
 .stats-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; filter: var(--photo-filter); }
 .stats-shade { position: absolute; inset: 0; background: var(--photo-overlay); }
 .stats-row { position: relative; width: 100%; display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 12px; padding: 20px; }
@@ -1190,7 +1191,7 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 /* ================= Premium afwerking ================= */
 .next-match-title { font-size: var(--fs-title); margin-top: 4px; }
 /* Herokaart met sfeerfoto (bv. een geplande loop) */
-.act.has-photo { position: relative; overflow: hidden; background: var(--photo-base); color: var(--photo-text); border-color: var(--border); min-height: 320px; display: flex; flex-direction: column; }
+.act.has-photo { position: relative; overflow: hidden; background: var(--photo-base); color: var(--photo-text); border-color: var(--border); min-height: var(--photo-card-h); display: flex; flex-direction: column; }
 .act-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 42%; filter: var(--photo-filter); }
 .act-shade { position: absolute; inset: 0; background: var(--photo-card-overlay); }
 .act.has-photo > :not(.act-img):not(.act-shade) { position: relative; }
@@ -1199,11 +1200,16 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 .act.has-photo p, .act.has-photo .act-kind, .act.has-photo .act-time span, .act.has-photo .act-meta { color: var(--photo-text-2); }
 .act.has-photo .tag { background: var(--photo-chip); color: var(--photo-text); box-shadow: none; }
 .act.has-photo .act-more { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
-/* Uitsnede per foto: de spelers van de training staan lager in het beeld */
-.act-img[src$="training.jpg"] { object-position: 50% 78%; }
-.act-img[src$="kracht-hero.jpg"] { object-position: 50% 25%; }
-.stats-img[src$="lopen-card.jpg"] { object-position: 50% 45%; }
-.stats-img[src$="voetbal-card.jpg"] { object-position: 50% 40%; }
+/* Uitsnede per foto: het focuspunt (speler, bal, actie) in het bovenste deel van de kaart, boven de tekst */
+.act-img[src$="run.jpg"] { object-position: 45% 40%; }
+.act-img[src$="training.jpg"] { object-position: 50% 62%; }
+.act-img[src$="kracht.jpg"] { object-position: 55% 85%; }
+.act-img[src$="match.jpg"] { object-position: 50% 48%; }
+.act-img[src$="kracht-hero.jpg"] { object-position: 50% 20%; }
+.stats-img[src$="stats.jpg"] { object-position: 50% 48%; }
+.stats-img[src$="lopen-card.jpg"] { object-position: 35% 35%; }
+.stats-img[src$="voetbal-card.jpg"] { object-position: 50% 35%; }
+
 /* Knop op een fotokaart: doorschijnend, zodat de foto zichtbaar blijft */
 .act.has-photo .btn.accent, .act.has-photo .btn.primary { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
 .act.has-photo .btn.accent:active, .act.has-photo .btn.primary:active { background: var(--photo-chip-line); }
