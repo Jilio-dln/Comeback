@@ -1288,6 +1288,8 @@ body { font-variant-numeric: tabular-nums; }
 .run-stats { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 12px; margin: 4px 0 16px; }
 .run-stats > div { display: flex; flex-direction: column; gap: 8px; }
 .run-pace { display: flex; align-items: center; color: var(--muted); }
+.run-plan { margin: 0 4px 12px; font-size: var(--fs-small); color: var(--muted); }
+.run-plan b { font-family: var(--font-display); font-stretch: var(--display-stretch); font-size: var(--fs-title); color: var(--text); margin-right: 4px; }
 
 /* Tijdlijn per dag */
 .tl-day { margin: 12px 0 0; font-size: var(--fs-label); font-weight: 600; letter-spacing: var(--caps-track); text-transform: uppercase; color: var(--muted); }

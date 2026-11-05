@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.4.1';
+  const APP_VERSION = '5.5.0';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -371,6 +371,7 @@
       return { icon: s.icon || 'dumbbell', title: sessionTitle(it.id), sub: `${s.place ? cap(s.place) + ' · ' : ''}${st.exercises} oefeningen · ±${st.minutes} min`, note: it.note, short: s.short || it.id, stats: st, subtitle: sub };
     }
     if (it.type === 'training') return { icon: 'whistle', title: 'Voetbaltraining', sub: it.time || '', note: it.note, short: 'Training' };
+    if (it.type === 'run') return { icon: 'bolt', title: 'Lopen', sub: [it.time, it.min && `${it.min} min`].filter(Boolean).join(' · '), note: it.note, short: 'Lopen' };
     if (it.type === 'kine') return { icon: 'heart', title: it.label ? `Kine · ${it.label}` : 'Kine', sub: [it.time, it.min && `${it.min} min`].filter(Boolean).join(' · '), note: it.note, short: 'Kine' };
     if (it.type === 'recovery') return { icon: 'pulse', title: it.label || 'Herstel & mobiliteit', sub: [it.time, `${it.min || 25} min`].filter(Boolean).join(' · '), note: it.note, short: 'Herstel' };
     if (it.type === 'custom') return { icon: 'list', title: it.label || 'Eigen activiteit', sub: [it.time, it.min && `${it.min} min`].filter(Boolean).join(' · '), note: it.note, short: it.label || 'Eigen' };
@@ -390,7 +391,7 @@
   const actMatches = (a, it) => a.type === it.type && (it.type !== 'custom' || slug(a.label) === slug(it.label));
   function itemDone(it, k) {
     if (it.type === 'session') return workoutsOn(k).some(w => w.sessionKey === it.id);
-    if (it.type === 'training' || it.type === 'match' || SIMPLE.includes(it.type)) return activitiesOn(k).some(a => actMatches(a, it));
+    if (it.type === 'training' || it.type === 'match' || it.type === 'run' || SIMPLE.includes(it.type)) return activitiesOn(k).some(a => actMatches(a, it));
     return false;
   }
 
@@ -879,13 +880,13 @@
     if (type === 'training' || type === 'match') return openLog(type);
     return openSimpleLog(type);
   }
-  function openRunLog(id = null) {
+  function openRunLog(id = null, date = null) {
     const ex = id ? S.activities.find(a => a.id === id) : null;
     const rt = (ex && ex.runType) || 'duurloop', sf = (ex && ex.surface && RUN_SURF[ex.surface] ? ex.surface : null) || (S.settings.runPrefs || {}).surface || 'gras';
     openSheet(`<form id="run-form" data-id="${ex ? ex.id : ''}">
       <div class="sheet-head"><h3>${ex ? 'Bewerken: ' : ''}Lopen</h3>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="form-grid">
-        <label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${ex ? ex.date : dkey(today())}" max="${dkey(today())}" required></label>
+        <label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${ex ? ex.date : date || dkey(today())}" max="${dkey(today())}" required></label>
         <label class="field"><span>Afstand (km)</span><input class="input" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" name="km" value="${ex && ex.distanceKm != null ? String(ex.distanceKm).replace('.', ',') : ''}" placeholder="bv. 6,5" required></label>
         <label class="field"><span>Duur (min)</span><input class="input" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" name="minutes" value="${ex && ex.minutes != null ? String(ex.minutes).replace('.', ',') : ''}" placeholder="bv. 35" required></label>
         <div class="field"><span>Tempo</span><output class="input run-pace" id="run-pace">${ex ? paceText(ex.distanceKm, ex.minutes) : '–'} /km</output></div>
@@ -996,10 +997,13 @@
     const t = today(), wk = weekKey(t), mStart = dkey(new Date(t.getFullYear(), t.getMonth(), 1));
     const km = l => fmtNum(Math.round(sum(l.map(a => +a.distanceKm || 0)) * 10) / 10);
     const thisWeek = runs.filter(a => inWeek(a.date, wk)), thisMonth = runs.filter(a => a.date >= mStart);
+    const ws = startOfWeek(t); let planned = 0, ran = 0;
+    for (let i = 0; i < 7; i++) { const d = addDays(ws, i), k = dkey(d); planFor(d).filter(it => it.type === 'run').forEach(it => { planned++; if (doneOrCaughtUp(it, k)) ran++; }); }
     return `<div class="tiles">
         <div class="tile"><span class="label">Deze week</span><div class="num">${km(thisWeek)}<span class="unit">km</span></div><p>${thisWeek.length} loop${thisWeek.length === 1 ? '' : 'jes'}</p></div>
         <div class="tile"><span class="label">Deze maand</span><div class="num">${km(thisMonth)}<span class="unit">km</span></div><p>${thisMonth.length} loop${thisMonth.length === 1 ? '' : 'jes'}</p></div>
       </div>
+      ${planned ? `<p class="run-plan"><b>${ran}/${planned}</b> geplande loopjes deze week gelopen</p>` : ''}
       <button class="btn accent block lg mb-12" data-action="log-new" data-type="run">${icon('plus')} Loop loggen</button>
       ${runs.length ? timelineHtml(entries().filter(x => x.store === 'activities' && x.type === 'run')) : `<section class="card"><p class="empty">Nog geen loopjes gelogd.</p></section>`}`;
   }
@@ -1053,9 +1057,9 @@
   const actKindOf = id => { const s = C.sessions[id] || {}; return s.program || isRehab(id) ? 'Herstel' : s.custom ? 'Eigen workout' : 'Kracht'; };
   // Kleurgroep (stip en label): kracht, herstel, training, match, rust
   const itemType = it => it.type === 'session' ? (C.sessions[it.id] && (C.sessions[it.id].program || isRehab(it.id)) ? 'herstel' : 'kracht')
-    : it.type === 'rest' ? 'rust' : SIMPLE.includes(it.type) ? 'herstel' : it.type;
+    : it.type === 'rest' ? 'rust' : it.type === 'run' ? 'kracht' : SIMPLE.includes(it.type) ? 'herstel' : it.type;
   const actKind = it => it.type === 'session' ? (actKindOf(it.id) === 'Kracht' ? 'Fitness' : actKindOf(it.id))
-    : ({ training: 'Voetbal', match: 'Match', rest: 'Rust', kine: 'Kine', recovery: 'Herstel', custom: 'Eigen' }[it.type] || '');
+    : ({ training: 'Voetbal', match: 'Match', run: 'Lopen', rest: 'Rust', kine: 'Kine', recovery: 'Herstel', custom: 'Eigen' }[it.type] || '');
   // Titel van een gelogde training, match of eenvoudige activiteit
   const actTitle = a => a.type === 'match' ? (a.opponent ? `Match tegen ${a.opponent}` : 'Match') : a.type === 'training' ? 'Voetbaltraining'
     : a.type === 'kine' ? 'Kine' : a.type === 'recovery' ? 'Herstel & mobiliteit' : a.type === 'run' ? (RUN_TYPES[a.runType] || 'Lopen')
@@ -1177,7 +1181,7 @@
       `<button type="button" class="menu-btn" data-action="${action}" data-k="${k}" data-key="${esc(key)}" ${extra}>${icon(ic)}<span><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span></button>`;
     const rows = [];
     if (!done && k <= tk && it.type !== 'rest') {
-      rows.push(row('check', 'item-done', 'Afgerond', s ? 'Afgewerkt zonder details te loggen' : it.type === 'training' || it.type === 'match' ? 'Opent het logformulier' : ''));
+      rows.push(row('check', 'item-done', 'Afgerond', s ? 'Afgewerkt zonder details te loggen' : it.type === 'training' || it.type === 'match' || it.type === 'run' ? 'Opent het logformulier' : ''));
       if (it.type === 'session' || it.type === 'training' || it.type === 'match') rows.push(row('edit', 'adapted', 'Aangepast uitgevoerd', 'Anders gedaan dan gepland'));
     }
     if (!done && !it.confirmed && it.type !== 'rest') rows.push(row('check', 'confirm-item', 'Bevestigen', 'Dit staat vast in je planning'));
@@ -1212,7 +1216,7 @@
   // Wat er gelogd is voor een gepland item
   function recordFor(it, k) {
     if (it.type === 'session') { const r = workoutsOn(k).find(w => w.sessionKey === it.id); return r ? { store: 'workouts', r } : null; }
-    if (it.type === 'training' || it.type === 'match' || SIMPLE.includes(it.type)) { const r = activitiesOn(k).find(a => actMatches(a, it)); return r ? { store: 'activities', r } : null; }
+    if (it.type === 'training' || it.type === 'match' || it.type === 'run' || SIMPLE.includes(it.type)) { const r = activitiesOn(k).find(a => actMatches(a, it)); return r ? { store: 'activities', r } : null; }
     return null;
   }
   function recStatus({ store, r }) {
@@ -1275,6 +1279,12 @@
       if (!done && k <= tk) actions = hero ? heroBtn('open-log', 'edit', 'Training loggen', `data-type="training" data-date="${k}"`)
         : `<div class="act-row"><button class="btn" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button>${more}</div>`;
       else if (!done) actions = `<div class="act-row">${it.confirmed ? '' : `<button class="btn" data-action="confirm-item" data-k="${k}" data-key="training">${icon('check')} Bevestigen</button>`}${more}</div>`;
+    } else if (it.type === 'run') {
+      body = `${it.time ? `<div class="act-time"><b class="display">${esc(it.time)}</b>${it.min ? `<span>${esc(it.min)} min</span>` : ''}</div>` : ''}
+        <h3>Lopen</h3><p>${esc(it.userNote || 'Log afstand, tempo en zwaarte na je loop.')}</p>`;
+      if (!done && k <= tk) actions = hero ? heroBtn('open-run', 'edit', 'Loop loggen', `data-date="${k}"`)
+        : `<div class="act-row"><button class="btn" data-action="open-run" data-date="${k}">${icon('edit')} Loop loggen</button>${more}</div>`;
+      else if (!done) actions = `<div class="act-row">${it.confirmed ? '' : `<button class="btn" data-action="confirm-item" data-k="${k}" data-key="${esc(key)}">${icon('check')} Bevestigen</button>`}${more}</div>`;
     } else if (it.type === 'match') {
       const f = it.fixture;
       body = `${f && f.time ? `<div class="act-time"><b class="display">${esc(f.time)}</b><span>${f.home ? 'thuis' : 'uit'}</span></div>` : ''}
@@ -1676,6 +1686,7 @@
       if (!doneOrCaughtUp(it, k) && !noCatchUp && k <= tk) {
         if (it.type === 'session') actions = `<button class="btn sm" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Inhalen' : 'Start'}</button>`;
         else if (it.type === 'training' || it.type === 'match') actions = `<button class="btn sm" data-action="open-log" data-type="${it.type}" data-date="${k}">${icon('edit')} Loggen</button>`;
+        else if (it.type === 'run') actions = `<button class="btn sm" data-action="open-run" data-date="${k}">${icon('edit')} Loggen</button>`;
         else if (SIMPLE.includes(it.type)) actions = `<button class="btn sm" data-action="mark-simple" data-k="${k}" data-key="${esc(key)}">${icon('check')} Gedaan</button>`;
       }
       const more = `<button class="icon-btn ghost" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(m.title)}">${icon('more')}</button>`;
@@ -1914,6 +1925,7 @@
   /* ---------- Toevoegen of vervangen ---------- */
   const QUICK_TYPES = [
     ['training', 'Voetbaltraining', 'whistle', 'Met de ploeg'],
+    ['run', 'Lopen', 'bolt', 'Duurloop, interval, herstel, sprint'],
     ['kine', 'Kine', 'heart', 'Afspraak bij je kinesist'],
     ['recovery', 'Herstel & mobiliteit', 'pulse', 'Losfietsen, mobiliteit, wandelen'],
     ['match', 'Match', 'ball', 'Zonder RBFA-kalender'],
@@ -2983,7 +2995,7 @@
     const weeks = [];
     for (let i = 7; i >= 0; i--) {
       const ws = addDays(startOfWeek(t), -7 * i), k = dkey(ws);
-      weeks.push({ start: ws, key: k, label: `W${isoWeek(ws)}`, value: S.workouts.filter(w => inWeek(w.date, k)).length });
+      weeks.push({ start: ws, key: k, label: `W${isoWeek(ws)}`, value: S.workouts.filter(w => inWeek(w.date, k)).length + S.activities.filter(a => a.type === 'run' && inWeek(a.date, k)).length });
     }
     const sel = clamp(S.ui.statsWeek ?? 7, 0, 7);
     const sw = weeks[sel];
@@ -2999,7 +3011,7 @@
     return `
       ${g.text || g.evalDate ? `<section class="card"><span class="label">Jouw doel · ${esc(GOAL_LABEL[g.type])}</span><p class="mt-4"><b>${esc(g.text || GOAL_LABEL[g.type])}</b></p>${g.evalDate ? `<p class="status-line">Evaluatie op ${fmtDay(g.evalDate)}. Een evaluatiemoment, geen automatisch oordeel.</p>` : ''}</section>` : ''}
       <section class="card">
-        <div class="card-head"><h2>Workouts per week</h2><span class="label">tik op een week</span></div>
+        <div class="card-head"><h2>Sessies per week</h2><span class="label">workouts en loopjes</span></div>
         ${Charts.bars(weeks, { selected: sel })}
         <div class="status-grid">
           <div><b>${planned}</b><span>gepland</span></div>
@@ -4127,6 +4139,7 @@
   function setItemDone(k, key) {
     const it = findItem(k, key); if (!it) return;
     if (it.type === 'session') markDone(k, it.id);
+    else if (it.type === 'run') { closeSheet(); openRunLog(null, k); }
     else if (SIMPLE.includes(it.type)) markSimpleDone(k, key);
     else if (it.type === 'match' && it.fixture && played(it.fixture)) { closeSheet(); openMinutes(k); }
     else { closeSheet(); openLog(it.type, k); }
@@ -4322,6 +4335,7 @@
     'item-actions': el => openItemActions(el.dataset.k, el.dataset.key),
     'item-menu': el => openItemMenu(el.dataset.k, el.dataset.key),
     'log-menu': () => openLogMenu(),
+    'open-run': el => { closeSheet(); openRunLog(null, el.dataset.date); },
     'log-new': el => logNew(el.dataset.type),
     'train-seg': el => { S.ui.trainSeg = el.dataset.s; S.ui.timelineAll = false; if (el.dataset.s === 'kracht') S.ui.woView = null; render(); },
     'timeline-all': () => { S.ui.timelineAll = !S.ui.timelineAll; render({ keepScroll: true }); },
