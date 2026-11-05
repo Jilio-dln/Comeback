@@ -1199,6 +1199,11 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 .act.has-photo p, .act.has-photo .act-kind, .act.has-photo .act-time span, .act.has-photo .act-meta { color: var(--photo-text-2); }
 .act.has-photo .tag { background: var(--photo-chip); color: var(--photo-text); box-shadow: none; }
 .act.has-photo .act-more { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
+/* Uitsnede per foto: de spelers van de training staan lager in het beeld */
+.act-img[src$="training.jpg"] { object-position: 50% 78%; }
+/* Knop op een fotokaart: doorschijnend, zodat de foto zichtbaar blijft */
+.act.has-photo .btn.accent, .act.has-photo .btn.primary { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
+.act.has-photo .btn.accent:active, .act.has-photo .btn.primary:active { background: var(--photo-chip-line); }
 /* Slider op Vandaag: gestapelde dia's met een zachte fade, puntjes eronder */
 .act-slider { margin-bottom: var(--gap); }
 .act-slider .slides { display: grid; }
