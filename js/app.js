@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.9.1';
+  const APP_VERSION = '5.9.2';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -1235,14 +1235,14 @@
     if (slides.length === 1) return slides[0];
     return `<section class="act-slider" id="act-slider" role="region" aria-roledescription="carrousel" aria-label="Activiteiten">
       <div class="slides">${slides.map((sl, i) => `<div class="slide ${i === 0 ? 'on' : ''}" aria-roledescription="dia" aria-label="${i + 1} van ${slides.length}" ${i === 0 ? '' : 'aria-hidden="true"'}>${sl}</div>`).join('')}</div>
-      <div class="slider-dots">${slides.map((_, i) => `<button class="${i === 0 ? 'on' : ''}" data-action="slide-go" data-i="${i}" aria-label="Toon ${i + 1} van ${slides.length}"><i></i></button>`).join('')}</div>
+      <div class="slider-dots" aria-hidden="true">${slides.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>
     </section>`;
   }
   // Automatisch wisselen (6 s, zachte fade), vegen, puntjes; pauze na interactie; uit bij reduced motion
   let sliderTimer = null, sliderPauseUntil = 0;
   function slideTo(i) {
     const el = document.getElementById('act-slider'); if (!el) return;
-    const slides = el.querySelectorAll('.slide'), dots = el.querySelectorAll('.slider-dots button'), n = slides.length;
+    const slides = el.querySelectorAll('.slide'), dots = el.querySelectorAll('.slider-dots i'), n = slides.length;
     const j = ((i % n) + n) % n;
     slides.forEach((s2, x) => { s2.classList.toggle('on', x === j); if (x === j) s2.removeAttribute('aria-hidden'); else s2.setAttribute('aria-hidden', 'true'); });
     dots.forEach((d, x) => d.classList.toggle('on', x === j));

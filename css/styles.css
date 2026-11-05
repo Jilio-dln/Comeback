@@ -1228,10 +1228,11 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 .act-slider .slide.on { opacity: 1; visibility: visible; transition: opacity var(--dur-slow) var(--ease), visibility 0s; }
 .act-slider .slide > .act { height: 100%; margin-bottom: 0; }
 .act-slider { touch-action: pan-y; }
-.slider-dots { display: flex; justify-content: center; gap: 0; margin-top: 4px; }
-.slider-dots button { width: 28px; height: 44px; border: 0; background: transparent; padding: 0; display: grid; place-items: center; }
-.slider-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); transition: width var(--dur) var(--ease), background-color var(--dur) var(--ease); }
-.slider-dots button.on i { width: 18px; border-radius: var(--r-pill); background: var(--text); }
+.act-slider { position: relative; }
+/* Puntjes in de kaart, onderaan: een rustige indicator (wisselen gebeurt door te vegen of vanzelf) */
+.slider-dots { position: absolute; left: 0; right: 0; bottom: 8px; display: flex; justify-content: center; gap: 6px; pointer-events: none; }
+.slider-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--photo-chip-line); transition: width var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.slider-dots i.on { width: 16px; border-radius: var(--r-pill); background: var(--photo-text); }
 /* Maandkalender: iets breder dan de kaartpadding, zodat elk dagvak 44px haalt */
 .cal-grid { margin: 0 -12px; gap: 4px 2px; }
 /* Cijfers die naast elkaar staan lijnen altijd uit */
