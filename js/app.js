@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.1.1-dev';
+  const APP_VERSION = '5.2.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -261,31 +261,20 @@
   const isSkip = r => typeof r === 'string' && r.startsWith('skip');
   const skipReason = r => isSkip(r) && r.length > 5 ? r.slice(5) : '';
 
-  // Standaardschema van een dag (zonder jouw eigen wijzigingen)
+  // Vaste planning (herhalingen) die je zelf instelt: { id, item: { type, id?, label? }, days: [0–6], time?, min?, since, until? }
+  const planRules = () => S.settings.schedule || [];
+  // Basisplanning van een dag: standaard leeg. Alleen jouw herhalingen en de weekplanning van een herstelplan.
+  // (Het vaste weekschema uit config.js en de RBFA-matchen staan niet meer automatisch in de kalender.)
   function basePlan(date, phaseId = currentPhase(), opts = {}) {
-    const useFixtures = opts.fixtures !== false;
     const wd = date.getDay(), k = dkey(date);
-    const span = useFixtures ? fixtureSpan() : null;
-    const covered = !!(span && k >= span.first && k <= span.last);
-    let sat = opts.satMatch;
-    if (sat === undefined) sat = satMatchWeek(date) || (covered && !!fixtureOn(dkey(addDays(startOfWeek(date), 5))));
-    const alt = sat && C.weekWithSaturdayMatch && C.weekWithSaturdayMatch[wd];
-    let items = (alt || C.week[wd] || []).filter(it => !it.phases || it.phases.includes(phaseId))
-      .filter(it => it.type !== 'session' || !C.sessions[it.id] || programOn(C.sessions[it.id].program, it.id)).map(it => ({ ...it }));
-    if (covered) {
-      const f = fixtureOn(k);
-      items = items.filter(it => it.type !== 'match');
-      if (f) items.push({ type: 'match', fixture: f });
-    }
-    const daily = (C.daily && C.daily[phaseId]) || [];
-    daily.slice().reverse().forEach(id => {
-      if (!programOn((C.sessions[id] || {}).program, id)) return;
-      if (!items.some(it => it.type === 'session' && it.id === id)) items = [{ type: 'session', id, note: 'Dagelijks in deze fase' }, ...items];
-    });
-    // Eigen workouts die je zelf op vaste weekdagen zette (Workout → Inplannen)
-    if (opts.mine !== false) (S.settings.workoutSchedule || []).forEach(sc => {
-      if (!C.sessions[sc.id] || !(sc.days || []).includes(wd) || (sc.since && k < sc.since)) return;
-      if (!items.some(it => it.type === 'session' && it.id === sc.id)) items.push({ type: 'session', id: sc.id, mine: true, note: 'Jouw weekplanning' });
+    const items = [];
+    if (opts.mine !== false) planRules().forEach(r => {
+      if (!(r.days || []).includes(wd) || (r.since && k < r.since) || (r.until && k > r.until)) return;
+      if (r.item.type === 'session' && !C.sessions[r.item.id]) return;
+      const it = { ...r.item, rule: r.id, mine: true, note: 'Vaste planning' };
+      if (r.time) it.time = r.time;
+      if (r.min) it.min = r.min;
+      if (!items.some(x => itemKey(x) === itemKey(it))) items.push(it);
     });
     // Herstelplannen: wekelijks ingeplande workouts van een lopende blessure (of als onderhoud na herstel)
     if (opts.rehab !== false) injuries().forEach(inj => {
@@ -294,12 +283,10 @@
         if (!C.sessions[sc.id] || !(sc.days || []).includes(wd)) return;
         if (sc.since && k < sc.since) return;
         if (inj.start && k < inj.start) return;
-        // Na afronden: alleen wat je als onderhoud houdt; daarvoor gold het plan gewoon (geschiedenis blijft kloppen)
         if (done && inj.end && k > inj.end && !(inj.maintenance || []).includes(sc.id)) return;
         if (!items.some(it => it.type === 'session' && it.id === sc.id)) items.push({ type: 'session', id: sc.id, note: done && inj.end && k > inj.end ? `Onderhoud · ${injuryLabel(inj)}` : `Herstel · ${injuryLabel(inj)}` });
       });
     });
-    if (!items.length) items =[{ type: 'rest', note: covered && wd === 0 ? 'Geen match dit weekend' : undefined }];
     return items;
   }
 
@@ -1197,6 +1184,10 @@
     if (!done && it.type !== 'rest') rows.push(row('skip', 'skip-item', 'Overslaan', 'Telt niet als gemist'));
     if (done && rec) rows.push(row('undo', 'item-undone', 'Terug naar nog te doen', 'Verwijdert de registratie van die dag'));
     if (rec) rows.push(`<button type="button" class="menu-btn" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('list')}<span><b>Bekijk log</b><small>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</small></span></button>`);
+    if (it.rule && ruleById(it.rule)) {
+      rows.push(`<button type="button" class="menu-btn" data-action="rp-edit" data-id="${it.rule}">${icon('sync')}<span><b>Herhaling aanpassen</b><small>${esc(ruleText(ruleById(it.rule)))}</small></span></button>`);
+      rows.push(`<button type="button" class="menu-btn" data-action="rp-stop" data-id="${it.rule}" data-k="${k}">${icon('x')}<span><b>Herhaling stoppen</b><small>Vanaf ${esc(fmtDay(k))}; eerdere dagen blijven</small></span></button>`);
+    }
     rows.push(row('list', 'item-actions', 'Alles aanpassen…', 'Type, dag en uur, notitie, status, overslaan met reden, verwijderen'));
     openSheet(`<div class="sheet-head"><div><span class="eyebrow">${esc(actKind(it))}</span><h3>${esc(it.type === 'session' ? sessionTitle(it.id) : m.title)}</h3><p>${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="menu-list">${rows.join('')}</div>`);
@@ -1213,7 +1204,7 @@
     let html = ordered.map(it => actCard(it, k, it === rel)).join('');
     const skipped = off.filter(o => isSkip(o.reason));
     if (skipped.length) html += `<p class="label" style="margin:4px 0 8px">Overgeslagen: ${skipped.map(o => esc(itemMeta(o.item).title)).join(', ')} · <button class="link-btn" style="padding:0" data-action="cal-open" data-k="${k}">bekijk</button></p>`;
-    return html || `<section class="act"><p class="empty">Niets gepland.</p></section>`;
+    return html || `<section class="card empty-row"><p>Niets gepland.</p><button class="btn sm" data-action="add-menu" data-k="${k}">${icon('plus')} Inplannen</button></section>`;
   }
 
   // Wat er gelogd is voor een gepland item
@@ -1350,7 +1341,7 @@
     const { items: all, off } = planDetail(d);
     const items = all.filter(it => it.type !== 'rest');
     // Alles bewust overgeslagen (ziek, geen tijd…): breekt niets, telt ook niet mee
-    if (!items.length) return off.some(o => isSkip(o.reason)) ? 'neutral' : 'rest';
+    if (!items.length) return 'neutral';
     if (items.some(it => doneOrCaughtUp(it, k))) return 'active';
     if (k === tk) return 'pending';
     if (items.some(it => it.confirmed && !it.extra && !doneOrCaughtUp(it, k))) return 'broken';
@@ -1838,6 +1829,7 @@
       ${warns.map(w => `<div class="hint accent" role="note">${icon('alert')}<span>${esc(w)}</span></div>`).join('')}
       ${pend.length ? `<div class="wk-confirm"><span>${pend.length} voorstel${pend.length === 1 ? '' : 'len'} nog niet bevestigd</span><button class="btn sm" data-action="confirm-week">${icon('check')} Alles bevestigen</button></div>` : ''}
       ${dragHelpOnce() ? `<p class="wk-help">Sleep aan ${icon('grip')} naar een andere dag, of tik op ${icon('grip')} om te verplaatsen.</p>` : ''}
+      ${rulesCard()}
       <div class="wk-days" id="wk-days">${days}</div>`;
   }
 
@@ -1958,12 +1950,86 @@
       <div class="type-grid">${types}</div>
       <div class="add-row two mt-12"><input class="input" id="custom-label" placeholder="Eigen type, bv. Zwemmen" aria-label="Naam van een eigen type" maxlength="40"><button class="btn" data-action="add-custom" data-k="${k}"${rep}>${icon(replaceKey ? 'check' : 'plus')}<span class="sr">${replaceKey ? 'Vervangen' : 'Toevoegen'}</span></button></div>
       ${own.length ? `<div class="section"><span>Mijn workouts</span></div>${own.map(row).join('')}` : ''}
-      <div class="section"><span>Fitness en herstel uit je schema</span></div>${std.map(row).join('')}
+      <div class="section"><span>Workouts</span></div>${std.map(row).join('')}
       ${replaceKey ? '' : `<button class="btn block mt-16" data-action="new-custom" data-k="${k}">${icon('plus')} Eigen workout maken</button>`}`);
   }
   function addOrReplace(el, item) {
     if (el.dataset.replace) replaceItem(el.dataset.k, el.dataset.replace, item);
-    else addItemTo(el.dataset.k, item);
+    else openRepeat(el.dataset.k, item);
+  }
+
+
+  /* ---------- Inplannen: één dag of herhalen op vaste weekdagen ---------- */
+  const ruleById = id => planRules().find(r => r.id === id);
+  const ruleFor = item => planRules().find(r => itemKey(r.item) === itemKey(item) && (!r.until || r.until >= dkey(today())));
+  function ruleText(r) {
+    const d = r.days || [];
+    const every = d.length === 7 ? 'Elke dag' : d.length === 5 && [1, 2, 3, 4, 5].every(x => d.includes(x)) ? 'Elke weekdag' : `Elke ${daysText(d)}`;
+    return [every, r.time, r.until ? `tot ${fmtShort(r.until)}` : ''].filter(Boolean).join(' · ');
+  }
+  // item = wat je inplant; k = de gekozen dag; ruleId = bestaande herhaling aanpassen
+  function openRepeat(k, item, ruleId = null) {
+    const r = ruleId ? ruleById(ruleId) : null;
+    S.ui.rp = { k, item: cleanItem(r ? r.item : item), ruleId: r ? r.id : null, days: r ? [...r.days] : [parseKey(k).getDay()], mode: r ? 'repeat' : 'once' };
+    renderRepeat(r);
+  }
+  function renderRepeat(r = null) {
+    const rp = S.ui.rp, m = itemMeta(rp.item);
+    const title = rp.item.type === 'session' ? sessionTitle(rp.item.id) : m.title;
+    openSheet(`<form id="repeat-form">
+      <div class="sheet-head"><div><span class="eyebrow">${rp.ruleId ? 'Herhaling aanpassen' : 'Inplannen'}</span><h3>${esc(title)}</h3><p>${rp.ruleId ? esc(ruleText(r)) : `Vanaf ${fmtDay(rp.k)}`}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${rp.ruleId ? '' : `<div class="seg">${radio('rpmode', 'once', `Alleen ${fmtShort(rp.k)}`, rp.mode)}${radio('rpmode', 'repeat', 'Herhalen', rp.mode)}</div>`}
+      <div id="rp-repeat" ${rp.mode === 'repeat' ? '' : 'hidden'}>
+        <p class="field-label">Elke week op</p>
+        <div class="wd-pick">${WD_ORDER.map(d => `<button type="button" class="tchip ${rp.days.includes(d) ? 'on' : ''}" data-action="rp-wd" data-d="${d}" aria-pressed="${rp.days.includes(d)}" aria-label="${DAY[d]}">${cap(DAY_S[d])}</button>`).join('')}</div>
+        <div class="chips mb-12"><button type="button" class="loc-chip" data-action="rp-preset" data-p="2,4">Di + Do</button><button type="button" class="loc-chip" data-action="rp-preset" data-p="1,2,3,4,5">Elke weekdag</button><button type="button" class="loc-chip" data-action="rp-preset" data-p="0,1,2,3,4,5,6">Elke dag</button></div>
+        <div class="form-grid">
+          <label class="field"><span>Uur (optioneel)</span><input class="input" type="time" name="time" value="${esc((r && r.time) || '')}"></label>
+          <label class="field"><span>Tot (optioneel)</span><input class="input" type="date" name="until" min="${rp.k}" value="${esc((r && r.until) || '')}"></label>
+        </div>
+      </div>
+      <button class="btn accent block lg" type="submit">${icon('check')} ${rp.ruleId ? 'Opslaan' : 'Inplannen'}</button>
+      ${rp.ruleId ? `<button type="button" class="btn block mt-8" data-action="rp-delete" data-id="${rp.ruleId}">${icon('trash')} Herhaling verwijderen</button>` : ''}
+    </form>`);
+  }
+  async function saveRepeat(form) {
+    const rp = S.ui.rp, f = new FormData(form);
+    const mode = rp.ruleId ? 'repeat' : f.get('rpmode');
+    if (mode === 'once') { addItemTo(rp.k, rp.item); return; }
+    const days = [...new Set(rp.days)].sort();
+    if (!days.length) { toast('Kies minstens één dag'); return; }
+    const list = planRules().filter(r => r.id !== rp.ruleId);
+    const old = rp.ruleId ? ruleById(rp.ruleId) : null;
+    const rule = { id: rp.ruleId || newId(), item: rp.item, days, time: f.get('time') || null, since: old ? old.since : rp.k, until: f.get('until') || null };
+    list.push(rule);
+    await setSetting('schedule', list);
+    closeSheet(); render({ keepScroll: true });
+    toast(`${itemMeta(rp.item).title}: ${ruleText(rule).toLowerCase()}`);
+  }
+  // Herhaling stoppen vanaf een dag (eerdere dagen blijven zoals ze waren)
+  async function stopRule(id, k) {
+    const r = ruleById(id); if (!r) return;
+    const until = dkey(addDays(parseKey(k), -1));
+    const list = planRules().filter(x => x.id !== id);
+    if (r.since && until >= r.since) list.push({ ...r, until });
+    await setSetting('schedule', list);
+    closeSheet(); render({ keepScroll: true });
+    toast(`Herhaling gestopt vanaf ${fmtDay(k)}`);
+  }
+  async function deleteRule(id) {
+    if (!await ask('Deze herhaling helemaal verwijderen? Ze verdwijnt uit alle dagen van je planning. Wat je al logde, blijft bewaard.', { ok: 'Verwijderen', danger: true })) return;
+    await setSetting('schedule', planRules().filter(x => x.id !== id));
+    closeSheet(); render({ keepScroll: true });
+    toast('Herhaling verwijderd');
+  }
+  // Compact overzicht van je vaste planning (bovenaan Planning)
+  function rulesCard() {
+    const tk = dkey(today());
+    const list = planRules().filter(r => !r.until || r.until >= tk);
+    if (!list.length) return '';
+    return `<section class="card rules-card"><div class="card-head"><h2>Vaste planning</h2><span class="label">${list.length}</span></div>
+      ${list.map(r => `<button class="list-row tap row-btn" data-action="rp-edit" data-id="${r.id}"><span class="body"><b>${esc(r.item.type === 'session' ? sessionTitle(r.item.id) : itemMeta(r.item).title)}</b><span>${esc(ruleText(r))}</span></span><span class="end">${icon('chevR')}</span></button>`).join('')}
+    </section>`;
   }
 
   /* ================= Eigen workouts ================= */
@@ -2207,7 +2273,7 @@
   }
 
   /* ---------- Eigen workouts inplannen: wekelijks op vaste dagen of één keer ---------- */
-  const mySchedule = id => (S.settings.workoutSchedule || []).find(x => x.id === id);
+  const mySchedule = id => { const r = ruleFor({ type: 'session', id }); return r ? { id, days: r.days, since: r.since } : null; };
   function planText(id) {
     const sc = mySchedule(id);
     const rehab = injuries().filter(i => i.status !== 'afgerond').map(i => (i.schedule || []).find(x => x.id === id)).filter(Boolean)[0];
@@ -2216,6 +2282,8 @@
   }
   function openWorkoutPlan(id, fresh = false) {
     if (!C.sessions[id]) return;
+    const r = ruleFor({ type: 'session', id });
+    return openRepeat(dkey(today()), { type: 'session', id }, r ? r.id : null);
     S.ui.planDays = [...((mySchedule(id) || {}).days || [])];
     S.ui.planOnce = [];
     renderWorkoutPlan(id, fresh);
@@ -2268,7 +2336,7 @@
     if (!cs[key] || !await ask(`"${cs[key].name}" verwijderen? Hij verdwijnt ook uit je planning. Afgewerkte workouts blijven bewaard.`, { ok: 'Verwijderen', danger: true })) return;
     delete cs[key];
     await setSetting('customSessions', cs);
-    await setSetting('workoutSchedule', (S.settings.workoutSchedule || []).filter(x => x.id !== key));
+    await setSetting('schedule', planRules().filter(r => !(r.item.type === 'session' && r.item.id === key)));
     if (injuries().some(i => (i.linked || []).includes(key))) {
       await setSetting('injuries', injuries().map(i => ({ ...i, linked: (i.linked || []).filter(x => x !== key), schedule: (i.schedule || []).filter(x => x.id !== key), maintenance: (i.maintenance || []).filter(x => x !== key) })));
     }
@@ -2406,7 +2474,7 @@
           const inactive = C.sessions[key].program && !programOn(C.sessions[key].program, key);
           return `<div class="list-row">
             <div class="body"><b>${esc(s.name)}</b><span>${off ? 'Pas vanaf fase 2 + 3' : esc(s.desc)}</span><span>${s.place ? cap(s.place) + ' · ' : ''}${s.exercises} oefeningen · ±${s.minutes} min${inactive ? ' · niet in je schema' : ''}</span></div>
-            <div class="end"><button class="icon-btn" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
+            <div class="end"><button class="icon-btn ghost" data-action="workout-plan" data-key="${key}" aria-label="${esc(s.name)} inplannen">${icon('calendar')}</button><button class="icon-btn" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
           </div>`;
         }).join('')}</section>`;
       }).join('')}
@@ -4339,6 +4407,11 @@
     'plan-once-add': el => { const v = ($('#plan-once') || {}).value; if (!v) { toast('Kies eerst een datum'); return; } if (v < dkey(today())) { toast('Kies vandaag of later'); return; } if (!S.ui.planOnce.includes(v)) S.ui.planOnce.push(v); S.ui.planOnce.sort(); const box = $('#plan-once-list'); if (box) box.innerHTML = S.ui.planOnce.map(d => `<button class="loc-chip on" data-action="plan-once-del" data-d="${d}" aria-label="${fmtDay(d)} weghalen">${esc(cap(fmtDay(d)))} ${icon('x')}</button>`).join(''); },
     'plan-once-del': el => { S.ui.planOnce = S.ui.planOnce.filter(d => d !== el.dataset.d); el.remove(); },
     'plan-save': el => saveWorkoutPlan(el.dataset.key),
+    'rp-wd': el => { const d = +el.dataset.d, l = S.ui.rp.days, i = l.indexOf(d); if (i >= 0) l.splice(i, 1); else l.push(d); el.classList.toggle('on', i < 0); el.setAttribute('aria-pressed', String(i < 0)); },
+    'rp-preset': el => { S.ui.rp.days = el.dataset.p.split(',').map(Number); document.querySelectorAll('[data-action="rp-wd"]').forEach(b => { const on = S.ui.rp.days.includes(+b.dataset.d); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); },
+    'rp-edit': el => { const r = ruleById(el.dataset.id); if (r) openRepeat(r.since || dkey(today()), r.item, r.id); },
+    'rp-stop': el => stopRule(el.dataset.id, el.dataset.k),
+    'rp-delete': el => deleteRule(el.dataset.id),
     'edit-custom': el => openBuilder(null, el.dataset.key),
     'delete-custom': el => deleteCustom(el.dataset.key),
     'b-step': el => builderStep(+el.dataset.i, el.dataset.f, +el.dataset.d),
@@ -4446,6 +4519,7 @@
   document.addEventListener('change', async e => {
     const el = e.target;
     const kind = el.dataset.change;
+    if (el.form && el.form.id === 'repeat-form' && el.name === 'rpmode') { S.ui.rp.mode = el.value; const b = document.getElementById('rp-repeat'); if (b) b.hidden = el.value !== 'repeat'; }
     // Workout bewerken: bij "Aangepast" verschijnt wat je anders deed
     if (el.form && el.form.id === 'wedit-form' && el.name === 'mode') { const a = document.getElementById('wedit-adapt'); if (a) a.hidden = el.value !== 'aangepast'; }
     if (el.form && el.form.id === 'log-form' && el.name === 'type') {
@@ -4531,6 +4605,7 @@
     if (e.target.id === 'password-form') submitPassword(e.target);
     if (e.target.id === 'log-form') saveLog(e.target);
     if (e.target.id === 'run-form') saveRun(e.target);
+    if (e.target.id === 'repeat-form') saveRepeat(e.target);
     if (e.target.id === 'simple-form') saveSimple(e.target);
     if (e.target.id === 'rpe-form') saveRpe(e.target);
     if (e.target.id === 'minutes-form') saveMinutes(e.target);
@@ -4696,7 +4771,7 @@
 
   /* ================= Migraties ================= */
   // Zet bestaande data om wanneer het datamodel verandert. Er gaat niets verloren.
-  const DATA_VERSION = 5;
+  const DATA_VERSION = 6;
   async function migrate() {
     const v = S.settings.dataVersion || 1;
     if (v >= DATA_VERSION) return;
@@ -4738,6 +4813,18 @@
       // v5: lopen en andere sport erbij (alleen nieuwe velden). Eerst een lokale kopie, er verandert geen bestaand record.
       const real = l => (l || []).filter(x => !x.sample);
       await setSetting('backupBeforeV5', { at: Date.now(), workouts: real(S.raw.workouts), activities: real(S.raw.activities), checks: real(S.raw.checks) });
+    }
+    if (v < 6) {
+      // v6: de kalender start leeg. Eerst een lokale kopie; daarna je vaste planning, de weekplanning van
+      // herstelplannen en je eigen planningswijzigingen vanaf vandaag weg. Gelogde gegevens blijven.
+      const tk = dkey(today());
+      await setSetting('backupBeforeV6', { at: Date.now(), workoutSchedule: S.settings.workoutSchedule || [], schedule: S.settings.schedule || [], overrides: S.settings.overrides || {}, injuries: injuries() });
+      const ov = { ...(S.settings.overrides || {}) };
+      Object.keys(ov).forEach(k => { if (k >= tk) delete ov[k]; });
+      await setSetting('overrides', ov);
+      await setSetting('workoutSchedule', []);
+      await setSetting('schedule', []);
+      if (injuries().some(i => (i.schedule || []).length)) await setSetting('injuries', injuries().map(i => ({ ...i, schedule: [] })));
     }
     await setSetting('dataVersion', DATA_VERSION);
     await loadAll();

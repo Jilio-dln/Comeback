@@ -20,7 +20,7 @@ window.Sync = (() => {
   const LS_AUTH = 'comeback-auth';
   const LS_META = 'comeback-sync';
   // Instellingen die bij dit toestel horen en dus nooit gesynchroniseerd worden
-  const LOCAL_ONLY = new Set(['demo', 'seeded', 'lastExport', 'backupBeforeV4', 'backupBeforeV5', 'activeWorkout', 'dataVersion']);
+  const LOCAL_ONLY = new Set(['demo', 'seeded', 'lastExport', 'backupBeforeV4', 'backupBeforeV5', 'backupBeforeV6', 'activeWorkout', 'dataVersion']);
   const STORES = ['checks', 'workouts', 'activities', 'settings'];
   const CHUNK = 200;
 
