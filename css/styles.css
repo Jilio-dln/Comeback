@@ -1201,6 +1201,9 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 .act.has-photo .act-more { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
 /* Uitsnede per foto: de spelers van de training staan lager in het beeld */
 .act-img[src$="training.jpg"] { object-position: 50% 78%; }
+.act-img[src$="kracht-hero.jpg"] { object-position: 50% 25%; }
+.stats-img[src$="lopen-card.jpg"] { object-position: 50% 45%; }
+.stats-img[src$="voetbal-card.jpg"] { object-position: 50% 40%; }
 /* Knop op een fotokaart: doorschijnend, zodat de foto zichtbaar blijft */
 .act.has-photo .btn.accent, .act.has-photo .btn.primary { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
 .act.has-photo .btn.accent:active, .act.has-photo .btn.primary:active { background: var(--photo-chip-line); }

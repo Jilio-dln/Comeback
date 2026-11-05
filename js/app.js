@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.6.2';
+  const APP_VERSION = '5.7.0';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -999,10 +999,7 @@
     const thisWeek = runs.filter(a => inWeek(a.date, wk)), thisMonth = runs.filter(a => a.date >= mStart);
     const ws = startOfWeek(t); let planned = 0, ran = 0;
     for (let i = 0; i < 7; i++) { const d = addDays(ws, i), k = dkey(d); planFor(d).filter(it => it.type === 'run').forEach(it => { planned++; if (doneOrCaughtUp(it, k)) ran++; }); }
-    return `<div class="tiles">
-        <div class="tile"><span class="label">Deze week</span><div class="num">${km(thisWeek)}<span class="unit">km</span></div><p>${thisWeek.length} loop${thisWeek.length === 1 ? '' : 'jes'}</p></div>
-        <div class="tile"><span class="label">Deze maand</span><div class="num">${km(thisMonth)}<span class="unit">km</span></div><p>${thisMonth.length} loop${thisMonth.length === 1 ? '' : 'jes'}</p></div>
-      </div>
+    return `${photoStats('assets/lopen-card.jpg', [[km(thisWeek), 'km', 'Deze week'], [km(thisMonth), 'km', 'Deze maand'], [thisMonth.length, '', 'Loopjes · maand']], 'Lopen')}
       ${planned ? `<p class="run-plan"><b>${ran}/${planned}</b> geplande loopjes deze week gelopen</p>` : ''}
       <button class="btn accent block lg mb-12" data-action="log-new" data-type="run">${icon('plus')} Loop loggen</button>
       ${runs.length ? timelineHtml(entries().filter(x => x.store === 'activities' && x.type === 'run')) : `<section class="card"><p class="empty">Nog geen loopjes gelogd.</p></section>`}`;
@@ -1011,10 +1008,7 @@
     const acts = S.activities.filter(a => a.type === 'training' || a.type === 'match');
     const since = dkey(addDays(today(), -29));
     const tr = acts.filter(a => a.type === 'training' && a.date >= since), ma = acts.filter(a => a.type === 'match' && a.date >= since);
-    return `<div class="tiles">
-        <div class="tile"><span class="label">Trainingen · 30 d</span><div class="num">${tr.length}</div><p>${sum(tr.map(a => +a.minutes || 0))} min</p></div>
-        <div class="tile"><span class="label">Matchen · 30 d</span><div class="num">${ma.length}</div><p>${sum(ma.map(a => +a.minutes || 0))} min</p></div>
-      </div>
+    return `${photoStats('assets/voetbal-card.jpg', [[tr.length, '', 'Trainingen'], [ma.length, '', 'Matchen'], [sum([...tr, ...ma].map(a => +a.minutes || 0)), '', 'Min · 30 d']], 'Voetbal, laatste 30 dagen')}
       <div class="row mb-12"><button class="btn" data-action="log-new" data-type="training">${icon('plus')} Training</button><button class="btn" data-action="log-new" data-type="match">${icon('plus')} Match</button></div>
       <div class="section"><span>Gelogd</span><button class="link-btn" data-action="go" data-to="matchen">Matchen beheren ${icon('chevR')}</button></div>
       ${timelineHtml(entries().filter(x => x.store === 'activities' && (x.type === 'training' || x.type === 'match')))}`;
@@ -1363,7 +1357,7 @@
     }
     const doneLine = rec ? `<button class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : '';
     // Sfeerfoto in de herokaart, alleen als ze bij het type past
-    const photo = hero && opts.photo !== false && (photoFor(it) || (opts.slide ? 'assets/stats.jpg' : null));
+    const photo = hero && opts.photo !== false && (opts.photoSrc || photoFor(it) || (opts.slide ? 'assets/stats.jpg' : null));
     const menuBtn = hero ? `<button class="icon-btn act-more" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(actKind(it))}">${icon('more')}</button>` : '';
     return `<section class="act ${done ? 'is-done' : ''} ${hero ? 'is-main is-hero' : ''} ${photo ? 'has-photo' : ''} ${!done && !it.confirmed && k >= tk && !hero ? 'is-suggested' : ''}">
       ${photo ? `<img src="${photo}" alt="" class="act-img" decoding="async" onerror="this.remove()"><div class="act-shade"></div>` : ''}
@@ -2524,7 +2518,7 @@
         <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
         <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)} om ${fmtTime(w.startedAt)} · ${w.exercises.flatMap(x => x.sets).filter(s => s.done).length} sets gedaan</p>
         <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
-      </section>` : rec ? actCard(rec, k, true, { photo: false }) : ''}
+      </section>` : rec ? actCard(rec, k, true, { photoSrc: 'assets/kracht-hero.jpg' }) : ''}
       <div class="section"><span>Mijn workouts</span>${own.length ? `<button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button>` : ''}</div>
       ${own.length ? `<section class="card">${own.map(key => {
         const s = sessInfo(key);
@@ -3043,6 +3037,12 @@
     return statsHero() + badgesHtml() + statsOverviewBody();
   }
   // Kerncijfers op een donkere fotokaart: streak, sessies, minuten (30 dagen), matchen
+  // Fotokaart met kerncijfers (zelfde component als de stats-kaart); elke foto maar één keer in de app
+  const photoStats = (src, stats, label) => `<section class="stats-hero" aria-label="${esc(label)}">
+      <img src="${src}" alt="" class="stats-img" decoding="async" onerror="this.remove()">
+      <div class="stats-shade"></div>
+      <div class="stats-row">${stats.map(([v, u, l]) => `<div class="stat"><b>${v}${u ? `<span class="unit">${u}</span>` : ''}</b><span>${l}</span></div>`).join('')}</div>
+    </section>`;
   function statsHero() {
     const s = streakInfo(), since = dkey(addDays(today(), -29));
     const mins = sum(S.workouts.filter(w => w.date >= since).map(woMinutes)) + sum(S.activities.filter(a => a.date >= since).map(a => +a.minutes || 0));
