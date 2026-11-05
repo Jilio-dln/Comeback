@@ -21,6 +21,9 @@
   --photo-overlay:
     linear-gradient(180deg, rgba(11, 14, 18, .05) 0%, rgba(11, 14, 18, .2) 45%, rgba(11, 14, 18, .88) 100%),
     linear-gradient(0deg, rgba(37, 46, 57, .32), rgba(37, 46, 57, .32));
+  --photo-card-overlay:
+    linear-gradient(180deg, rgba(11, 14, 18, .35) 0%, rgba(11, 14, 18, .15) 30%, rgba(11, 14, 18, .55) 62%, rgba(11, 14, 18, .92) 100%),
+    linear-gradient(0deg, rgba(37, 46, 57, .25), rgba(37, 46, 57, .25));   /* fotokaart: beeld boven, tekst onder leesbaar */
   --photo-chip: rgba(232, 236, 241, .16);
   --empty-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='8.5' stroke-dasharray='2.5 3'/%3E%3Cpath d='M9 12h6'/%3E%3C/svg%3E"); /* masker */
   --photo-chip-line: rgba(232, 236, 241, .26);
@@ -1186,6 +1189,16 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 
 /* ================= Premium afwerking ================= */
 .next-match-title { font-size: var(--fs-title); margin-top: 4px; }
+/* Herokaart met sfeerfoto (bv. een geplande loop) */
+.act.has-photo { position: relative; overflow: hidden; background: var(--photo-base); color: var(--photo-text); border-color: var(--border); min-height: 320px; display: flex; flex-direction: column; }
+.act-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 42%; filter: var(--photo-filter); }
+.act-shade { position: absolute; inset: 0; background: var(--photo-card-overlay); }
+.act.has-photo > :not(.act-img):not(.act-shade) { position: relative; }
+.act.has-photo .act-top { margin-bottom: auto; padding-bottom: 24px; }
+.act.has-photo h3 { color: var(--photo-text); }
+.act.has-photo p, .act.has-photo .act-kind, .act.has-photo .act-time span, .act.has-photo .act-meta { color: var(--photo-text-2); }
+.act.has-photo .tag { background: var(--photo-chip); color: var(--photo-text); box-shadow: none; }
+.act.has-photo .act-more { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
 /* Maandkalender: iets breder dan de kaartpadding, zodat elk dagvak 44px haalt */
 .cal-grid { margin: 0 -12px; gap: 4px 2px; }
 /* Cijfers die naast elkaar staan lijnen altijd uit */

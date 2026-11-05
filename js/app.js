@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.5.0';
+  const APP_VERSION = '5.5.2';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -1252,6 +1252,8 @@
   // Eigen uur en notitie onder een kaart
   const userBits = it => `${it.userNote ? `<p class="act-note">${icon('edit')}<span>${esc(it.userNote)}</span></p>` : ''}`;
 
+  // Sfeerfoto per type activiteit (alleen in de herokaart)
+  const ACT_PHOTO = { run: 'assets/run.jpg' };
   function actCard(it, k, isMain) {
     const tk = dkey(today()), st = itemStatus(it, k), key = itemKey(it);
     if (it.type === 'rest') {
@@ -1301,8 +1303,11 @@
       else if (!done) actions = `<div class="act-row">${it.confirmed ? '' : `<button class="btn" data-action="confirm-item" data-k="${k}" data-key="${esc(key)}">${icon('check')} Bevestigen</button>`}${more}</div>`;
     }
     const doneLine = rec ? `<button class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : '';
+    // Sfeerfoto in de herokaart, alleen als ze bij het type past
+    const photo = hero && ACT_PHOTO[it.type];
     const menuBtn = hero ? `<button class="icon-btn act-more" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(actKind(it))}">${icon('more')}</button>` : '';
-    return `<section class="act ${done ? 'is-done' : ''} ${hero ? 'is-main is-hero' : ''} ${!done && !it.confirmed && k >= tk && !hero ? 'is-suggested' : ''}">
+    return `<section class="act ${done ? 'is-done' : ''} ${hero ? 'is-main is-hero' : ''} ${photo ? 'has-photo' : ''} ${!done && !it.confirmed && k >= tk && !hero ? 'is-suggested' : ''}">
+      ${photo ? `<img src="${photo}" alt="" class="act-img" decoding="async" onerror="this.remove()"><div class="act-shade"></div>` : ''}
       <div class="act-top"><span class="act-kind t-${itemType(it)}">${esc(actKind(it))}</span><span class="act-top-end"><span class="tag ${st.cls}">${st.label}</span>${menuBtn}</span></div>
       ${body}${userBits(it)}${doneLine}${actions}
     </section>`;
