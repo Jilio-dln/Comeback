@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '4.0.0-dev';
+  const APP_VERSION = '4.1.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -125,7 +125,8 @@
     const dark = p === 'dark' || (p === 'auto' && darkQuery && darkQuery.matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     // Gekozen thema wint van de systeeminstelling, ook voor de statusbalk
-    document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.setAttribute('content', dark ? '#090909' : '#EFEFEF'); m.removeAttribute('media'); });
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.setAttribute('content', bg); m.removeAttribute('media'); });
   }
   function setTheme(p) {
     try { localStorage.setItem('comeback-theme', p); } catch (_) { }
@@ -2642,7 +2643,7 @@
         <p class="label">Stijfheid bij het opstaan (0–10)</p>
         ${has(stiff) ? Charts.line({ labels, series: stiff, step: true, height: 150 }) + legend : '<p class="empty">Nog geen metingen in deze periode.</p>'}
         <p class="label" style="margin-top:12px">Pijn (0–10)${lim != null ? ` · lijn op ${lim} = jouw afspraak` : ''}</p>
-        ${has(pain) ? Charts.line({ labels, series: pain, step: true, height: 150, ticks: lim != null ? [0, lim, 10] : [0, 5, 10] }) + legend : '<p class="empty">Nog geen pijnscores in deze periode.</p>'}
+        ${has(pain) ? Charts.line({ labels, series: pain, step: true, height: 150, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim }) + legend : '<p class="empty">Nog geen pijnscores in deze periode.</p>'}
       </section>
       ${loadCard}`;
   }
@@ -3071,7 +3072,7 @@
           <button class="btn ${painNow == null ? 'accent' : ''} sm" data-action="open-check">${painNow == null ? 'Invullen' : 'Aanpassen'}</button>
         </div>
         <p class="label" style="margin-top:14px;margin-bottom:4px">Pijn, laatste 7 dagen</p>
-        ${has ? Charts.line({ labels: series.map(x => x.label), series: [{ color: 'var(--accent)', values: series.map(x => x.v) }], step: false, height: 96, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10] }) : '<p class="empty">Nog geen pijnscores. Vul ze in bij je dagelijkse check.</p>'}
+        ${has ? Charts.line({ labels: series.map(x => x.label), series: [{ color: 'var(--accent)', values: series.map(x => x.v) }], step: false, height: 96, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim }) : '<p class="empty">Nog geen pijnscores. Vul ze in bij je dagelijkse check.</p>'}
       </section>
       <button class="card inj-plan" data-action="open-injury" data-id="${inj.id}">
         <span class="label">Herstelplan</span><b>${esc(plan || 'Nog geen plan')}</b><span class="muted small">${esc(planSub)}</span>

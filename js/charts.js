@@ -4,7 +4,7 @@ window.Charts = (() => {
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const r1 = n => Math.round(n * 10) / 10;
 
-  /* Staafgrafiek met smalle, platte staven; de geselecteerde staaf is oranje */
+  /* Staafgrafiek met smalle, platte staven; de geselecteerde staaf krijgt --accent */
   function bars(data, { selected = data.length - 1, height = 170, action = 'bar-select' } = {}) {
     const W = 320, H = height, top = 24, bottom = 22, chartH = H - top - bottom;
     const max = Math.max(4, ...data.map(d => d.value));
@@ -41,8 +41,9 @@ window.Charts = (() => {
     return d;
   }
 
-  /* Lijngrafiek; values mogen null bevatten (dan wordt de lijn onderbroken) */
-  function line({ labels, series, yMin = 0, yMax = 10, ticks = [0, 5, 10], height = 170, xTicks = 4, step = false }) {
+  /* Lijngrafiek; values mogen null bevatten (dan wordt de lijn onderbroken).
+   warnAbove: punten boven die grens (bv. de pijngrens) krijgen --warning */
+  function line({ labels, series, yMin = 0, yMax = 10, ticks = [0, 5, 10], height = 170, xTicks = 4, step = false, warnAbove = null }) {
     const W = 320, H = height, L = 26, R = 8, T = 10, B = 22;
     const cw = W - L - R, ch = H - T - B, n = labels.length;
     const x = i => L + (n <= 1 ? cw / 2 : (cw * i) / (n - 1));
@@ -67,7 +68,9 @@ window.Charts = (() => {
       segs.forEach(seg => {
         if (seg.length > 1) out += `<path d="${path(seg, step)}" fill="none" style="stroke:${s.color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
         seg.forEach(p => {
-          if (p[2] === last || seg.length === 1) out += `<circle cx="${r1(p[0])}" cy="${r1(p[1])}" r="3.5" style="fill:${s.color}"/>`;
+          const over = warnAbove != null && s.values[p[2]] > warnAbove;
+          if (over) out += `<circle cx="${r1(p[0])}" cy="${r1(p[1])}" r="3.5" class="c-warn"/>`;
+          else if (p[2] === last || seg.length === 1) out += `<circle cx="${r1(p[0])}" cy="${r1(p[1])}" r="3.5" style="fill:${s.color}"/>`;
         });
       });
     });
