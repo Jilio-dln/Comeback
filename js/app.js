@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.2.0-dev';
+  const APP_VERSION = '5.3.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -740,7 +740,7 @@
       return `<a class="tab ${key === active ? 'active' : ''}" href="#${key}" aria-label="${r.label}" title="${r.label}" ${key === active ? 'aria-current="page"' : ''}><span class="box">${icon(r.icon)}</span></a>`;
     });
     // Centrale "+" om alle sport te loggen
-    tabs.splice(2, 0, `<button class="tab tab-plus" data-action="log-menu" aria-label="Loggen" title="Loggen"><span class="box">${icon('plus')}</span></button>`);
+    tabs.splice(2, 0, `<button class="tab tab-plus" data-action="add-menu" data-k="${dkey(today())}" aria-label="Inplannen" title="Inplannen"><span class="box">${icon('plus')}</span></button>`);
     bar.innerHTML = tabs.join('');
   }
 
@@ -870,7 +870,7 @@
   function openLogMenu() {
     const tiles = [['kracht', 'dumbbell', 'Kracht', 'Workout starten'], ['run', 'bolt', 'Lopen', 'Afstand en tempo'], ['training', 'whistle', 'Voetbaltraining', 'Met de ploeg'],
       ['match', 'ball', 'Match', 'Minuten en gevoel'], ['kine', 'heart', 'Kine', 'Sessie bij je kinesist'], ['sport', 'pulse', 'Andere sport', 'Padel, fietsen, zwemmen…']];
-    openSheet(`<div class="sheet-head"><div><h3>Loggen</h3><p>Wat heb je gedaan?</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+    openSheet(`<div class="sheet-head"><div><h3>Loggen</h3><p>Wat heb je al gedaan?</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="type-grid">${tiles.map(([t, ic, l, s]) => `<button class="type-tile" data-action="log-new" data-type="${t}">${icon(ic)}<b>${l}</b><span>${s}</span></button>`).join('')}</div>`);
   }
   function logNew(type) {
@@ -987,6 +987,7 @@
       ${w ? `<section class="card resume"><div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
         <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)}</p>
         <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div></section>` : ''}
+      <button class="btn ${w ? '' : 'accent'} block lg mb-12" data-action="log-menu">${icon('plus')} Loggen</button>
       <div class="section"><span>Tijdlijn</span><button class="link-btn" data-action="go" data-to="statistieken">Alle voortgang ${icon('chevR')}</button></div>
       ${timelineHtml(entries())}`;
   }
@@ -1188,6 +1189,7 @@
       rows.push(`<button type="button" class="menu-btn" data-action="rp-edit" data-id="${it.rule}">${icon('sync')}<span><b>Herhaling aanpassen</b><small>${esc(ruleText(ruleById(it.rule)))}</small></span></button>`);
       rows.push(`<button type="button" class="menu-btn" data-action="rp-stop" data-id="${it.rule}" data-k="${k}">${icon('x')}<span><b>Herhaling stoppen</b><small>Vanaf ${esc(fmtDay(k))}; eerdere dagen blijven</small></span></button>`);
     }
+    if (!fixed && it.type !== 'rest') rows.push(row('trash', 'del-item', 'Uit de planning halen', it.rule ? 'Alleen deze dag; de herhaling blijft' : 'Je kan het terugzetten in de kalender'));
     rows.push(row('list', 'item-actions', 'Alles aanpassen…', 'Type, dag en uur, notitie, status, overslaan met reden, verwijderen'));
     openSheet(`<div class="sheet-head"><div><span class="eyebrow">${esc(actKind(it))}</span><h3>${esc(it.type === 'session' ? sessionTitle(it.id) : m.title)}</h3><p>${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="menu-list">${rows.join('')}</div>`);
@@ -1668,28 +1670,20 @@
         html += `<div class="day-item"><div class="day-item-top"><span class="type-bar" style="background:var(--c-rust)"></span><div class="body"><b>Rustdag</b><span>${esc(it.note || 'Wandelen, mobiliteit en goed slapen')}</span></div></div></div>`;
         return;
       }
+      // Eén hoofdactie waar dat zinvol is (starten of loggen); al de rest zit in het "…"-menu
       let actions = '';
-      // Voorbije holds en dagen vóór de start van de fase hoef je niet meer in te halen
       const noCatchUp = it.type === 'session' && k < tk && (C.sessions[it.id].catchUp === false || k < planStart());
-      if (!doneOrCaughtUp(it, k) && !noCatchUp) {
-        if (it.type === 'session') {
-          const s = C.sessions[it.id];
-          actions = `<button class="btn sm ${k <= tk ? 'accent' : ''}" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Inhalen' : 'Start'}</button>
-            ${k <= tk ? `<button class="btn sm" data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')} Zonder details</button>
-            <button class="btn sm" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')} Aangepast</button>` : ''}
-            <button class="btn sm" data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')} Overslaan</button>
-            ${s.catchUp === false ? '' : `<button class="btn sm" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')} Verplaatsen</button>`}
-            <button class="btn sm" data-action="item-actions" data-k="${k}" data-key="${esc(key)}">Meer</button>`;
-        } else {
-          actions = `${past ? `<button class="btn sm accent" data-action="open-log" data-type="${it.type}" data-date="${k}">${icon('edit')} Loggen</button>` : ''}
-            <button class="btn sm" data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')} ${it.type === 'match' ? 'Niet gespeeld' : 'Niet gegaan'}</button>`;
-        }
+      if (!doneOrCaughtUp(it, k) && !noCatchUp && k <= tk) {
+        if (it.type === 'session') actions = `<button class="btn sm" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Inhalen' : 'Start'}</button>`;
+        else if (it.type === 'training' || it.type === 'match') actions = `<button class="btn sm" data-action="open-log" data-type="${it.type}" data-date="${k}">${icon('edit')} Loggen</button>`;
+        else if (SIMPLE.includes(it.type)) actions = `<button class="btn sm" data-action="mark-simple" data-k="${k}" data-key="${esc(key)}">${icon('check')} Gedaan</button>`;
       }
+      const more = `<button class="icon-btn ghost" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(m.title)}">${icon('more')}</button>`;
       const rec = recordFor(it, k);
       html += `<div class="day-item">
         <div class="day-item-top"><span class="type-bar" style="background:var(--c-${itemType(it)})"></span>
           <div class="body"><b>${esc(m.title)}</b><span>${esc(actKind(it))} · ${esc(it.type === 'session' ? sessionDesc(it.id) : m.sub)}${it.note ? ' · ' + esc(it.note) : ''}</span></div>
-          <span class="tag ${st.cls}">${st.label}</span></div>
+          <span class="tag ${st.cls}">${st.label}</span>${more}</div>
         ${rec ? `<button class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : ''}
         ${actions ? `<div class="day-item-actions">${actions}</div>` : ''}
       </div>`;
@@ -1946,7 +1940,7 @@
           <button class="icon-btn" data-action="add-session" data-k="${k}" data-id="${id}"${rep} aria-label="${esc(sessionTitle(id))} ${replaceKey ? 'kiezen' : 'toevoegen'}">${icon(replaceKey ? 'check' : 'plus')}</button></div></div>`;
     const types = QUICK_TYPES.filter(([t]) => !(replaceKey && cur && cur.type === t)).map(([t, l, ic, sub]) =>
       `<button class="type-tile" data-action="add-type" data-k="${k}" data-type="${t}"${rep}>${icon(ic)}<b>${l}</b><span>${sub}</span></button>`).join('');
-    openSheet(`<div class="sheet-head"><div><h3>${replaceKey ? 'Vervangen door' : 'Toevoegen'}</h3><p>${replaceKey && cur ? `${esc(itemMeta(cur).title)} · ` : ''}${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+    openSheet(`<div class="sheet-head"><div><h3>${replaceKey ? 'Vervangen door' : 'Inplannen'}</h3><p>${replaceKey && cur ? `${esc(itemMeta(cur).title)} · ` : ''}${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="type-grid">${types}</div>
       <div class="add-row two mt-12"><input class="input" id="custom-label" placeholder="Eigen type, bv. Zwemmen" aria-label="Naam van een eigen type" maxlength="40"><button class="btn" data-action="add-custom" data-k="${k}"${rep}>${icon(replaceKey ? 'check' : 'plus')}<span class="sr">${replaceKey ? 'Vervangen' : 'Toevoegen'}</span></button></div>
       ${own.length ? `<div class="section"><span>Mijn workouts</span></div>${own.map(row).join('')}` : ''}
@@ -1978,7 +1972,8 @@
     const title = rp.item.type === 'session' ? sessionTitle(rp.item.id) : m.title;
     openSheet(`<form id="repeat-form">
       <div class="sheet-head"><div><span class="eyebrow">${rp.ruleId ? 'Herhaling aanpassen' : 'Inplannen'}</span><h3>${esc(title)}</h3><p>${rp.ruleId ? esc(ruleText(r)) : `Vanaf ${fmtDay(rp.k)}`}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      ${rp.ruleId ? '' : `<div class="seg">${radio('rpmode', 'once', `Alleen ${fmtShort(rp.k)}`, rp.mode)}${radio('rpmode', 'repeat', 'Herhalen', rp.mode)}</div>`}
+      ${rp.ruleId ? '' : `<label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${rp.k}" required></label>
+      <div class="seg">${radio('rpmode', 'once', 'Alleen deze dag', rp.mode)}${radio('rpmode', 'repeat', 'Herhalen', rp.mode)}</div>`}
       <div id="rp-repeat" ${rp.mode === 'repeat' ? '' : 'hidden'}>
         <p class="field-label">Elke week op</p>
         <div class="wd-pick">${WD_ORDER.map(d => `<button type="button" class="tchip ${rp.days.includes(d) ? 'on' : ''}" data-action="rp-wd" data-d="${d}" aria-pressed="${rp.days.includes(d)}" aria-label="${DAY[d]}">${cap(DAY_S[d])}</button>`).join('')}</div>
@@ -1994,6 +1989,7 @@
   }
   async function saveRepeat(form) {
     const rp = S.ui.rp, f = new FormData(form);
+    if (f.get('date')) rp.k = f.get('date');
     const mode = rp.ruleId ? 'repeat' : f.get('rpmode');
     if (mode === 'once') { addItemTo(rp.k, rp.item); return; }
     const days = [...new Set(rp.days)].sort();
