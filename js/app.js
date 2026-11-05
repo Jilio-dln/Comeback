@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '4.5.0-dev';
+  const APP_VERSION = '4.6.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -69,7 +69,7 @@
     back: '<path d="M15 18l-6-6 6-6"/>',
     chevL: '<path d="M15 18l-6-6 6-6"/>',
     chevR: '<path d="M9 18l6-6-6-6"/>',
-    more: '<path d="M5.5 12h.01M12 12h.01M18.5 12h.01" stroke-width="3.2"/>',
+    more: '<circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     minus: '<path d="M5 12h14"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
@@ -679,7 +679,7 @@
         <span>${esc(o.label)}</span>
         <span class="tag ${o.best ? 'done' : o.score >= 0 ? '' : 'missed'}">${o.best ? 'Aanbevolen' : o.score >= 0 ? 'Kan' : esc(o.why[0] || 'Liever niet')}</span>
       </button>`).join('')}</div>
-      <label class="field" style="margin-top:14px"><span>Andere datum</span>
+      <label class="field mt-16"><span>Andere datum</span>
         <div class="row"><input class="input" type="date" id="move-date" min="${dkey(today())}"><button class="btn primary" style="flex:0 0 auto" data-action="move-custom" data-from="${k}" data-key="${esc(key)}">Zet</button></div></label>`);
   }
 
@@ -713,8 +713,31 @@
     renderTabbar(SUBS[r] ? SUBS[r].parent : r);
     if (S.settings.demo) main.insertAdjacentHTML('afterbegin', `<div class="demo-bar" role="status"><span><b>Demostand</b> · voorbeelddata telt mee</span><button data-action="demo-off">Uitzetten</button></div>`);
     if (keepScroll || r === lastRoute) window.scrollTo(0, y);
-    else window.scrollTo(0, 0);
+    else { window.scrollTo(0, 0); enterView(); }
     lastRoute = r;
+  }
+
+  // Schermwissel: zachte fade + 8px, kaarten gestaffeld; grote cijfers tellen op (uit bij reduced motion)
+  const reduceMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function enterView() {
+    if (reduceMotion()) return;
+    main.classList.remove('view-enter'); void main.offsetWidth; main.classList.add('view-enter');
+    clearTimeout(enterView.t); enterView.t = setTimeout(() => main.classList.remove('view-enter'), 700);
+    countUp(main);
+  }
+  function countUp(root) {
+    root.querySelectorAll('.tile-num, .stat b, .inj-pain-num b, .streak-num, .gauge-center .num, .ring b').forEach(el => {
+      const tn = [...el.childNodes].find(n => n.nodeType === 3 && /^\s*\d+\s*$/.test(n.nodeValue));
+      if (!tn) return;
+      const to = parseInt(tn.nodeValue, 10); if (!(to > 1)) return;
+      const t0 = performance.now();
+      const step = t => {
+        const p = Math.min(1, (t - t0) / 400), e = 1 - Math.pow(1 - p, 3);
+        tn.nodeValue = String(Math.round(to * e));
+        if (p < 1) requestAnimationFrame(step);
+      };
+      tn.nodeValue = '0'; requestAnimationFrame(step);
+    });
   }
 
   function renderTabbar(active) {
@@ -836,7 +859,7 @@
     return `<section class="card resume">
       <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
       <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)} om ${fmtTime(w.startedAt)} · ${done} van ${all.length} sets</p>
-      <div class="row" style="margin-top:12px"><button class="btn" data-action="wo-finish">Afronden</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
+      <div class="row mt-12"><button class="btn" data-action="wo-finish">Afronden</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
     </section>`;
   }
 
@@ -1108,7 +1131,7 @@
     await setSetting('badges', seen);
     const top = fresh[fresh.length - 1];
     // Na de felicitatie van de sessie, niet erover
-    setTimeout(() => celebrate(`Mijlpaal: ${top.title}`, top.sub), document.querySelector('.celebrate') ? 2500 : 300);
+    setTimeout(() => celebrate(`Mijlpaal: ${top.title}`, top.sub), document.querySelector('.celebrate') ? 1600 : 300);
   }
   function badgesHtml() {
     const seen = S.settings.badges || {};
@@ -1122,7 +1145,7 @@
         <div class="badge-grid">${BADGES.map(b => `<div class="badge ${seen[b.id] ? 'on' : ''}" aria-label="${esc(b.title + ' ' + b.sub)}${seen[b.id] ? ', behaald' : ', nog niet behaald'}">
           <b>${b.n}</b><span>${b.kind === 'streak' ? 'dagen' : 'sessies'}</span></div>`).join('')}</div>
         ${next ? `<p class="status-line">Volgende: ${esc(next.title)} Nog ${Math.max(0, next.n - badgeValue(next, s, t))} ${next.kind === 'streak' ? 'dag' : 'sessie'}${next.n - badgeValue(next, s, t) === 1 ? '' : next.kind === 'streak' ? 'en' : 's'}.</p>` : ''}
-        <p class="label" style="margin-top:8px">Rustdagen en bewust overgeslagen sessies breken je streak niet.</p>
+        <p class="label mt-8">Rustdagen en bewust overgeslagen sessies breken je streak niet.</p>
       </section>`;
   }
   function streakHero() {
@@ -1167,7 +1190,7 @@
         <div class="tile"><span class="label">Trainingsminuten deze week</span><div class="num">${minutes}<span class="unit">min</span></div></div>
         <div class="tile"><span class="label">Gemiddelde zwaarte</span><div class="num">${rpes.length ? fmtNum(Math.round(sum(rpes) / rpes.length * 10) / 10) : '–'}<span class="unit">/ 10</span></div></div>
       </div>
-      ${g.text || g.evalDate ? `<section class="card"><span class="label">Doel</span><p style="margin-top:4px"><b>${esc(g.text || GOAL_LABEL[g.type])}</b></p>${g.evalDate ? `<p class="status-line">Evaluatie op ${fmtDay(g.evalDate)}${days != null && days >= 0 ? ` · over ${days} dagen` : ''}</p>` : ''}</section>` : ''}`;
+      ${g.text || g.evalDate ? `<section class="card"><span class="label">Doel</span><p class="mt-4"><b>${esc(g.text || GOAL_LABEL[g.type])}</b></p>${g.evalDate ? `<p class="status-line">Evaluatie op ${fmtDay(g.evalDate)}${days != null && days >= 0 ? ` · over ${days} dagen` : ''}</p>` : ''}</section>` : ''}`;
   }
 
   function nextMatchCard() {
@@ -1215,16 +1238,16 @@
       return `<div class="check-block">
         <h4>${esc(injuryLabel(inj))}${injurySideText(inj) ? `<span>${esc(injurySideText(inj))}</span>` : ''}</h4>
         <p class="label">Stijfheid bij het opstaan · 0 = niets, 10 = heel stijf</p>${sideRows('stiff', null)}
-        <p class="label" style="margin-top:12px">Pijn · 0 = geen pijn${lim != null ? `, jouw afspraak: max ${lim}` : ''}</p>${sideRows('pain', lim)}
-        ${yLoad.length && inj.status !== 'afgerond' ? `<p class="label" style="margin-top:12px">Reactie op ${esc(yLoad.join(' en '))} van gisteren</p>
+        <p class="label mt-12">Pijn · 0 = geen pijn${lim != null ? `, jouw afspraak: max ${lim}` : ''}</p>${sideRows('pain', lim)}
+        ${yLoad.length && inj.status !== 'afgerond' ? `<p class="label mt-12">Reactie op ${esc(yLoad.join(' en '))} van gisteren</p>
           <div class="choice pick-group" data-group="react|${inj.id}">${[['beter', 'Beter'], ['gelijk', 'Gelijk'], ['slechter', 'Slechter']].map(([v, l]) => `<button type="button" class="${e.reaction === v ? 'on' : ''}" data-action="pick" data-v="${v}">${l}</button>`).join('')}</div>` : ''}
       </div>`;
     }).join('');
-    const fatigue = `<p class="label" style="margin-top:12px">Vermoeidheid · 1 = uitgerust, 5 = erg moe</p>${pickGroup('fatigue', c.fatigue ?? null, 1, 5, null)}`;
+    const fatigue = `<p class="label mt-12">Vermoeidheid · 1 = uitgerust, 5 = erg moe</p>${pickGroup('fatigue', c.fatigue ?? null, 1, 5, null)}`;
     openSheet(`<div class="sheet-head"><div><h3>Dagelijkse check</h3><p>${cap(fmtDay(date))}${date === dkey(today()) ? '' : ' · aanpassing achteraf'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       ${blocks || fatigue}
       ${list.length ? `<details class="more"><summary>Meer opties</summary>${fatigue}
-        <label class="field" style="margin-top:12px"><span>Notitie</span><textarea class="input" id="check-note" rows="2">${esc(c.note || '')}</textarea></label></details>` : ''}
+        <label class="field mt-12"><span>Notitie</span><textarea class="input" id="check-note" rows="2">${esc(c.note || '')}</textarea></label></details>` : ''}
       <p class="label" style="margin:10px 2px 0">Wat je leeg laat, wordt niet als 0 bewaard.</p>
       <button class="btn accent block lg" data-action="save-check" data-date="${date}">${icon('check')} Opslaan</button>`);
   }
@@ -1422,7 +1445,7 @@
     ws.filter(w => !items.some(it => it.type === 'session' && it.id === w.sessionKey)).forEach(w => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="workouts" data-id="${w.id}"><div class="ico">${icon((C.sessions[w.sessionKey] || {}).icon || 'dumbbell')}</div><div class="body"><b>${esc(woTitle(w))}</b><span>${esc(recStatus({ store: 'workouts', r: w }).label)} · ${esc(recordLine({ store: 'workouts', r: w }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
     acts.filter(a => !items.some(it => actMatches(a, it)) && !(f && a.type === 'match')).forEach(a => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="activities" data-id="${a.id}"><div class="ico">${icon(actIcon(a))}</div><div class="body"><b>${esc(actTitle(a))}</b><span>${esc(recordLine({ store: 'activities', r: a }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
     if (f) acts.filter(a => a.type === 'match').forEach(a => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="activities" data-id="${a.id}"><div class="ico">${icon('ball')}</div><div class="body"><b>Match · ${esc(recStatus({ store: 'activities', r: a }).label)}</b><span>${esc(recordLine({ store: 'activities', r: a }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
-    if (logged.length) html += `<div class="divider"></div><p class="label" style="margin-bottom:6px">Gelogd</p>${logged.join('')}`;
+    if (logged.length) html += `<div class="divider"></div><p class="label mb-8">Gelogd</p>${logged.join('')}`;
 
     html += `<div class="divider"></div><div class="day-actions">
       <button class="btn sm" data-action="add-menu" data-k="${k}">${icon('plus')} Sessie</button>
@@ -1648,19 +1671,19 @@
     const own = ids.filter(id => C.sessions[id].custom), std = ids.filter(id => !C.sessions[id].custom && programOn(C.sessions[id].program, id));
     const cur = replaceKey ? findItem(k, replaceKey) : null;
     const rep = replaceKey ? ` data-replace="${esc(replaceKey)}"` : '';
-    const small = 'style="width:40px;height:40px;background:transparent"';
+    const small = '';
     const row = id => `<div class="list-row"><div class="ico">${icon(C.sessions[id].icon)}</div>
         <div class="body" style="cursor:pointer" data-action="add-session" data-k="${k}" data-id="${id}"${rep}><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span></div>
-        <div class="end">${!replaceKey && C.sessions[id].custom ? `<button class="icon-btn" ${small} data-action="edit-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} aanpassen">${icon('edit')}</button><button class="icon-btn" ${small} data-action="delete-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} verwijderen">${icon('trash')}</button>` : ''}
+        <div class="end">${!replaceKey && C.sessions[id].custom ? `<button class="icon-btn ghost" data-action="edit-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} aanpassen">${icon('edit')}</button><button class="icon-btn ghost" data-action="delete-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} verwijderen">${icon('trash')}</button>` : ''}
           <button class="icon-btn" style="width:40px;height:40px" data-action="add-session" data-k="${k}" data-id="${id}"${rep} aria-label="${esc(sessionTitle(id))} ${replaceKey ? 'kiezen' : 'toevoegen'}">${icon(replaceKey ? 'check' : 'plus')}</button></div></div>`;
     const types = QUICK_TYPES.filter(([t]) => !(replaceKey && cur && cur.type === t)).map(([t, l, ic, sub]) =>
       `<button class="type-tile" data-action="add-type" data-k="${k}" data-type="${t}"${rep}>${icon(ic)}<b>${l}</b><span>${sub}</span></button>`).join('');
     openSheet(`<div class="sheet-head"><div><h3>${replaceKey ? 'Vervangen door' : 'Toevoegen'}</h3><p>${replaceKey && cur ? `${esc(itemMeta(cur).title)} · ` : ''}${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="type-grid">${types}</div>
-      <div class="add-row two" style="margin-top:12px"><input class="input" id="custom-label" placeholder="Eigen type, bv. Zwemmen" aria-label="Naam van een eigen type" maxlength="40"><button class="btn" data-action="add-custom" data-k="${k}"${rep}>${icon(replaceKey ? 'check' : 'plus')}<span class="sr">${replaceKey ? 'Vervangen' : 'Toevoegen'}</span></button></div>
+      <div class="add-row two mt-12"><input class="input" id="custom-label" placeholder="Eigen type, bv. Zwemmen" aria-label="Naam van een eigen type" maxlength="40"><button class="btn" data-action="add-custom" data-k="${k}"${rep}>${icon(replaceKey ? 'check' : 'plus')}<span class="sr">${replaceKey ? 'Vervangen' : 'Toevoegen'}</span></button></div>
       ${own.length ? `<div class="section"><span>Mijn workouts</span></div>${own.map(row).join('')}` : ''}
       <div class="section"><span>Fitness en herstel uit je schema</span></div>${std.map(row).join('')}
-      ${replaceKey ? '' : `<button class="btn block" style="margin-top:14px" data-action="new-custom" data-k="${k}">${icon('plus')} Eigen workout maken</button>`}`);
+      ${replaceKey ? '' : `<button class="btn block mt-16" data-action="new-custom" data-k="${k}">${icon('plus')} Eigen workout maken</button>`}`);
   }
   function addOrReplace(el, item) {
     if (el.dataset.replace) replaceItem(el.dataset.k, el.dataset.replace, item);
@@ -1732,7 +1755,7 @@
         : ex.kind === 'distance' ? '' : mini(i, 'duration', 'Seconden', it.duration, 5);
       return `<div class="b-item">
         <div class="b-top"><div><b>${esc(ex.name)}</b>${ex.perSide ? `<span class="label" style="display:block">per ${esc(ex.sideWord || 'kant')}${ex.kind === 'distance' ? ` · ${ex.distance} m` : ''}</span>` : ex.kind === 'distance' ? `<span class="label" style="display:block">${ex.distance} m</span>` : ''}</div>
-          <button type="button" class="icon-btn" style="width:36px;height:36px;background:transparent" data-action="b-remove" data-i="${i}" aria-label="Oefening verwijderen">${icon('x')}</button></div>
+          <button type="button" class="icon-btn ghost" data-action="b-remove" data-i="${i}" aria-label="Oefening verwijderen">${icon('x')}</button></div>
         <div class="b-grid">
           ${mini(i, 'sets', 'Sets', it.sets, 1)}
           ${second}
@@ -1791,7 +1814,7 @@
           <span class="body"><b>${esc(t.name)}</b><span>${esc(t.desc)}</span>
             <span class="tpl-meta"><span class="tag">${whereLabel(t.where)}</span><span class="tag">${t.items.length} oefeningen</span><span class="tag">±${templateMinutes(t)} min</span>${t.plyo && plyoLocked() ? '<span class="tag missed">vanaf fase 2 + 3</span>' : ''}</span></span>
           <span class="end">${icon('plus')}</span></button>`).join('') || '<p class="empty">Geen voorgestelde workouts voor deze plaats.</p>')
-        + `<p class="label" style="margin-top:10px">Na het kiezen kun je elke oefening nog aanpassen of verwijderen.</p>`;
+        + `<p class="label mt-12">Na het kiezen kun je elke oefening nog aanpassen of verwijderen.</p>`;
     }
 
     if (b.group) {
@@ -1803,7 +1826,7 @@
           const ex = C.exercises[id], on = b.items.some(i => i.ex === id);
           return `<div class="list-row">
             <div class="body"><b>${esc(ex.name)}</b><span>${esc(prescription({ sets: 3 }, ex).replace(/^3 × /, ''))}${ex.where ? ' · ' + whereLabel(ex.where) : ''}</span>
-              ${ex.plyo && plyoLocked() ? '<span class="tag missed" style="margin-top:4px">vanaf fase 2 + 3</span>' : ''}</div>
+              ${ex.plyo && plyoLocked() ? '<span class="tag missed mt-4">vanaf fase 2 + 3</span>' : ''}</div>
             <div class="end"><button class="icon-btn pick-btn ${on ? 'on' : ''}" data-action="b-pick-ex" data-id="${id}" aria-label="${on ? 'Verwijderen' : 'Toevoegen'}">${icon(on ? 'check' : 'plus')}</button></div>
           </div>`;
         }).join('') || '<p class="empty">Geen oefeningen voor deze plaats in deze groep.</p>'}</section>`;
@@ -1813,12 +1836,12 @@
     return head + LIB.categories.map(c => {
       const groups = c.groups.map(g => ({ ...g, n: groupExercises(g.id, loc).length })).filter(g => g.n);
       if (!groups.length) return '';
-      return `<div class="section" style="margin-top:14px"><span>${esc(c.name)}</span></div>
+      return `<div class="section mt-16"><span>${esc(c.name)}</span></div>
         <div class="group-grid">${groups.map(g => `<button class="group-tile" data-action="b-group" data-id="${g.id}">
           <b>${esc(g.name)}</b><span>${esc(g.hint || '')}</span><em>${g.n} oefeningen${c.id === 'power' && plyoLocked() ? ' · vanaf fase 2 + 3' : ''}</em></button>`).join('')}</div>`;
     }).join('') + `
-      ${mine.length ? `<div class="section" style="margin-top:14px"><span>Mijn oefeningen</span></div><div class="group-grid"><button class="group-tile" data-action="b-group" data-id="mine"><b>Mijn oefeningen</b><span>Zelf gemaakt</span><em>${mine.length} oefeningen</em></button></div>` : ''}
-      <div class="b-add" style="margin-top:14px">
+      ${mine.length ? `<div class="section mt-16"><span>Mijn oefeningen</span></div><div class="group-grid"><button class="group-tile" data-action="b-group" data-id="mine"><b>Mijn oefeningen</b><span>Zelf gemaakt</span><em>${mine.length} oefeningen</em></button></div>` : ''}
+      <div class="b-add mt-16">
         ${b.adding ? `<label class="field"><span>Naam van je eigen oefening</span><input class="input" id="b-new-name" placeholder="Bv. Hamstring curl"></label>
           <div class="seg">${radio('b-kind', 'reps', 'Herh. + kg', 'reps')}${radio('b-kind', 'bw', 'Herh.', 'reps')}${radio('b-kind', 'time', 'Op tijd', 'reps')}</div>
           <button type="button" class="btn block" data-action="b-new-add">${icon('plus')} Toevoegen</button>`
@@ -1929,7 +1952,7 @@
       <p class="label" style="margin:2px 2px 14px">Staat vanaf vandaag in je planning. Per dag kun je hem nog verplaatsen, vervangen of overslaan.</p>
       <p class="field-label">Of op losse dagen</p>
       <div class="add-row two"><input class="input" type="date" id="plan-once" min="${tk}" value="${tk}" aria-label="Datum"><button class="btn" data-action="plan-once-add">${icon('plus')}<span class="sr">Datum toevoegen</span></button></div>
-      <div class="chips" id="plan-once-list" style="margin-top:8px">${S.ui.planOnce.map(d => `<button class="loc-chip on" data-action="plan-once-del" data-d="${d}" aria-label="${fmtDay(d)} weghalen">${esc(cap(fmtDay(d)))} ${icon('x')}</button>`).join('')}</div>
+      <div class="chips mt-8" id="plan-once-list">${S.ui.planOnce.map(d => `<button class="loc-chip on" data-action="plan-once-del" data-d="${d}" aria-label="${fmtDay(d)} weghalen">${esc(cap(fmtDay(d)))} ${icon('x')}</button>`).join('')}</div>
       <button class="btn accent block lg" data-action="plan-save" data-key="${id}">${icon('check')} Inplannen</button>
       ${fresh ? `<button class="btn ghost block" data-action="close-sheet">Later</button>` : ''}`);
   }
@@ -1958,8 +1981,8 @@
     const s = sessInfo(id), exs = (C.sessions[id].items || []).map(it => C.exercises[it.ex]).filter(Boolean);
     openSheet(`<div class="sheet-head"><div><span class="eyebrow">Mijn workout</span><h3>${esc(s.name)}</h3><p>${s.exercises} oefeningen · ±${s.minutes} min${planText(id) ? ` · ${esc(planText(id))}` : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <button class="btn accent block lg" data-action="start-session" data-key="${id}">${icon('play')} Nu starten</button>
-      <div class="row" style="margin-top:8px"><button class="btn" data-action="workout-plan" data-key="${id}">${icon('calendar')} Inplannen</button><button class="btn" data-action="edit-custom" data-key="${id}">${icon('edit')} Aanpassen</button></div>
-      <p class="field-label" style="margin-top:20px">Oefeningen</p>
+      <div class="row mt-8"><button class="btn" data-action="workout-plan" data-key="${id}">${icon('calendar')} Inplannen</button><button class="btn" data-action="edit-custom" data-key="${id}">${icon('edit')} Aanpassen</button></div>
+      <p class="field-label mt-20">Oefeningen</p>
       <section class="card" style="padding:4px 16px">${(C.sessions[id].items || []).map(it => { const ex = C.exercises[it.ex]; return ex ? `<div class="list-row"><div class="body"><b>${esc(ex.name)}</b><span>${esc(prescription({ ...it, sets: it.sets || 3 }, { ...ex, ...(it.reps ? { reps: [it.reps, it.reps], repsText: null } : {}), ...(it.duration ? { duration: it.duration } : {}) }))}${it.weight ? ` · ${fmtNum(it.weight)} kg` : ''}</span></div></div>` : ''; }).join('') || '<p class="empty">Nog geen oefeningen.</p>'}</section>
       <details class="more"><summary>Meer opties</summary><button class="btn danger block" data-action="delete-custom" data-key="${id}">${icon('trash')} Workout verwijderen</button></details>`);
   }
@@ -2085,7 +2108,7 @@
       ${w ? `<section class="card resume">
         <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
         <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)} om ${fmtTime(w.startedAt)} · ${w.exercises.flatMap(x => x.sets).filter(s => s.done).length} sets gedaan</p>
-        <div class="row" style="margin-top:12px"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
+        <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
       </section>` : rec ? actCard(rec, k, true) : ''}
       <div class="section"><span>Mijn workouts</span>${own.length ? `<button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button>` : ''}</div>
       ${own.length ? `<section class="card">${own.map(key => {
@@ -2211,7 +2234,7 @@
       <p class="ex-presc">${esc(e.presc)}</p>
       ${prevLine(e)}
       ${e.cue ? `<p class="ex-cue">${esc(e.cue)}</p>` : ''}
-      <div id="wo-hints" style="margin-top:12px">${hintsHtml(e)}</div>
+      <div class="mt-12" id="wo-hints">${hintsHtml(e)}</div>
       <section class="editor" id="editor">${editorHtml(e)}</section>
       <details class="fold card" ${S.ui.setsOpen ? 'open' : ''} data-fold="sets">
         <summary>Alle sets van deze oefening <span class="label">${doneSets} van ${e.sets.length}</span></summary>
@@ -2328,11 +2351,11 @@
     openSheet(`<form id="finish-form">
       <div class="sheet-head"><div><h3>Workout afronden</h3><p>${esc(woTitle(w))} · ${done.length} sets</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <p class="label">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', null, 0, 10, null)}
-      <p class="label" style="margin-top:14px">Hoe heb je meegedaan?</p>
+      <p class="label mt-16">Hoe heb je meegedaan?</p>
       <div class="seg">${radio('mode', 'volledig', 'Volledig', done.length < all.length ? 'aangepast' : 'volledig')}${radio('mode', 'aangepast', 'Aangepast', done.length < all.length ? 'aangepast' : 'volledig')}</div>
       <details class="more"><summary>Meer opties</summary>
         <p class="label">Vermoeidheid na afloop · 1 = fris, 5 = erg moe</p>${pickGroup('fatigue', null, 1, 5, null)}
-        <label class="field" style="margin-top:12px"><span>Duur (minuten)</span><input class="input" name="minutes" type="number" inputmode="numeric" value="${mins}"></label>
+        <label class="field mt-12"><span>Duur (minuten)</span><input class="input" name="minutes" type="number" inputmode="numeric" value="${mins}"></label>
         <label class="field"><span>Notitie</span><textarea class="input" name="note" rows="2"></textarea></label>
       </details>
       <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
@@ -2389,10 +2412,11 @@
     const el = document.createElement('div');
     el.className = 'celebrate';
     el.setAttribute('role', 'status');
-    el.innerHTML = `<span>${icon('check')}</span><b>${esc(text)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}`;
+    const line = sub || (Q.after && Q.after.length ? Q.after[Math.floor(Math.random() * Q.after.length)] : '');
+    el.innerHTML = `<b>${esc(text)}</b>${line ? `<small>${esc(line)}</small>` : ''}`;
     document.body.appendChild(el);
     signal(1);
-    setTimeout(() => el.remove(), sub ? 2400 : 1400);
+    setTimeout(() => el.remove(), 1500);
   }
 
   /* ---------- Motivatie: eigen korte teksten (quotes.json), zonder toeschrijving ---------- */
@@ -2634,7 +2658,7 @@
     const all = entries();
     const shown = S.ui.recentAll ? all : all.slice(0, 5);
     return `
-      ${g.text || g.evalDate ? `<section class="card"><span class="label">Jouw doel · ${esc(GOAL_LABEL[g.type])}</span><p style="margin-top:4px"><b>${esc(g.text || GOAL_LABEL[g.type])}</b></p>${g.evalDate ? `<p class="status-line">Evaluatie op ${fmtDay(g.evalDate)}. Een evaluatiemoment, geen automatisch oordeel.</p>` : ''}</section>` : ''}
+      ${g.text || g.evalDate ? `<section class="card"><span class="label">Jouw doel · ${esc(GOAL_LABEL[g.type])}</span><p class="mt-4"><b>${esc(g.text || GOAL_LABEL[g.type])}</b></p>${g.evalDate ? `<p class="status-line">Evaluatie op ${fmtDay(g.evalDate)}. Een evaluatiemoment, geen automatisch oordeel.</p>` : ''}</section>` : ''}
       <section class="card">
         <div class="card-head"><h2>Workouts per week</h2><span class="label">tik op een week</span></div>
         ${Charts.bars(weeks, { selected: sel })}
@@ -2649,7 +2673,7 @@
       </section>
       <div class="section"><span>Recent</span><span>${all.length}</span></div>
       <section class="card">${recentRows(shown)}
-        ${all.length > 5 ? `<button class="btn block sm" style="margin-top:10px" data-action="recent-all">${S.ui.recentAll ? 'Minder tonen' : `Alles tonen (${all.length})`}</button>` : ''}
+        ${all.length > 5 ? `<button class="btn block sm mt-12" data-action="recent-all">${S.ui.recentAll ? 'Minder tonen' : `Alles tonen (${all.length})`}</button>` : ''}
       </section>`;
   }
 
@@ -2671,7 +2695,7 @@
     const loadCard = `<section class="card">
         <div class="card-head"><h2>Belasting</h2>${rangeSeg}</div>
         <p class="label">Minuten training per dag</p>${loadBars}
-        ${rpeLine ? `<p class="label" style="margin-top:10px">Ervaren zwaarte (0–10)</p>${rpeLine}` : '<p class="empty">Nog geen zwaarte ingevuld in deze periode.</p>'}
+        ${rpeLine ? `<p class="label mt-12">Ervaren zwaarte (0–10)</p>${rpeLine}` : '<p class="empty">Nog geen zwaarte ingevuld in deze periode.</p>'}
       </section>`;
     if (!list.length) return `<section class="card"><p class="empty">Geen hersteltraject. Je trainingsbelasting staat hieronder.</p></section>${loadCard}`;
     const inj = injuryById(S.ui.statsInjury) || list[0];
@@ -2683,12 +2707,12 @@
     const has = arr => arr.some(s => s.values.some(v => v != null));
     const lim = num(inj.painLimit);
     return `
-      ${list.length > 1 ? `<div class="chips" style="margin-bottom:12px">${list.map(i => `<button class="loc-chip ${i.id === inj.id ? 'on' : ''}" data-action="stats-inj" data-id="${i.id}">${esc(injuryLabel(i))}${i.status === 'afgerond' ? ' · afgerond' : ''}</button>`).join('')}</div>` : ''}
+      ${list.length > 1 ? `<div class="chips mb-12">${list.map(i => `<button class="loc-chip ${i.id === inj.id ? 'on' : ''}" data-action="stats-inj" data-id="${i.id}">${esc(injuryLabel(i))}${i.status === 'afgerond' ? ' · afgerond' : ''}</button>`).join('')}</div>` : ''}
       <section class="card">
         <div class="card-head"><h2>${esc(injuryLabel(inj))}</h2><span class="tag ${inj.status === 'afgerond' ? '' : 'adapted'}">${STATUS_LABEL[inj.status]}</span></div>
         <p class="label">Stijfheid bij het opstaan (0–10)</p>
         ${has(stiff) ? Charts.line({ labels, series: stiff, step: true, height: 150 }) + legend : '<p class="empty">Nog geen metingen in deze periode.</p>'}
-        <p class="label" style="margin-top:12px">Pijn (0–10)${lim != null ? ` · lijn op ${lim} = jouw afspraak` : ''}</p>
+        <p class="label mt-12">Pijn (0–10)${lim != null ? ` · lijn op ${lim} = jouw afspraak` : ''}</p>
         ${has(pain) ? Charts.line({ labels, series: pain, step: true, height: 150, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim }) + legend : '<p class="empty">Nog geen pijnscores in deze periode.</p>'}
       </section>
       ${loadCard}`;
@@ -2717,7 +2741,7 @@
       <section class="card">
         <div class="card-head"><h2>Gewicht per oefening</h2><span class="label">zwaarste set</span></div>
         <select class="select" data-change="weight-ex" aria-label="Kies oefening">${exIds.map(id => `<option value="${id}" ${id === S.ui.weightEx ? 'selected' : ''}>${esc(exWithWeight[id])}</option>`).join('')}</select>
-        <div class="recovery-nums" style="margin-bottom:10px">
+        <div class="recovery-nums mb-12">
           <div class="num md">${fmtNum(vals[vals.length - 1])}<span class="unit">kg nu</span></div>
           <div class="num md" style="color:var(--muted)">${fmtNum(vals[0])}<span class="unit">kg start</span></div>
         </div>
@@ -2748,7 +2772,7 @@
       <section class="card">
         <div class="card-head"><h2>Uitslagen ${esc(C.rbfa.teamLabel)}</h2><button class="link-btn" data-action="go" data-to="matchen">Beheren ${icon('chevR')}</button></div>
         ${rows || `<p class="empty">Nog geen gespeelde matchen. Importeer de RBFA-kalender of voeg matchen toe.</p>`}
-        ${playedFx.length > 6 ? `<button class="btn block sm" style="margin-top:10px" data-action="matches-all">${S.ui.matchesAll ? 'Minder tonen' : `Alles tonen (${playedFx.length})`}</button>` : ''}
+        ${playedFx.length > 6 ? `<button class="btn block sm mt-12" data-action="matches-all">${S.ui.matchesAll ? 'Minder tonen' : `Alles tonen (${playedFx.length})`}</button>` : ''}
       </section>`;
   }
 
@@ -2795,16 +2819,16 @@
       openSheet(`<div class="sheet-head"><div><h3>${esc(actTitle(rec))}</h3><p>${cap(fmtDay(rec.date))} · ${esc(st.label)}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
         <div class="num" style="margin-bottom:14px">${rec.minutes}<span class="unit">min${rec.plannedMinutes && rec.plannedMinutes !== rec.minutes ? ` van ${rec.plannedMinutes} gepland` : ''}</span></div>
         <div class="chips">${rec.score ? `<span class="chip">${esc(rec.score)}</span>` : ''}${rec.role ? `<span class="chip">${esc(rec.role)}</span>` : ''}${rec.rpe != null ? `<span class="chip">Zwaarte ${rec.rpe}/10</span>` : ''}${rec.fatigue != null ? `<span class="chip">Vermoeidheid ${rec.fatigue}/5</span>` : ''}<span class="chip">${esc(rec.surface || '')}</span><span class="chip">${esc(rec.shoes || '')}</span><span class="chip">Pijn achteraf: ${esc(painText(rec))}</span>${rec.source === 'rbfa' ? '<span class="chip">via RBFA</span>' : ''}</div>
-        ${rec.note ? `<p class="small" style="margin-top:12px">${esc(rec.note)}</p>` : ''}
-        <button class="btn primary block lg" style="margin-top:16px" data-action="edit-entry" data-store="activities" data-id="${rec.id}">${icon('edit')} Bewerken</button>
+        ${rec.note ? `<p class="small mt-12">${esc(rec.note)}</p>` : ''}
+        <button class="btn primary block lg mt-16" data-action="edit-entry" data-store="activities" data-id="${rec.id}">${icon('edit')} Bewerken</button>
         ${menu}`);
       return;
     }
     openSheet(`<div class="sheet-head"><div><h3>${esc(woTitle(rec))}</h3><p>${cap(fmtDay(rec.date))} · ${esc(st.label)} · ${esc(recordLine({ store, r: rec }))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      ${(rec.adaptations || []).length ? `<div class="chips" style="margin-bottom:8px">${rec.adaptations.map(a => `<span class="chip">${esc(a)}</span>`).join('')}</div>` : ''}
+      ${(rec.adaptations || []).length ? `<div class="chips mb-8">${rec.adaptations.map(a => `<span class="chip">${esc(a)}</span>`).join('')}</div>` : ''}
       ${(rec.exercises || []).map(e => `<div class="list-row"><div class="body"><b>${esc(e.name)}</b><span>${e.sets.map(s => `${s.side ? s.side + ' ' : ''}${setText(s, e.kind) || '–'}${s.pain != null ? ` (pijn ${s.pain})` : ''}`).join(' · ')}</span></div></div>`).join('') || `<p class="empty">${rec.quick || rec.logged === 'quick' ? 'Uitgevoerd zonder details: geen sets ingevuld.' : 'Geen sets gelogd.'}</p>`}
-      ${rec.note ? `<p class="small" style="margin-top:8px">${esc(rec.note)}</p>` : ''}
-      <button class="btn primary block lg" style="margin-top:12px" data-action="edit-entry" data-store="workouts" data-id="${rec.id}">${icon('edit')} Bewerken</button>
+      ${rec.note ? `<p class="small mt-8">${esc(rec.note)}</p>` : ''}
+      <button class="btn primary block lg mt-12" data-action="edit-entry" data-store="workouts" data-id="${rec.id}">${icon('edit')} Bewerken</button>
       ${menu}`);
   }
 
@@ -2823,7 +2847,7 @@
       ${(w.exercises || []).map((e, ei) => `<div class="wedit-ex"><b>${esc(e.name)}</b>${e.sets.map((s, si) => `<div class="wedit-set"><span>${s.side ? s.side : ''} ${si + 1}</span>
         ${e.kind === 'reps' ? inp(ei, si, 'reps', s.reps, 'herh.') : e.kind === 'distance' ? inp(ei, si, 'dist', s.dist, 'meter') : inp(ei, si, 'duration', s.duration, 'sec')}
         ${inp(ei, si, 'weight', s.weight, 'kg')}${inp(ei, si, 'pain', s.pain, 'pijn')}</div>`).join('')}</div>`).join('')}
-      <label class="field" style="margin-top:12px"><span>Notitie</span><textarea class="input" name="note" rows="2">${esc(w.note || '')}</textarea></label>
+      <label class="field mt-12"><span>Notitie</span><textarea class="input" name="note" rows="2">${esc(w.note || '')}</textarea></label>
       <button class="btn accent block lg" type="submit">${icon('check')} Wijzigingen opslaan</button>
     </form>`);
   }
@@ -2925,13 +2949,13 @@
 
       <div class="section"><span>Gegevens</span></div>
       <section class="card">
-        <p class="small ${lastExp ? 'muted' : 'warn-text'}" style="margin-bottom:12px">${lastExp ? `Laatste back-up: ${fmtFull(dkey(new Date(lastExp)))} om ${fmtTime(lastExp)}.` : 'Nog geen back-up gemaakt.'} ${Sync.user() ? 'Een back-up is een JSON-bestand met al je gegevens.' : 'Je gegevens staan alleen op deze gsm.'}</p>
+        <p class="small ${lastExp ? 'muted' : 'warn-text'} mb-12">${lastExp ? `Laatste back-up: ${fmtFull(dkey(new Date(lastExp)))} om ${fmtTime(lastExp)}.` : 'Nog geen back-up gemaakt.'} ${Sync.user() ? 'Een back-up is een JSON-bestand met al je gegevens.' : 'Je gegevens staan alleen op deze gsm.'}</p>
         <div class="row"><button class="btn primary" data-action="export">${icon('download')} Back-up maken</button><button class="btn" data-action="import">${icon('upload')} Terugzetten</button></div>
         <input type="file" id="import-file" accept="application/json,.json" hidden data-change="import">
         <div class="divider"></div>
         <label class="switch-row"><span><b>Demostand</b><small>Toont voorbeelddata in planning en statistieken. Je eigen registraties blijven apart en worden nooit gewist.</small></span>
           <input type="checkbox" class="switch" data-change="demo" ${S.settings.demo ? 'checked' : ''}></label>
-        ${sampleCount ? `<button class="btn block" style="margin-top:12px" data-action="clear-sample">${icon('trash')} Voorbeelddata wissen (${sampleCount})</button>` : ''}
+        ${sampleCount ? `<button class="btn block mt-12" data-action="clear-sample">${icon('trash')} Voorbeelddata wissen (${sampleCount})</button>` : ''}
         <details class="more"><summary>Meer opties</summary>
           <button class="btn danger block" data-action="clear-all">Alles wissen</button>
         </details>
@@ -3006,7 +3030,7 @@
       <label class="field"><span>Afspraak met je kinesist (optioneel)</span><input class="input" name="agreement" maxlength="160" placeholder="Bv. 2 weken geen sprints"></label>
       ${progFree && ['kuit', 'achillespees'].includes(n.location) ? `<label class="check"><input type="checkbox" name="program"><span class="box">${icon('check')}</span><span class="t">Kuit- en peesprogramma uit je schema gebruiken<small>Holds, kuitkracht en veerkracht in fases, zoals in je oorspronkelijke plan</small></span></label>` : ''}
       <button class="btn accent block lg" type="submit">${icon('check')} Blessure toevoegen</button>
-      <p class="label" style="margin-top:10px">Een grens of datum is een persoonlijke afspraak, geen medische regel of vrijgave.</p>
+      <p class="label mt-12">Een grens of datum is een persoonlijke afspraak, geen medische regel of vrijgave.</p>
     </form>`);
   }
   async function saveNewInjury(form) {
@@ -3036,7 +3060,7 @@
     const linked = (inj.linked || []).filter(id => C.sessions[id]);
     const sch = id => (inj.schedule || []).find(s => s.id === id);
     const others = Object.keys(C.sessions).filter(id => C.sessions[id].custom && !linked.includes(id));
-    return `<p class="small muted" style="margin-bottom:6px">${done
+    return `<p class="small muted mb-8">${done
         ? 'Wat je als onderhoud houdt, blijft in je planning staan. De rest verdwijnt, je geschiedenis niet.'
         : 'Stel je oefeningen samen zoals je kinesist ze voorschrijft en plan ze in. De app schrijft zelf geen behandeling voor.'}</p>
       ${linked.map(id => {
@@ -3045,7 +3069,7 @@
           <div class="body"><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span><span>${done ? (keep ? `Onderhoud · ${daysText(s && s.days)}` : 'Niet meer ingepland') : esc(daysText(s && s.days))}</span></div>
           <div class="end"><button class="btn sm" data-action="rehab-plan" data-id="${id}">${icon('calendar')} Inplannen</button></div></div>`;
       }).join('') || `<p class="empty">Nog geen herstelplan.</p>`}
-      <div class="row" style="margin-top:10px"><button class="btn" data-action="rehab-new">${icon('plus')} Oefeningen samenstellen</button></div>
+      <div class="row mt-12"><button class="btn" data-action="rehab-new">${icon('plus')} Oefeningen samenstellen</button></div>
       ${others.length ? `<details class="more"><summary>Bestaande workout koppelen</summary>
         ${others.map(id => `<label class="check"><input type="checkbox" data-change="inj-link" value="${id}"><span class="box">${icon('check')}</span><span class="t">${esc(sessionTitle(id))}<small>${esc(sessionDesc(id))}</small></span></label>`).join('')}</details>` : ''}`;
   }
@@ -3061,7 +3085,7 @@
       <p class="label" style="margin:2px 2px 12px">Verschijnt als voorstel in je planning zolang de blessure loopt, vanaf vandaag. Verplaatsen of overslaan kan per dag.</p>
       <label class="check ${keep ? 'on' : ''}"><input type="checkbox" id="rehab-keep" ${keep ? 'checked' : ''}><span class="box">${icon('check')}</span><span class="t">Als onderhoud houden na herstel<small>Blijft ingepland als je de blessure afrondt</small></span></label>
       <button class="btn accent block lg" data-action="rehab-save" data-id="${id}">${icon('check')} Bewaren</button>
-      <p class="field-label" style="margin-top:20px">Of één keer</p>
+      <p class="field-label mt-20">Of één keer</p>
       <div class="add-row two"><input class="input" type="date" id="rehab-date" value="${dkey(today())}" aria-label="Datum"><button class="btn" data-action="rehab-once" data-id="${id}">${icon('plus')} Inplannen</button></div>
       <details class="more"><summary>Meer opties</summary>
         <div class="menu-list">
@@ -3146,7 +3170,7 @@
         ${past.map(i => `<button class="list-row tap row-btn" data-action="open-injury" data-id="${i.id}">
           <span class="body"><b>${esc(injuryLabel(i))}</b><span>${esc([injurySideText(i), `${fmtShort(i.start)} – ${i.end ? fmtFull(i.end) : '?'}`].filter(Boolean).join(' · '))}</span></span>
           <span class="end">${icon('chevR')}</span></button>`).join('')}</details>` : ''}
-      ${act.length > 0 ? `<button class="btn ghost block" style="margin-top:6px" data-action="inj-none">Geen actieve blessure meer</button>` : ''}
+      ${act.length > 0 ? `<button class="btn ghost block mt-8" data-action="inj-none">Geen actieve blessure meer</button>` : ''}
       <p class="footer-note">Pijngrenzen, fases en evaluatiedata zijn persoonlijke afspraken. De app geeft geen medische vrijgave.</p>`;
   }
 
@@ -3184,9 +3208,9 @@
 
       <div class="section"><span>Afspraken met je kinesist</span></div>
       <section class="card">
-        ${(inj.agreements || []).slice().sort((a, b) => b.date.localeCompare(a.date)).map(a => `<div class="list-row"><div class="body"><b>${esc(a.text)}</b><span>Afgesproken op ${fmtFull(a.date)}</span></div><div class="end"><button class="icon-btn" style="width:36px;height:36px;background:transparent" data-action="agr-del" data-id="${a.id}" aria-label="Afspraak verwijderen">${icon('x')}</button></div></div>`).join('') || '<p class="empty">Nog geen afspraken vastgelegd.</p>'}
+        ${(inj.agreements || []).slice().sort((a, b) => b.date.localeCompare(a.date)).map(a => `<div class="list-row"><div class="body"><b>${esc(a.text)}</b><span>Afgesproken op ${fmtFull(a.date)}</span></div><div class="end"><button class="icon-btn ghost" data-action="agr-del" data-id="${a.id}" aria-label="Afspraak verwijderen">${icon('x')}</button></div></div>`).join('') || '<p class="empty">Nog geen afspraken vastgelegd.</p>'}
         <div class="add-row"><input class="input" type="date" id="agr-date" value="${dkey(today())}" aria-label="Datum van de afspraak"><input class="input" id="agr-text" placeholder="Bv. hops pas na controle" aria-label="Afspraak"><button class="btn" data-action="agr-add">${icon('plus')}<span class="sr">Toevoegen</span></button></div>
-        <label class="field" style="margin-top:12px"><span>Afgesproken maximale pijn tijdens oefenen (0–10)</span><input class="input" inputmode="numeric" data-change="inj" name="painLimit" value="${inj.painLimit ?? ''}" placeholder="Leeg = geen afspraak"></label>
+        <label class="field mt-12"><span>Afgesproken maximale pijn tijdens oefenen (0–10)</span><input class="input" inputmode="numeric" data-change="inj" name="painLimit" value="${inj.painLimit ?? ''}" placeholder="Leeg = geen afspraak"></label>
         <p class="label">De app gebruikt deze grens alleen om je eraan te herinneren. Het is geen medische regel.</p>
       </section>
 
@@ -3196,7 +3220,7 @@
           <div class="body"><b>${esc(f.label)} · ${esc(f.title)}</b><span>Oorspronkelijke evaluatiedatum: ${fmtFull(f.start)}</span><p>${esc(f.summary)}</p></div>
           <span class="mark"></span></label>`).join('')}
         <p class="label" style="margin:6px 2px 0">Je wisselt zelf van fase, na overleg. Een datum is een evaluatiemoment, geen toestemming om zwaarder te trainen.</p>
-        ${currentPhase() === 'f3' ? `<label class="field" style="margin-top:12px"><span>Stap voor veerkracht & sprint</span>
+        ${currentPhase() === 'f3' ? `<label class="field mt-12"><span>Stap voor veerkracht & sprint</span>
           <select class="select" data-change="plyo-step">
             <option value="auto" ${!S.settings.plyoStep || S.settings.plyoStep === 'auto' ? 'selected' : ''}>Elke week één stap (nu stap ${plyoStep()})</option>
             ${C.sessions.PLYO.steps.map((s, i) => `<option value="${i + 1}" ${String(S.settings.plyoStep) === String(i + 1) ? 'selected' : ''}>Stap ${i + 1}: ${esc(s.title)}</option>`).join('')}
@@ -3204,7 +3228,7 @@
 
       <div class="section"><span>Evaluatiemomenten</span></div>
       <section class="card">
-        ${(inj.evals || []).slice().sort((a, b) => a.date.localeCompare(b.date)).map(e => `<div class="list-row"><div class="body"><b>${esc(e.label || 'Evaluatie')}</b><span>${cap(fmtDay(e.date))}${e.date < dkey(today()) ? ' · voorbij' : ''}</span></div><div class="end"><button class="icon-btn" style="width:36px;height:36px;background:transparent" data-action="eval-del" data-id="${e.id}" aria-label="Evaluatiemoment verwijderen">${icon('x')}</button></div></div>`).join('') || '<p class="empty">Nog geen evaluatiemomenten.</p>'}
+        ${(inj.evals || []).slice().sort((a, b) => a.date.localeCompare(b.date)).map(e => `<div class="list-row"><div class="body"><b>${esc(e.label || 'Evaluatie')}</b><span>${cap(fmtDay(e.date))}${e.date < dkey(today()) ? ' · voorbij' : ''}</span></div><div class="end"><button class="icon-btn ghost" data-action="eval-del" data-id="${e.id}" aria-label="Evaluatiemoment verwijderen">${icon('x')}</button></div></div>`).join('') || '<p class="empty">Nog geen evaluatiemomenten.</p>'}
         <div class="add-row"><input class="input" type="date" id="eval-date" aria-label="Datum"><input class="input" id="eval-label" placeholder="Bv. controle kinesist" aria-label="Omschrijving"><button class="btn" data-action="eval-add">${icon('plus')}<span class="sr">Toevoegen</span></button></div>
       </section>
 
@@ -3216,12 +3240,12 @@
           <span class="t">${esc(c.text)}${c.done ? `<small>Afgevinkt op ${fmtFull(c.done)}</small>` : ''}</span>
         </label>`).join('') || '<p class="empty">Nog geen punten.</p>'}
         <div class="add-row two"><input class="input" id="chk-text" placeholder="Nieuw punt om te evalueren" aria-label="Nieuw punt"><button class="btn" data-action="chk-add">${icon('plus')}<span class="sr">Toevoegen</span></button></div>
-        <p class="label" style="margin-top:8px">Afvinken is een notitie voor jezelf. Het is geen medische vrijgave om (volledig) te spelen.</p>
+        <p class="label mt-8">Afvinken is een notitie voor jezelf. Het is geen medische vrijgave om (volledig) te spelen.</p>
       </section>
 
       <div class="section"><span>Herstelplan</span></div>
       <section class="card">
-        ${inj.program ? `<p class="small muted" style="margin-bottom:8px">${done ? 'Kies welke hersteloefeningen je als onderhoud in je schema houdt.' : 'Deze oefeningen staan in je schema zolang dit traject loopt. Vink aan wat je na afronden als onderhoud wil houden.'}</p>
+        ${inj.program ? `<p class="small muted mb-8">${done ? 'Kies welke hersteloefeningen je als onderhoud in je schema houdt.' : 'Deze oefeningen staan in je schema zolang dit traject loopt. Vink aan wat je na afronden als onderhoud wil houden.'}</p>
           ${maintenanceOptions(inj).map(o => `<label class="check ${(inj.maintenance || []).includes(o.id) ? 'on' : ''}"><input type="checkbox" data-change="inj-maint" value="${esc(o.id)}" ${(inj.maintenance || []).includes(o.id) ? 'checked' : ''}><span class="box">${icon('check')}</span><span class="t">${esc(o.label)}</span></label>`).join('')}`
         : rehabPlanHtml(inj)}
       </section>
@@ -3268,7 +3292,7 @@
       <section class="card">${upcoming.map(row).join('') || '<p class="empty">Geen komende matchen.</p>'}</section>
       <div class="section"><span>Gespeeld</span><span>${past.length}</span></div>
       <section class="card">${past.map(row).join('') || '<p class="empty">Nog geen gespeelde matchen.</p>'}</section>
-      <div class="row" style="margin-top:12px"><button class="btn" data-action="open-rbfa">${icon('download')} RBFA-import</button><button class="btn primary" data-action="edit-match" data-id="">${icon('plus')} Match toevoegen</button></div>
+      <div class="row mt-12"><button class="btn" data-action="open-rbfa">${icon('download')} RBFA-import</button><button class="btn primary" data-action="edit-match" data-id="">${icon('plus')} Match toevoegen</button></div>
     `;
   }
 
@@ -3463,11 +3487,11 @@
         <li>Kom terug en tik op <b>Plakken</b>.</li>
       </ol>
       <textarea class="input paste" id="rbfa-text" aria-label="Gekopieerde tekst" placeholder="Plak hier de tekst van de RBFA-pagina"></textarea>
-      <div class="row" style="margin-top:8px">
+      <div class="row mt-8">
         <button class="btn" data-action="paste" data-target="rbfa-text">${icon('paste')} Plakken</button>
         <button class="btn primary" data-action="rbfa-import">${icon('download')} Importeren</button>
       </div>
-      <p class="label" style="margin-top:12px">Matchen die je zelf aangepast of verwijderd hebt, blijven zoals jij ze zette.</p>`);
+      <p class="label mt-12">Matchen die je zelf aangepast of verwijderd hebt, blijven zoals jij ze zette.</p>`);
   }
 
   async function importCalendar() {
@@ -3490,18 +3514,18 @@
         <li>Plak hieronder. De app zoekt <b>${esc(profile().rbfaName)}</b> en bewaart alleen jouw minuten.</li>
       </ol>
       <textarea class="input paste" id="sheet-text" aria-label="Gekopieerde tekst" placeholder="Plak hier de matchpagina"></textarea>
-      <div class="row" style="margin-top:8px">
+      <div class="row mt-8">
         <button class="btn" data-action="paste" data-target="sheet-text">${icon('paste')} Plakken</button>
         <button class="btn primary" data-action="minutes-parse">${icon('clock')} Berekenen</button>
       </div>
       <div id="minutes-result"></div>
-      <p class="label" style="margin-top:12px">Het wedstrijdblad staat er meestal een paar uur na de match op.</p>`);
+      <p class="label mt-12">Het wedstrijdblad staat er meestal een paar uur na de match op.</p>`);
   }
 
   function showMinutesResult() {
     const r = parseMatchSheet($('#sheet-text').value, profile().rbfaName);
     const box = $('#minutes-result');
-    if (!r.ok) { box.innerHTML = `<div class="hint warn" style="margin-top:12px">${icon('alert')}<span>${esc(r.error || 'Kon de tekst niet lezen.')}</span></div>`; return; }
+    if (!r.ok) { box.innerHTML = `<div class="hint warn mt-12">${icon('alert')}<span>${esc(r.error || 'Kon de tekst niet lezen.')}</span></div>`; return; }
     const mineHome = isMine(r.home || '');
     const opp = nice(mineHome ? r.away : r.home);
     const gf = r.hs == null ? null : mineHome ? r.hs : r.as, ga = r.hs == null ? null : mineHome ? r.as : r.hs;
@@ -3513,8 +3537,8 @@
         : `${profile().rbfaName} staat niet op dit wedstrijdblad`;
     box.innerHTML = `<div class="result">
       <span class="label">${r.date ? cap(fmtDay(r.date)) : 'Datum onbekend'} · ${mineHome ? 'thuis' : 'uit'} tegen ${esc(opp || '?')}${gf != null ? ` · ${gf}–${ga}` : ''}</span>
-      <div class="num xl" style="margin-top:8px">${r.minutes}<span class="unit">min</span></div>
-      <p class="small" style="margin-top:6px">${esc(detail)}</p>
+      <div class="num xl mt-8">${r.minutes}<span class="unit">min</span></div>
+      <p class="small mt-8">${esc(detail)}</p>
     </div>
     <form id="minutes-form">
       <input type="hidden" name="date" value="${esc(r.date || dkey(today()))}">
@@ -3589,14 +3613,14 @@
       <p class="label">Hoe heb je meegedaan?</p>
       <div class="seg">${radio('participation', 'volledig', 'Volledig', part)}${radio('participation', 'gedeeltelijk', 'Gedeeltelijk', part)}${radio('participation', 'aangepast', 'Aangepast', part)}</div>
       <p class="label">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', ex ? ex.rpe ?? null : null, 0, 10, null)}
-      ${act.map(i => `<p class="label" style="margin-top:12px">Pijn achteraf · ${esc(injuryLabel(i))}${injurySideText(i) ? ` (${esc(injurySideText(i))})` : ''}</p>${pickGroup(`painA|${i.id}`, ex && ex.pains ? ex.pains[i.id] ?? null : null, 0, 10, num(i.painLimit))}`).join('')}
+      ${act.map(i => `<p class="label mt-12">Pijn achteraf · ${esc(injuryLabel(i))}${injurySideText(i) ? ` (${esc(injurySideText(i))})` : ''}</p>${pickGroup(`painA|${i.id}`, ex && ex.pains ? ex.pains[i.id] ?? null : null, 0, 10, num(i.painLimit))}`).join('')}
       <details class="more"><summary>Meer opties <span class="label">${esc(cap(surface))} · ${esc(shoes)}</span></summary>
         <p class="label">Ondergrond</p>
         <div class="seg">${radio('surface', 'kunstgras', 'Kunstgras', surface)}${radio('surface', 'natuurgras', 'Natuurgras', surface)}</div>
         <p class="label">Schoenen</p>
         <div class="seg">${radio('shoes', 'AG', 'AG', shoes)}${radio('shoes', 'FG', 'FG', shoes)}</div>
         <p class="label">Vermoeidheid · 1 = fris, 5 = erg moe</p>${pickGroup('fatigue', ex ? ex.fatigue ?? null : null, 1, 5, null)}
-        <label class="field" style="margin-top:12px"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. stijf na de rust">${esc((ex && ex.note) || '')}</textarea></label>
+        <label class="field mt-12"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. stijf na de rust">${esc((ex && ex.note) || '')}</textarea></label>
       </details>`;
   }
 
@@ -3661,8 +3685,8 @@
       <div class="chip-pick">${['Minder sets', 'Lichter gewicht', 'Andere oefeningen', 'Korter', 'Minder diep of minder ver', 'Door pijn of stijfheid'].map(t => `<label><input type="checkbox" name="adapt" value="${t}"><span>${t}</span></label>`).join('')}</div>
       <label class="field"><span>Werkelijke duur (minuten)</span><input class="input" name="minutes" type="number" inputmode="numeric" min="0" max="300" value="${s.minutes}"></label>
       <p class="label" style="margin-top:-6px">Vooraf ingevuld met de geplande duur (±${s.minutes} min).</p>
-      <p class="label" style="margin-top:12px">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', null, 0, 10, null)}
-      <label class="field" style="margin-top:12px"><span>Notitie (optioneel)</span><textarea class="input" name="note" rows="2"></textarea></label>
+      <p class="label mt-12">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', null, 0, 10, null)}
+      <label class="field mt-12"><span>Notitie (optioneel)</span><textarea class="input" name="note" rows="2"></textarea></label>
       <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
     </form>`);
   }
@@ -3698,7 +3722,7 @@
     let primary = '';
     if (!done && k <= tk) {
       if (s) primary = `<button class="btn accent block lg" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Nu inhalen' : 'Start workout'}</button>
-        <div class="row" style="margin-top:8px"><button class="btn" data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')} Gedaan</button><button class="btn" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')} Aangepast</button></div>`;
+        <div class="row mt-8"><button class="btn" data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')} Gedaan</button><button class="btn" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')} Aangepast</button></div>`;
       else if (it.type === 'training' || it.type === 'match') primary = `<button class="btn accent block lg" data-action="${it.type === 'match' && it.fixture && played(it.fixture) ? 'open-minutes' : 'open-log'}" data-type="${it.type}" data-date="${k}">${icon('edit')} ${it.type === 'match' ? 'Minuten invullen' : 'Training loggen'}</button>`;
       else if (SIMPLE.includes(it.type)) primary = `<button class="btn accent block lg" data-action="mark-simple" data-k="${k}" data-key="${esc(key)}">${icon('check')} Gedaan</button>`;
     } else if (!done && !it.confirmed && it.type !== 'rest') {
@@ -3732,7 +3756,7 @@
       ${done ? '' : `<button type="button" class="btn block" style="margin:-4px 0 14px" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('magic')} Verplaatsen met advies</button>`}`}
       <label class="field"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. focus op techniek, kuit rustig opbouwen">${esc(it.userNote || '')}</textarea></label>
       <button class="btn primary block lg" type="submit">${icon('check')} Wijzigingen opslaan</button>
-      ${!done && it.type !== 'rest' ? `<p class="field-label" style="margin-top:20px">Overslaan met reden</p>
+      ${!done && it.type !== 'rest' ? `<p class="field-label mt-20">Overslaan met reden</p>
       <div class="chip-pick">${SKIP_REASONS.map(r => `<button type="button" class="tchip" data-action="skip-reason" data-k="${k}" data-key="${esc(key)}" data-reason="${r}">${r}</button>`).join('')}</div>
       <p class="label" style="margin:-6px 2px 0">Overslaan telt niet als gemist, ook niet in je streak.</p>` : ''}
       <details class="more"><summary>Meer opties</summary>
@@ -4347,13 +4371,13 @@
     }
     const u = Sync.user(), st = Sync.state(), last = Sync.lastSyncAt();
     if (!u) return `<p class="small warn-text">Je sessie is verlopen. Wijzigingen blijven bewaard op dit toestel.</p>
-      <button class="btn accent block" style="margin-top:12px" data-action="auth-relogin">Opnieuw inloggen</button>`;
+      <button class="btn accent block mt-12" data-action="auth-relogin">Opnieuw inloggen</button>`;
     const line = st.status === 'syncing' ? 'Bezig met synchroniseren…'
       : st.status === 'offline' ? 'Offline. Je wijzigingen worden verstuurd zodra je weer verbinding hebt.'
         : st.status === 'error' ? st.error
           : last ? `Gesynchroniseerd ${relDay(dkey(new Date(last)))} om ${fmtTime(last)}.` : 'Nog niet gesynchroniseerd.';
     return `<div class="list-row" style="padding-top:0"><div class="ico">${icon('user')}</div><div class="body"><b>${esc(u.email)}</b><span id="sync-line" class="${st.status === 'error' ? 'warn-text' : ''}">${esc(line)}${st.pending ? ` ${st.pending} wijziging${st.pending === 1 ? '' : 'en'} wacht${st.pending === 1 ? '' : 'en'}.` : ''}</span></div></div>
-      <div class="row" style="margin-top:12px"><button class="btn" data-action="sync-now" ${st.status === 'syncing' ? 'disabled' : ''}>${icon('sync')} Synchroniseren</button><button class="btn" data-action="sign-out">Uitloggen</button></div>`;
+      <div class="row mt-12"><button class="btn" data-action="sync-now" ${st.status === 'syncing' ? 'disabled' : ''}>${icon('sync')} Synchroniseren</button><button class="btn" data-action="sign-out">Uitloggen</button></div>`;
   }
 
   /* ================= Migraties ================= */
