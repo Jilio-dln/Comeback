@@ -266,7 +266,6 @@ a { color: inherit; }
 .small { font-size: var(--fs-small); }
 .row { display: flex; gap: 8px; align-items: center; }
 .row > .btn { flex: 1; }
-.stack > * + * { margin-top: 8px; }
 .section { font-size: var(--fs-label); font-weight: 600; color: var(--muted); letter-spacing: var(--caps-track); text-transform: uppercase; margin: 28px 2px 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .divider { height: 1px; background: var(--line); margin: 14px 0; }
 .empty { color: var(--muted); font-size: var(--fs-small); padding: 8px 0; }
@@ -357,28 +356,12 @@ a { color: inherit; }
 .day-dots { display: flex; gap: 4px; height: 5px; }
 .day-dots i { width: 5px; height: 5px; border-radius: 50%; }
 
-/* ---------- Hoofdkaart (oud, nog gebruikt in enkele schermen) ---------- */
-.hero { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-card); padding: 20px; margin-bottom: var(--gap); }
-.hero .label { color: inherit; opacity: .8; }
-.hero h2 { font-size: var(--fs-display); font-weight: 600; letter-spacing: -.02em; line-height: 1.15; margin: 6px 0 4px; }
-.hero p { font-size: var(--fs-small); opacity: .85; }
-.hero-stats { display: flex; gap: 24px; margin: 18px 0 18px; flex-wrap: wrap; }
-.hero-stats .num { font-size: var(--fs-display); }
-.hero-stats .num .unit { color: inherit; opacity: .75; }
-.hero .btn.line { box-shadow: inset 0 0 0 1px currentColor; color: inherit; }
-.hero-also { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 8px; }
-.hero-also button { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 8px 0; font-size: var(--fs-small); font-weight: 500; }
-.hero-also .ic { width: var(--ic-btn); height: var(--ic-btn); }
-.hero-quick { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; margin-top: 8px; }
 .hero-quick button {
   border: 0; border-radius: var(--r-field); min-height: 46px; padding: 0 8px;
   background: var(--surface-2); color: inherit;
   display: flex; align-items: center; justify-content: center; gap: 8px;
   font-weight: 600; font-size: var(--fs-small); white-space: nowrap;
 }
-.hero-quick button:active { transform: scale(.97); }
-.hero-quick .ic { width: var(--ic-btn); height: var(--ic-btn); }
-.hero-icon { width: 40px; height: 40px; border-radius: var(--r-field); display: grid; place-items: center; background: var(--surface-2); }
 
 /* ---------- Herstel- en weekkaart ---------- */
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
@@ -585,8 +568,6 @@ input[type=date].input, input[type=time].input { min-width: 0; width: 100%; padd
 .score-pad button { min-height: 46px; border: 1px solid var(--border); border-radius: var(--r-field); background: var(--card-2); font-size: var(--fs-body); font-weight: 500; padding: 0; font-variant-numeric: tabular-nums; }
 .score-pad button.on { background: var(--select); color: var(--select-ink); border-color: transparent; box-shadow: inset 0 0 0 1.5px var(--accent); }
 .score-pad button.on.hi { background: var(--warning); color: var(--on-warning); box-shadow: none; }
-.score-row { margin-bottom: 16px; }
-.score-row .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 
 .opt { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: var(--r-field); border: 1px solid var(--border); background: var(--card-fill); margin-bottom: 8px; cursor: pointer; position: relative; }
 .opt input { position: absolute; opacity: 0; pointer-events: none; }
@@ -818,13 +799,6 @@ input[type=date].input, input[type=time].input { min-width: 0; width: 100%; padd
 .resume { border-color: var(--border-strong); }
 
 /* Dagelijkse check */
-.inj-row { padding: 12px 0; border-top: 1px solid var(--line); }
-.inj-row:first-of-type { border-top: 0; padding-top: 0; }
-.inj-title b { font-size: var(--fs-body); font-weight: 600; }
-.inj-title span { display: block; font-size: var(--fs-small); color: var(--muted); }
-.inj-vals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-.inj-vals div { background: var(--card-2); border-radius: var(--r-field); padding: 8px 12px; }
-.inj-vals b { display: block; font-size: var(--fs-title); font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .check-block { background: var(--card-fill); border: 1px solid var(--border); border-radius: var(--r-field); padding: 16px; margin-bottom: 10px; }
 .check-block h4 { margin: 0 0 10px; font-size: var(--fs-body); font-weight: 600; }
 .check-block h4 span { font-size: var(--fs-small); font-weight: 500; color: var(--muted); margin-left: 6px; }
@@ -868,10 +842,6 @@ details.fold[open] { padding-bottom: 12px; }
 button.list-row { border: 0; background: transparent; width: 100%; text-align: left; font: inherit; color: inherit; border-top: 1px solid var(--line); cursor: pointer; }
 button.list-row:first-child { border-top: 0; }
 .list-row .end .tag { margin-right: 2px; }
-.none-row { display: flex; gap: 12px; align-items: flex-start; padding: 4px 0 12px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
-.none-row .ic { color: var(--accent-text); }
-.none-row b { display: block; font-weight: 600; }
-.none-row span { font-size: var(--fs-small); color: var(--muted); }
 .add-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
 .add-row input[type=date] { grid-column: 1 / -1; }
 .add-row .btn { padding: 0 16px; }
@@ -881,7 +851,6 @@ button.list-row:first-child { border-top: 0; }
 .status-grid div { background: transparent; border-radius: 0; padding: 12px 2px 2px; text-align: center; }
 .status-grid b { display: block; font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; }
 .status-grid span { font-size: var(--fs-label); color: var(--muted); }
-.week-split.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 /* Workout bewerken */
 .wedit-ex { padding: 12px 0; border-top: 1px solid var(--line); }
@@ -934,12 +903,6 @@ button.list-row:first-child { border-top: 0; }
 .wk-nav .link-btn { justify-self: end; }
 .wk-nav-gap { width: 0; }
 .wk-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; padding: 8px; margin-bottom: 14px; }
-.wk-chip { border: 0; background: transparent; border-radius: var(--r-field); min-height: 60px; padding: 8px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--ink); }
-.wk-chip small { font-size: var(--fs-label); font-weight: 600; letter-spacing: .08em; color: var(--muted); }
-.wk-chip b { font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
-.wk-chip.today { background: var(--accent-strong); color: var(--on-accent); }
-.wk-chip.today small { color: inherit; opacity: .75; }
-.wk-chip.today .dot { --dc: var(--accent-ink) !important; }
 .wk-confirm { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 12px 12px 16px; border-radius: var(--r-field); border: 1px dashed var(--border-strong); margin-bottom: 12px; font-size: var(--fs-small); font-weight: 500; }
 .wk-help { font-size: var(--fs-small); color: var(--muted); margin: 16px 2px 6px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .wk-help .ic { width: var(--ic-inline); height: var(--ic-inline); }
@@ -963,16 +926,7 @@ button.list-row:first-child { border-top: 0; }
 .pc-meta { font-size: var(--fs-label); color: var(--muted); white-space: pre-wrap; }
 .pc-grip { flex: none; width: 44px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; touch-action: none; cursor: grab; }
 .pc-grip .ic { width: var(--ic-list); height: var(--ic-list); }
-.pc-done { flex: none; width: 44px; display: grid; place-items: center; color: var(--success-text); }
 /* Vinkje-schakelaar: rondje = nog te doen, gevuld (success) = afgerond */
-.pc-check { flex: none; width: 48px; border: 0; background: transparent; display: grid; place-items: center; color: transparent; padding: 0; }
-.pc-check::before { content: ""; grid-area: 1 / 1; width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 0 0 1.75px var(--border-strong); transition: background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
-.pc-check .ic { grid-area: 1 / 1; width: var(--ic-btn); height: var(--ic-btn); stroke-width: var(--ic-stroke); position: relative; }
-.pc-check:hover::before { box-shadow: inset 0 0 0 1.75px var(--accent); }
-.pc-check.on::before { background: var(--success); box-shadow: none; }
-.pc-check.on { color: var(--on-success); }
-.pc-check:active::before { transform: scale(.9); }
-.pc-done .ic { width: var(--ic-btn); height: var(--ic-btn); stroke-width: var(--ic-stroke); }
 /* Voorgesteld = stippellijn, bevestigd = volle rand, uitgevoerd = gedempt met vinkje */
 .pcard.st-suggested { border-style: dashed; border-color: var(--border-strong); background: transparent; box-shadow: none; }
 .pcard.st-confirmed { border-color: var(--border-strong); }
@@ -988,11 +942,6 @@ button.list-row:first-child { border-top: 0; }
 .pc-ghost { position: fixed; z-index: 90; pointer-events: none; box-shadow: var(--shadow-lg); border-color: var(--accent) !important; background: var(--card) !important; opacity: .96; }
 .pcard.dragging { opacity: .35; }
 body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
-.wk-legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 2px 0; font-size: var(--fs-label); color: var(--muted); }
-.wk-legend span { display: inline-flex; align-items: center; gap: 8px; }
-.wk-legend span::before { content: ""; width: 18px; height: 12px; border-radius: var(--r-chip); border: 1px solid var(--border-strong); }
-.wk-legend .lg-sug::before { border-style: dashed; }
-.wk-legend .lg-done::before { background: var(--card-3); border-color: transparent; }
 
 /* ---------- Sessie aanpassen / toevoegen ---------- */
 .status-seg { margin-bottom: 14px; }
@@ -1034,14 +983,6 @@ button.tile.tap { min-height: 112px; }
 .badge span { font-size: var(--fs-label); }
 .badge.on { border-color: transparent; background: var(--surface-3); color: var(--text); }
 .badge.on span { color: var(--muted); }
-.streak-hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; }
-.streak-num { font-size: var(--fs-display-xl); font-weight: 500; letter-spacing: -.05em; line-height: 1; font-variant-numeric: tabular-nums; margin: 6px 0 6px; }
-.streak-num span { font-size: var(--fs-title); font-weight: 400; letter-spacing: 0; color: var(--muted); margin-left: 6px; }
-.ring { position: relative; width: 118px; height: 118px; flex: none; }
-.ring svg { width: 100%; height: 100%; }
-.ring > div { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.ring b { font-size: var(--fs-display); font-weight: 500; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
-.ring span { font-size: var(--fs-label); letter-spacing: var(--caps-track); text-transform: uppercase; color: var(--muted); }
 .ex-prev { display: flex; gap: 8px; align-items: flex-start; font-size: var(--fs-small); margin-top: 10px; padding: 12px 12px; border-radius: var(--r-field); background: var(--card-2); color: var(--ink-2); }
 .ex-prev .ic { width: var(--ic-btn); height: var(--ic-btn); margin-top: 1px; color: var(--accent-text); flex: none; }
 .ex-prev.muted { color: var(--muted); }
@@ -1064,9 +1005,6 @@ button.tile.tap { min-height: 112px; }
 /* ---------- Mijn workouts ---------- */
 .list-row button.body { border: 0; background: transparent; text-align: left; padding: 0; color: inherit; font: inherit; cursor: pointer; min-height: 44px; }
 .list-row .body > span.accent-text { color: var(--accent-text); font-weight: 600; }
-.empty-state.compact { padding: 24px 20px 20px; }
-.empty-state.compact h2 { font-size: var(--fs-title); }
-.empty-state.compact p { max-width: none; }
 
 /* ---------- Blessures ---------- */
 .inj-hero { padding: 0; overflow: hidden; }
@@ -1081,11 +1019,6 @@ button.inj-plan { display: flex; flex-direction: column; gap: 4px; width: 100%; 
 .quote-card { position: relative; padding-left: 24px; }
 .quote-card::before { content: ""; position: absolute; left: 0; top: 18px; bottom: 18px; width: 2px; background: var(--accent); border-radius: var(--r-hair); }
 .quote-text { font-size: var(--fs-body); font-weight: 500; line-height: 1.4; margin: 6px 0 8px; letter-spacing: -.005em; }
-.empty-state { text-align: center; padding: 32px 20px 20px; }
-.empty-state .es-ico { width: 72px; height: 72px; margin: 0 auto 16px; border-radius: var(--r-card); display: grid; place-items: center; background: var(--card-2); color: var(--accent-text); border: 1px solid var(--border); }
-.empty-state .es-ico .ic { width: var(--ic-nav); height: var(--ic-nav); }
-.empty-state h2 { font-size: var(--fs-title); font-weight: 600; letter-spacing: -.02em; }
-.empty-state p { font-size: var(--fs-small); color: var(--muted); margin: 8px auto 18px; max-width: 280px; }
 .wd-pick { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-bottom: 8px; }
 .wd-pick .tchip { padding: 0; }
 
@@ -1252,6 +1185,9 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 .tab.active .box { background: var(--surface-3); }
 
 /* ================= Premium afwerking ================= */
+.next-match-title { font-size: var(--fs-title); margin-top: 4px; }
+/* Maandkalender: iets breder dan de kaartpadding, zodat elk dagvak 44px haalt */
+.cal-grid { margin: 0 -12px; gap: 4px 2px; }
 /* Cijfers die naast elkaar staan lijnen altijd uit */
 body { font-variant-numeric: tabular-nums; }
 

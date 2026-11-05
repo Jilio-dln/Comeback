@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.0.0-dev';
+  const APP_VERSION = '5.1.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -674,8 +674,8 @@
     const best = days.find(o => o.best);
     openSheet(`<div class="sheet-head"><div><h3>${esc(m.title)} verplaatsen</h3><p>Nu gepland op ${fmtDay(k)}.</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       ${best ? `<button class="btn accent block lg" data-action="move-to" data-from="${k}" data-key="${esc(key)}" data-to="${best.k}">${icon('magic')} Beste dag: ${fmtDay(best.k)}</button>
-      <p class="label" style="margin:8px 2px 16px">Zware sessies komen nooit op een matchdag of de dag ervoor, en de app vermijdt dagen waarop al een sessie staat.</p>` : ''}
-      <p class="label" style="margin:0 2px 8px">Of kies zelf</p>
+      <p class="label" style="margin:8px 0 16px">Zware sessies komen nooit op een matchdag of de dag ervoor, en de app vermijdt dagen waarop al een sessie staat.</p>` : ''}
+      <p class="label" style="margin:0 0 8px">Of kies zelf</p>
       <div class="day-pick">${days.map(o => `<button class="${o.best ? 'best' : ''}" data-action="move-to" data-from="${k}" data-key="${esc(key)}" data-to="${o.k}">
         <b>${cap(DAY_S[o.d.getDay()])} ${o.d.getDate()} ${MON[o.d.getMonth()]}</b>
         <span>${esc(o.label)}</span>
@@ -1210,7 +1210,7 @@
     const ordered = rel ? [rel, ...items.filter(it => it !== rel)] : items;
     let html = ordered.map(it => actCard(it, k, it === rel)).join('');
     const skipped = off.filter(o => isSkip(o.reason));
-    if (skipped.length) html += `<p class="label" style="margin:4px 2px 10px">Overgeslagen: ${skipped.map(o => esc(itemMeta(o.item).title)).join(', ')} · <button class="link-btn" style="padding:0" data-action="cal-open" data-k="${k}">bekijk</button></p>`;
+    if (skipped.length) html += `<p class="label" style="margin:4px 0 8px">Overgeslagen: ${skipped.map(o => esc(itemMeta(o.item).title)).join(', ')} · <button class="link-btn" style="padding:0" data-action="cal-open" data-k="${k}">bekijk</button></p>`;
     return html || `<section class="act"><p class="empty">Niets gepland.</p></section>`;
   }
 
@@ -1433,18 +1433,7 @@
         <p class="label mt-8">Rustdagen en bewust overgeslagen sessies breken je streak niet.</p>
       </section>`;
   }
-  function streakHero() {
-    const s = streakInfo(), w = weekProgress();
-    const pct = w.total ? w.done / w.total : 0;
-    const R = 46, Cc = 2 * Math.PI * R;
-    return `<section class="streak-hero">
-      <div><span class="label">Jouw streak</span><div class="streak-num">${s.days}<span>${s.days === 1 ? 'dag' : 'dagen'}</span></div>
-        <p class="small muted">${s.days ? 'Dagen volgens plan, rust inbegrepen.' : 'Begint bij je eerste sessie.'}</p></div>
-      <div class="ring" role="img" aria-label="Deze week ${w.done} van ${w.total} uitgevoerd">
-        <svg viewBox="0 0 110 110"><circle class="c-track" cx="55" cy="55" r="${R}" fill="none" stroke-width="8"/><circle class="c-prog" cx="55" cy="55" r="${R}" fill="none" stroke-width="8" stroke-linecap="round" stroke-dasharray="${Cc.toFixed(1)}" stroke-dashoffset="${(Cc * (1 - pct)).toFixed(1)}" transform="rotate(-90 55 55)"/></svg>
-        <div><b>${w.done} / ${w.total}</b><span>deze week</span></div></div>
-    </section>`;
-  }
+
 
   function weekCard() {
     const c = weekStats();
@@ -1486,7 +1475,7 @@
       return `<section class="card list-row tap" style="padding:16px" data-action="cal-open" data-k="${f.date}">
         <div class="ico">${icon('ball')}</div>
         <div class="body"><span class="label">Volgende match · ${days === 0 ? 'vandaag' : days === 1 ? 'morgen' : `over ${days} dagen`}</span>
-          <b style="font-size:17px;margin-top:2px">${esc(f.opponent)}</b>
+          <b class="next-match-title">${esc(f.opponent)}</b>
           <span>${f.home ? 'Thuis' : 'Uit'} · ${fmtDay(f.date)}${f.time ? ' · ' + esc(f.time) : ''}</span></div>
         <div class="end">${icon('chevR')}</div>
       </section>`;
@@ -1496,7 +1485,7 @@
     return `<section class="card list-row" style="padding:16px">
       <div class="ico">${icon('ball')}</div>
       <div class="body"><span class="label">Volgende match</span>
-        <b style="margin-top:2px">${next ? cap(fmtDay(next)) : 'Geen match gepland'}</b>
+        <b style="margin-top:0">${next ? cap(fmtDay(next)) : 'Geen match gepland'}</b>
         <span>Tegenstander en uur zie je na het importeren van de RBFA-kalender.</span></div>
       <div class="end"><button class="btn sm" data-action="open-rbfa">Importeer</button></div>
     </section>`;
@@ -1533,7 +1522,7 @@
       ${blocks || fatigue}
       ${list.length ? `<details class="more"><summary>Meer opties</summary>${fatigue}
         <label class="field mt-12"><span>Notitie</span><textarea class="input" id="check-note" rows="2">${esc(c.note || '')}</textarea></label></details>` : ''}
-      <p class="label" style="margin:10px 2px 0">Wat je leeg laat, wordt niet als 0 bewaard.</p>
+      <p class="label" style="margin:8px 0 0">Wat je leeg laat, wordt niet als 0 bewaard.</p>
       <button class="btn accent block lg" data-action="save-check" data-date="${date}">${icon('check')} Opslaan</button>`);
   }
 
@@ -1960,7 +1949,7 @@
     const row = id => `<div class="list-row"><div class="ico">${icon(C.sessions[id].icon)}</div>
         <div class="body" style="cursor:pointer" data-action="add-session" data-k="${k}" data-id="${id}"${rep}><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span></div>
         <div class="end">${!replaceKey && C.sessions[id].custom ? `<button class="icon-btn ghost" data-action="edit-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} aanpassen">${icon('edit')}</button><button class="icon-btn ghost" data-action="delete-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} verwijderen">${icon('trash')}</button>` : ''}
-          <button class="icon-btn" style="width:40px;height:40px" data-action="add-session" data-k="${k}" data-id="${id}"${rep} aria-label="${esc(sessionTitle(id))} ${replaceKey ? 'kiezen' : 'toevoegen'}">${icon(replaceKey ? 'check' : 'plus')}</button></div></div>`;
+          <button class="icon-btn" data-action="add-session" data-k="${k}" data-id="${id}"${rep} aria-label="${esc(sessionTitle(id))} ${replaceKey ? 'kiezen' : 'toevoegen'}">${icon(replaceKey ? 'check' : 'plus')}</button></div></div>`;
     const types = QUICK_TYPES.filter(([t]) => !(replaceKey && cur && cur.type === t)).map(([t, l, ic, sub]) =>
       `<button class="type-tile" data-action="add-type" data-k="${k}" data-type="${t}"${rep}>${icon(ic)}<b>${l}</b><span>${sub}</span></button>`).join('');
     openSheet(`<div class="sheet-head"><div><h3>${replaceKey ? 'Vervangen door' : 'Toevoegen'}</h3><p>${replaceKey && cur ? `${esc(itemMeta(cur).title)} · ` : ''}${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
@@ -2055,7 +2044,7 @@
         <button type="button" class="b-choice" data-action="b-open-pick" data-tab="spiergroep">${icon('list')}<b>Zelf samenstellen</b><span>Per spiergroep oefeningen kiezen</span></button>
       </div>`}
       ${rows}
-      ${b.items.length ? `<div class="row" style="margin:4px 0 6px">
+      ${b.items.length ? `<div class="row" style="margin:4px 0 8px">
         <button type="button" class="btn" data-action="b-open-pick" data-tab="spiergroep">${icon('plus')} Oefening</button>
         <button type="button" class="btn" data-action="b-open-pick" data-tab="voorgesteld">${icon('magic')} Voorgesteld</button>
       </div>` : ''}
@@ -2090,7 +2079,7 @@
         <div style="flex:1;min-width:0"><h3>${tab === 'voorgesteld' ? 'Voorgestelde workouts' : b.group ? esc(groupName(b.group)) : 'Oefeningen'}</h3><p>${b.items.length} oefening${b.items.length === 1 ? '' : 'en'} gekozen</p></div>
         <button class="btn primary sm" data-action="b-back">Klaar</button></div>
       <div class="seg">${[['spiergroep', 'Spiergroepen'], ['voorgesteld', 'Voorgesteld']].map(([v, l]) => `<button class="${tab === v ? 'on' : ''}" data-action="b-tab" data-v="${v}">${l}</button>`).join('')}</div>
-      <div class="chips" style="margin:-4px 0 14px">${[['alles', 'Alles'], ['thuis', 'Thuis'], ['gym', 'Gym']].map(([v, l]) => `<button class="loc-chip ${loc === v ? 'on' : ''}" data-action="b-loc" data-v="${v}">${l}</button>`).join('')}</div>`;
+      <div class="chips" style="margin:-4px 0 16px">${[['alles', 'Alles'], ['thuis', 'Thuis'], ['gym', 'Gym']].map(([v, l]) => `<button class="loc-chip ${loc === v ? 'on' : ''}" data-action="b-loc" data-v="${v}">${l}</button>`).join('')}</div>`;
 
     if (tab === 'voorgesteld') {
       const list = LIB.templates.filter(t => fitsLoc(t.where, loc));
@@ -2106,8 +2095,8 @@
       const ids = groupExercises(b.group, loc);
       const g = LIB.categories.flatMap(c => c.groups).find(x => x.id === b.group);
       return head + `<button class="link-btn" style="margin:-4px 0 8px" data-action="b-group" data-id="">${icon('chevL')} Alle spiergroepen</button>
-        ${g && g.hint ? `<p class="label" style="margin:0 2px 10px">${esc(g.hint)}</p>` : ''}
-        <section class="card" style="padding:4px 14px">${ids.map(id => {
+        ${g && g.hint ? `<p class="label" style="margin:0 0 8px">${esc(g.hint)}</p>` : ''}
+        <section class="card" style="padding:4px 16px">${ids.map(id => {
           const ex = C.exercises[id], on = b.items.some(i => i.ex === id);
           return `<div class="list-row">
             <div class="body"><b>${esc(ex.name)}</b><span>${esc(prescription({ sets: 3 }, ex).replace(/^3 × /, ''))}${ex.where ? ' · ' + whereLabel(ex.where) : ''}</span>
@@ -2234,7 +2223,7 @@
     openSheet(`<div class="sheet-head"><div><span class="eyebrow">${fresh ? 'Nieuwe workout' : 'Inplannen'}</span><h3>${esc(sessionTitle(id))}</h3><p>${esc(sessionDesc(id))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <p class="field-label">Elke week op</p>
       <div class="wd-pick">${WD_ORDER.map(d => `<button type="button" class="tchip ${S.ui.planDays.includes(d) ? 'on' : ''}" data-action="plan-wd" data-d="${d}" aria-pressed="${S.ui.planDays.includes(d)}" aria-label="${DAY[d]}">${cap(DAY_S[d])}</button>`).join('')}</div>
-      <p class="label" style="margin:2px 2px 14px">Staat vanaf vandaag in je planning. Per dag kun je hem nog verplaatsen, vervangen of overslaan.</p>
+      <p class="label" style="margin:0 0 16px">Staat vanaf vandaag in je planning. Per dag kun je hem nog verplaatsen, vervangen of overslaan.</p>
       <p class="field-label">Of op losse dagen</p>
       <div class="add-row two"><input class="input" type="date" id="plan-once" min="${tk}" value="${tk}" aria-label="Datum"><button class="btn" data-action="plan-once-add">${icon('plus')}<span class="sr">Datum toevoegen</span></button></div>
       <div class="chips mt-8" id="plan-once-list">${S.ui.planOnce.map(d => `<button class="loc-chip on" data-action="plan-once-del" data-d="${d}" aria-label="${fmtDay(d)} weghalen">${esc(cap(fmtDay(d)))} ${icon('x')}</button>`).join('')}</div>
@@ -2903,7 +2892,7 @@
     const tab = S.ui.statsTab || 'overzicht';
     const body = { overzicht: statsOverview, herstel: statsRecovery, kracht: statsStrength, matchen: statsMatches }[tab]();
     main.innerHTML = `
-      <header class="page-head"><div><span class="eyebrow">Het grotere plaatje</span><h1>Jouw vooruitgang.</h1><p>Kleine stappen. Zichtbaar resultaat.</p></div></header>
+      <header class="page-head"><div><span class="eyebrow">Het grotere plaatje</span><h1>Jouw vooruitgang.</h1><p>Kleine stappen. Zichtbaar resultaat.</p></div>${iconBtn('back', 'go', 'Terug naar Training', 'data-to="workout"')}</header>
       <div class="seg" role="tablist">${STATS_TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" role="tab" aria-selected="${k === tab}" data-action="stats-tab" data-t="${k}">${l}</button>`).join('')}</div>
       ${body}`;
   }
@@ -2975,7 +2964,7 @@
     });
     const loadBars = Charts.bars(load.map((l, i) => ({ label: i % Math.ceil(range / 6) === 0 ? labels[i] : '', value: l.min })), { selected: -1, action: null, height: 120 });
     const rpeLine = load.some(l => l.rpe != null) ? Charts.line({ labels, series: [{ color: 'var(--ink)', values: load.map(l => l.rpe) }], step: false, height: 120, ticks: [0, 5, 10] }) : '';
-    const rangeSeg = `<div class="seg" style="margin:0;padding:2px">${[14, 30, 90].map(r => `<button class="${r === range ? 'on' : ''}" style="padding:6px 10px" data-action="line-range" data-r="${r}">${r} d</button>`).join('')}</div>`;
+    const rangeSeg = `<div class="seg" style="margin:0;padding:0">${[14, 30, 90].map(r => `<button class="${r === range ? 'on' : ''}" style="padding:8px 8px" data-action="line-range" data-r="${r}">${r} d</button>`).join('')}</div>`;
     const loadCard = `<section class="card">
         <div class="card-head"><h2>Belasting</h2>${rangeSeg}</div>
         <p class="label">Minuten training per dag</p>${loadBars}
@@ -3110,7 +3099,7 @@
     }
     if (store === 'activities') {
       openSheet(`<div class="sheet-head"><div><h3>${esc(actTitle(rec))}</h3><p>${cap(fmtDay(rec.date))} · ${esc(st.label)}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-        <div class="num" style="margin-bottom:14px">${rec.minutes}<span class="unit">min${rec.plannedMinutes && rec.plannedMinutes !== rec.minutes ? ` van ${rec.plannedMinutes} gepland` : ''}</span></div>
+        <div class="num" style="margin-bottom:16px">${rec.minutes}<span class="unit">min${rec.plannedMinutes && rec.plannedMinutes !== rec.minutes ? ` van ${rec.plannedMinutes} gepland` : ''}</span></div>
         <div class="chips">${rec.score ? `<span class="chip">${esc(rec.score)}</span>` : ''}${rec.role ? `<span class="chip">${esc(rec.role)}</span>` : ''}${rec.rpe != null ? `<span class="chip">Zwaarte ${rec.rpe}/10</span>` : ''}${rec.fatigue != null ? `<span class="chip">Vermoeidheid ${rec.fatigue}/5</span>` : ''}<span class="chip">${esc(rec.surface || '')}</span><span class="chip">${esc(rec.shoes || '')}</span><span class="chip">Pijn achteraf: ${esc(painText(rec))}</span>${rec.source === 'rbfa' ? '<span class="chip">via RBFA</span>' : ''}</div>
         ${rec.note ? `<p class="small mt-12">${esc(rec.note)}</p>` : ''}
         <button class="btn primary block lg mt-16" data-action="edit-entry" data-store="activities" data-id="${rec.id}">${icon('edit')} Bewerken</button>
@@ -3375,7 +3364,7 @@
     openSheet(`<div class="sheet-head"><div><span class="eyebrow">Herstelplan · ${esc(injuryLabel(inj))}</span><h3>${esc(sessionTitle(id))}</h3><p>${esc(sessionDesc(id))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <p class="field-label">Elke week op</p>
       <div class="wd-pick" id="wd-pick">${WD_ORDER.map(d => `<button type="button" class="tchip ${S.ui.rehabDays.includes(d) ? 'on' : ''}" data-action="wd-toggle" data-d="${d}" aria-pressed="${S.ui.rehabDays.includes(d)}" aria-label="${DAY[d]}">${cap(DAY_S[d])}</button>`).join('')}</div>
-      <p class="label" style="margin:2px 2px 12px">Verschijnt als voorstel in je planning zolang de blessure loopt, vanaf vandaag. Verplaatsen of overslaan kan per dag.</p>
+      <p class="label" style="margin:0 0 12px">Verschijnt als voorstel in je planning zolang de blessure loopt, vanaf vandaag. Verplaatsen of overslaan kan per dag.</p>
       <label class="check ${keep ? 'on' : ''}"><input type="checkbox" id="rehab-keep" ${keep ? 'checked' : ''}><span class="box">${icon('check')}</span><span class="t">Als onderhoud houden na herstel<small>Blijft ingepland als je de blessure afrondt</small></span></label>
       <button class="btn accent block lg" data-action="rehab-save" data-id="${id}">${icon('check')} Bewaren</button>
       <p class="field-label mt-20">Of één keer</p>
@@ -3434,7 +3423,7 @@
           <span class="label">Pijn vandaag</span>
           <div class="inj-pain-num"><b class="${painNow != null && lim != null && painNow > lim ? 'over' : ''}">${painNow == null ? '–' : painNow}</b><span class="unit">/10</span>${lim != null ? `<span class="inj-lim">grens ${lim}</span>` : ''}</div>
         </div>
-        <p class="label" style="margin-top:14px;margin-bottom:4px">Pijn, laatste 7 dagen</p>
+        <p class="label" style="margin-top:16px;margin-bottom:4px">Pijn, laatste 7 dagen</p>
         ${has ? Charts.line({ labels: series.map(x => x.label), series: [{ color: 'var(--accent)', values: series.map(x => x.v) }], step: false, height: 96, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim }) : '<p class="empty">Nog geen pijnscores.</p>'}
         <button class="btn ${primary ? 'accent' : ''} block lg inj-cta" data-action="open-check">${painNow == null ? 'Pijn invullen' : 'Pijn aanpassen'}</button>
       </section>
@@ -3512,7 +3501,7 @@
           <input type="radio" name="phase" value="${f.id}" data-change="phase" ${f.id === currentPhase() ? 'checked' : ''}>
           <div class="body"><b>${esc(f.label)} · ${esc(f.title)}</b><span>Oorspronkelijke evaluatiedatum: ${fmtFull(f.start)}</span><p>${esc(f.summary)}</p></div>
           <span class="mark"></span></label>`).join('')}
-        <p class="label" style="margin:6px 2px 0">Je wisselt zelf van fase, na overleg. Een datum is een evaluatiemoment, geen toestemming om zwaarder te trainen.</p>
+        <p class="label" style="margin:8px 0 0">Je wisselt zelf van fase, na overleg. Een datum is een evaluatiemoment, geen toestemming om zwaarder te trainen.</p>
         ${currentPhase() === 'f3' ? `<label class="field mt-12"><span>Stap voor veerkracht & sprint</span>
           <select class="select" data-change="plyo-step">
             <option value="auto" ${!S.settings.plyoStep || S.settings.plyoStep === 'auto' ? 'selected' : ''}>Elke week één stap (nu stap ${plyoStep()})</option>
@@ -3543,10 +3532,10 @@
         : rehabPlanHtml(inj)}
       </section>
 
-      <div style="margin-top:18px">
+      <div style="margin-top:16px">
         ${done ? `<button class="btn block" data-action="inj-reopen" data-id="${inj.id}">${icon('undo')} Traject heropenen</button>`
           : `<button class="btn primary block lg" data-action="inj-finish" data-id="${inj.id}">${icon('check')} Traject afronden</button>
-             <p class="label" style="margin:8px 2px 0">Je metingen en afspraken blijven bewaard. De dagelijkse blessurevragen en de herstelkaart verdwijnen van Home.</p>`}
+             <p class="label" style="margin:8px 0 0">Je metingen en afspraken blijven bewaard. De dagelijkse blessurevragen en de herstelkaart verdwijnen van Home.</p>`}
       </div>
     `;
   }
@@ -3580,7 +3569,7 @@
     </div>`;
     main.innerHTML = `
       ${subHead('Matchen', 'account', `${fx.length} matchen`)}
-      <p class="label" style="margin:0 2px 12px">Tik op een match om datum, uur, tegenstander, thuis of uit en de uitslag aan te passen. Wat je aanpast, blijft staan bij een nieuwe RBFA-import.</p>
+      <p class="label" style="margin:0 0 12px">Tik op een match om datum, uur, tegenstander, thuis of uit en de uitslag aan te passen. Wat je aanpast, blijft staan bij een nieuwe RBFA-import.</p>
       <div class="section"><span>Komend</span><span>${upcoming.length}</span></div>
       <section class="card">${upcoming.map(row).join('') || '<p class="empty">Geen komende matchen.</p>'}</section>
       <div class="section"><span>Gespeeld</span><span>${past.length}</span></div>
@@ -3936,7 +3925,7 @@
         <label class="field"><span>Minuten meegedaan</span><input class="input" type="number" inputmode="numeric" id="lg-min" name="minutes" min="0" max="240" value="${minutes}" required></label>
       </div>
       <input type="hidden" name="planned" value="${planned || ''}">
-      ${planned ? `<p class="label" id="lg-planned" style="margin:-4px 2px 12px">Vooraf ingevuld met de geplande duur (${planned} min). Pas aan naar wat je echt deed.</p>` : ''}
+      ${planned ? `<p class="label" id="lg-planned" style="margin:-4px 0 12px">Vooraf ingevuld met de geplande duur (${planned} min). Pas aan naar wat je echt deed.</p>` : ''}
       ${logFields(ex, preset)}
       <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
     </form>`);
@@ -3977,7 +3966,7 @@
       <p class="label">Wat deed je anders?</p>
       <div class="chip-pick">${['Minder sets', 'Lichter gewicht', 'Andere oefeningen', 'Korter', 'Minder diep of minder ver', 'Door pijn of stijfheid'].map(t => `<label><input type="checkbox" name="adapt" value="${t}"><span>${t}</span></label>`).join('')}</div>
       <label class="field"><span>Werkelijke duur (minuten)</span><input class="input" name="minutes" type="number" inputmode="numeric" min="0" max="300" value="${s.minutes}"></label>
-      <p class="label" style="margin-top:-6px">Vooraf ingevuld met de geplande duur (±${s.minutes} min).</p>
+      <p class="label" style="margin-top:-8px">Vooraf ingevuld met de geplande duur (±${s.minutes} min).</p>
       <p class="label mt-12">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', null, 0, 10, null)}
       <label class="field mt-12"><span>Notitie (optioneel)</span><textarea class="input" name="note" rows="2"></textarea></label>
       <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
@@ -4028,17 +4017,17 @@
         <button type="button" role="radio" aria-checked="${!done}" class="${done ? '' : 'on'}" ${done ? `data-action="item-undone" data-k="${k}" data-key="${esc(key)}"` : ''} ${viaOther ? 'disabled' : ''}>Nog te doen</button>
         <button type="button" role="radio" aria-checked="${done}" class="${done ? 'on' : ''}" ${done ? '' : `data-action="item-done" data-k="${k}" data-key="${esc(key)}"`} ${!done && k > tk ? 'disabled' : ''}>Afgerond</button>
       </div>
-      ${viaOther ? `<p class="label" style="margin:-6px 2px 12px">Telt als ingehaald door dezelfde workout later in de week.</p>` : !done && k > tk ? `<p class="label" style="margin:-6px 2px 12px">Afronden kan vanaf de dag zelf.</p>` : ''}`;
+      ${viaOther ? `<p class="label" style="margin:-8px 0 12px">Telt als ingehaald door dezelfde workout later in de week.</p>` : !done && k > tk ? `<p class="label" style="margin:-8px 0 12px">Afronden kan vanaf de dag zelf.</p>` : ''}`;
     openSheet(`<form id="item-form" data-k="${k}" data-key="${esc(key)}">
       <div class="sheet-head"><div><span class="eyebrow">${esc(actKind(it))}  ·  ${esc(st.label)}</span><h3>${esc(it.type === 'session' ? sessionTitle(it.id) : m.title)}</h3><p>${cap(fmtDay(k))}${it.note ? ` · ${esc(it.note)}` : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       ${statusSeg}
       ${primary}
       ${rec ? `<button type="button" class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : ''}
-      ${fixed ? `<p class="label" style="margin:14px 2px 0">Deze match komt uit de RBFA-kalender. Datum en uur pas je aan via Account → Matchen beheren.</p>` : `
+      ${fixed ? `<p class="label" style="margin:16px 0 0">Deze match komt uit de RBFA-kalender. Datum en uur pas je aan via Account → Matchen beheren.</p>` : `
       <p class="field-label">Sessietype</p>
       <div class="type-chips">${TYPE_CHIPS.map(([t, l]) => `<button type="button" class="tchip ${curType === t ? 'on' : ''}" ${curType === t ? 'aria-pressed="true"' : `data-action="replace-type" data-k="${k}" data-key="${esc(key)}" data-type="${t}"`}>${l}</button>`).join('')}
         <button type="button" class="tchip ${curType === 'custom' ? 'on' : ''}" data-action="replace-type" data-k="${k}" data-key="${esc(key)}" data-type="custom">${curType === 'custom' ? esc(it.label) : 'Eigen…'}</button></div>
-      <p class="label" style="margin:-4px 2px 14px">Een ander type kiezen vervangt deze sessie alleen op deze dag.</p>`}
+      <p class="label" style="margin:-4px 0 16px">Een ander type kiezen vervangt deze sessie alleen op deze dag.</p>`}
       ${it.type === 'rest' || fixed ? '' : `
       <p class="field-label">Dag en uur</p>
       <div class="form-grid">
@@ -4046,12 +4035,12 @@
         <label class="field"><span class="sr">Uur</span><input class="input" type="time" name="time" value="${esc(/^\d{1,2}:\d{2}$/.test(startTime) ? startTime.padStart(5, '0') : '')}"></label>
       </div>
       ${it.type === 'session' ? '' : `<label class="field"><span>Duur (minuten)</span><input class="input" type="number" inputmode="numeric" min="0" max="300" name="min" value="${esc(it.min || (it.type === 'training' ? plannedMinutes(it) || '' : ''))}" placeholder="Optioneel"></label>`}
-      ${done ? '' : `<button type="button" class="btn block" style="margin:-4px 0 14px" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('magic')} Verplaatsen met advies</button>`}`}
+      ${done ? '' : `<button type="button" class="btn block" style="margin:-4px 0 16px" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('magic')} Verplaatsen met advies</button>`}`}
       <label class="field"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. focus op techniek, kuit rustig opbouwen">${esc(it.userNote || '')}</textarea></label>
-      <button class="btn primary block lg" type="submit">${icon('check')} Wijzigingen opslaan</button>
+      <button class="btn ${primary ? '' : 'primary'} block lg" type="submit">${icon('check')} Wijzigingen opslaan</button>
       ${!done && it.type !== 'rest' ? `<p class="field-label mt-20">Overslaan met reden</p>
       <div class="chip-pick">${SKIP_REASONS.map(r => `<button type="button" class="tchip" data-action="skip-reason" data-k="${k}" data-key="${esc(key)}" data-reason="${r}">${r}</button>`).join('')}</div>
-      <p class="label" style="margin:-6px 2px 0">Overslaan telt niet als gemist, ook niet in je streak.</p>` : ''}
+      <p class="label" style="margin:-8px 0 0">Overslaan telt niet als gemist, ook niet in je streak.</p>` : ''}
       <details class="more"><summary>Meer opties</summary>
         <div class="menu-list">
           ${!done && k <= tk && it.type !== 'session' && it.type !== 'rest' && !SIMPLE.includes(it.type) ? `<button type="button" class="menu-btn" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')}<span><b>Aangepast uitgevoerd</b><small>Anders gedaan dan gepland</small></span></button>` : ''}
@@ -4582,7 +4571,7 @@
           <label class="field"><span>Nieuw wachtwoord</span>
             <div class="pw-wrap"><input class="input" type="password" name="password" id="auth-pw" autocomplete="new-password" minlength="8" required aria-describedby="pw-hint">
             <button type="button" class="pw-toggle" data-action="pw-toggle" aria-label="Wachtwoord tonen" aria-pressed="false">${icon('eye')}</button></div></label>
-          <p class="label" id="pw-hint" style="margin:-6px 2px 16px">Minstens 8 tekens.</p>
+          <p class="label" id="pw-hint" style="margin:-8px 0 16px">Minstens 8 tekens.</p>
           <button class="btn accent block lg" type="submit" ${a.busy ? 'disabled' : ''}>${a.busy ? 'Bewaren…' : 'Wachtwoord bewaren'}</button>
         </form>`;
     } else {
