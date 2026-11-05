@@ -26,13 +26,13 @@
   --photo-chip-line: rgba(232, 236, 241, .26);
   --photo-fade-mask: linear-gradient(180deg, #000 0%, #000 38%, rgba(0, 0, 0, .55) 62%, transparent 94%); /* maskeralfa, geen zichtbare kleur */
 
-  /* Opstart- en laadscherm: bewust ongewijzigd (stap 1 raakt die schermen niet) */
-  --ls-bg: #090909;
-  --ls-text: #F9F9F9;
-  --ls-accent: #E85002;
-  --ls-rail: rgba(249, 249, 249, .2);
-  --ls-gradient: linear-gradient(180deg, rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .2) 40%, rgba(0, 0, 0, .9) 100%),
-                 linear-gradient(135deg, #000000 0%, #C10801 50%, #F16001 80%, #D9C3AB 100%);
+  /* Opstart- en laadscherm: blauwgrijs, in dezelfde sfeer als het app-icoon */
+  --ls-bg: #0B0E12;
+  --ls-text: #E8ECF1;
+  --ls-accent: #8FA8C8;          /* staalblauw: punt van het woordmerk en de laadbalk */
+  --ls-rail: rgba(232, 236, 241, .16);
+  --ls-gradient: linear-gradient(180deg, rgba(11, 14, 18, .35) 0%, rgba(11, 14, 18, .1) 40%, rgba(11, 14, 18, .85) 100%),
+                 linear-gradient(160deg, #1C2633 0%, #2B3B50 55%, #4A6280 100%);
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);

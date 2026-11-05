@@ -1,6 +1,6 @@
 /* Comeback: service worker voor offline gebruik.
  * Verhoog CACHE_VERSION als je bestanden toevoegt of hernoemt. */
-const CACHE_VERSION = 'comeback-v41';
+const CACHE_VERSION = 'comeback-v42';
 const FONT_CACHE = 'comeback-fonts';
 const ASSETS = [
   './',
