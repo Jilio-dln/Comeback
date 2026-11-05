@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.1.0-dev';
+  const APP_VERSION = '5.1.1-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -349,6 +349,8 @@
   // Naam van een opgeslagen workout: altijd de huidige naam uit de config (oude workouts heetten "Sessie A")
   const woTitle = w => (C.sessions[w.sessionKey] && C.sessions[w.sessionKey].name) || w.title;
   const sessionDesc = key => key === 'PLYO' ? `Stap ${plyoStep()} van 4: ${C.sessions.PLYO.steps[plyoStep() - 1].title}` : ((C.sessions[key] && (C.sessions[key].desc || C.sessions[key].subtitle)) || '');
+  // Standaardduur van een workout (schatting, gelogde snelle "Gedaan" en voorinvulling)
+  const DEFAULT_WORKOUT_MIN = 60;
   function sessionStats(key) {
     const items = sessionItems(key);
     let sets = 0, secs = 0;
@@ -358,7 +360,7 @@
       sets += n;
       secs += n * ((ex.rest || C.defaultRest) + (ex.kind === 'hold' ? ex.duration : 35));
     });
-    return { exercises: items.length, sets, minutes: Math.max(5, Math.round(secs / 60 / 5) * 5) };
+    return { exercises: items.length, sets, minutes: DEFAULT_WORKOUT_MIN };
   }
 
   function prescription(it, ex) {
@@ -3125,6 +3127,10 @@
         <label class="field"><span>Duur (min)</span><input class="input" name="minutes" type="number" inputmode="numeric" value="${woMinutes(w)}"></label>
       </div>
       <div class="seg">${radio('mode', 'volledig', 'Volledig', w.mode === 'aangepast' ? 'aangepast' : 'volledig')}${radio('mode', 'aangepast', 'Aangepast', w.mode === 'aangepast' ? 'aangepast' : 'volledig')}</div>
+      <div id="wedit-adapt" ${w.mode === 'aangepast' ? '' : 'hidden'}>
+        <p class="label">Wat deed je anders?</p>
+        <div class="chip-pick">${ADAPT_OPTS.map(t => `<label><input type="checkbox" name="adapt" value="${t}" ${(w.adaptations || []).includes(t) ? 'checked' : ''}><span>${t}</span></label>`).join('')}</div>
+      </div>
       <p class="label">Ervaren zwaarte (0–10)</p>${pickGroup('rpe', w.rpe ?? null, 0, 10, null)}
       ${(w.exercises || []).map((e, ei) => `<div class="wedit-ex"><b>${esc(e.name)}</b>${e.sets.map((s, si) => `<div class="wedit-set"><span>${s.side ? s.side : ''} ${si + 1}</span>
         ${e.kind === 'reps' ? inp(ei, si, 'reps', s.reps, 'herh.') : e.kind === 'distance' ? inp(ei, si, 'dist', s.dist, 'meter') : inp(ei, si, 'duration', s.duration, 'sec')}
@@ -3141,6 +3147,7 @@
     upd.date = d.get('date') || w.date;
     upd.durationMin = num(d.get('minutes'));
     upd.mode = d.get('mode');
+    upd.adaptations = upd.mode === 'aangepast' ? d.getAll('adapt') : [];
     upd.rpe = padValue('rpe');
     upd.note = (d.get('note') || '').trim();
     form.querySelectorAll('[data-we]').forEach(i => { const [ei, si, f] = i.dataset.we.split('|'); upd.exercises[ei].sets[si][f] = num(i.value); });
@@ -3957,6 +3964,7 @@
   }
 
   /* ---------- Aangepast uitgevoerd en meer opties ---------- */
+  const ADAPT_OPTS = ['Minder sets', 'Lichter gewicht', 'Andere oefeningen', 'Korter', 'Minder diep of minder ver', 'Door pijn of stijfheid'];
   function openAdapted(k, key) {
     const it = findItem(k, key); if (!it) return;
     if (it.type !== 'session') { openLog(it.type, k, null, { participation: 'aangepast' }); return; }
@@ -3964,7 +3972,7 @@
     openSheet(`<form id="adapted-form" data-k="${k}" data-id="${it.id}">
       <div class="sheet-head"><div><h3>Aangepast uitgevoerd</h3><p>${esc(s.name)} · ${fmtDay(k)}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <p class="label">Wat deed je anders?</p>
-      <div class="chip-pick">${['Minder sets', 'Lichter gewicht', 'Andere oefeningen', 'Korter', 'Minder diep of minder ver', 'Door pijn of stijfheid'].map(t => `<label><input type="checkbox" name="adapt" value="${t}"><span>${t}</span></label>`).join('')}</div>
+      <div class="chip-pick">${ADAPT_OPTS.map(t => `<label><input type="checkbox" name="adapt" value="${t}"><span>${t}</span></label>`).join('')}</div>
       <label class="field"><span>Werkelijke duur (minuten)</span><input class="input" name="minutes" type="number" inputmode="numeric" min="0" max="300" value="${s.minutes}"></label>
       <p class="label" style="margin-top:-8px">Vooraf ingevuld met de geplande duur (±${s.minutes} min).</p>
       <p class="label mt-12">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', null, 0, 10, null)}
@@ -4438,6 +4446,8 @@
   document.addEventListener('change', async e => {
     const el = e.target;
     const kind = el.dataset.change;
+    // Workout bewerken: bij "Aangepast" verschijnt wat je anders deed
+    if (el.form && el.form.id === 'wedit-form' && el.name === 'mode') { const a = document.getElementById('wedit-adapt'); if (a) a.hidden = el.value !== 'aangepast'; }
     if (el.form && el.form.id === 'log-form' && el.name === 'type') {
       $('#log-title').textContent = el.value === 'match' ? 'Match' : 'Training';
       const pl = plannedFor(el.value, el.form.date.value) || '';
