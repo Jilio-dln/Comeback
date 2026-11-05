@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.8.0';
+  const APP_VERSION = '5.9.0';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -969,6 +969,7 @@
       ${pageHead('Training', activeInjuries().length ? `${esc(phaseObj(currentPhase()).label)} · ${esc(phaseObj(currentPhase()).title)}` : esc(GOAL_LABEL[goal().type]))}
       <div class="seg" role="tablist">${TRAIN_SEGS.map(([k, l]) => `<button class="${k === seg ? 'on' : ''}" role="tab" aria-selected="${k === seg}" data-action="train-seg" data-s="${k}">${l}</button>`).join('')}</div>
       ${body}`;
+    initSlider();
   }
   // Tijdlijn per dag
   function timelineHtml(list, max = 12) {
@@ -1009,7 +1010,7 @@
     const since = dkey(addDays(today(), -29));
     const tr = acts.filter(a => a.type === 'training' && a.date >= since), ma = acts.filter(a => a.type === 'match' && a.date >= since);
     return `${photoStats('assets/voetbal-card.jpg', [[tr.length, '', 'Trainingen'], [ma.length, '', 'Matchen'], [sum([...tr, ...ma].map(a => +a.minutes || 0)), '', 'Min · 30 d']], 'Voetbal')}
-      <button class="btn accent block lg mb-12" data-action="log-new" data-type="training">${icon('plus')} Training of match loggen</button>
+      <div class="row mb-12"><button class="btn accent lg" data-action="log-new" data-type="training">${icon('plus')} Training</button><button class="btn lg" data-action="log-new" data-type="match">${icon('plus')} Match</button></div>
       <div class="section"><span>Gelogd</span><button class="link-btn" data-action="go" data-to="matchen">Matchen beheren ${icon('chevR')}</button></div>
       ${timelineHtml(entries().filter(x => x.store === 'activities' && (x.type === 'training' || x.type === 'match')))}`;
   }
@@ -2511,6 +2512,25 @@
 
   // Overzicht van alle sessies (hoofdtab, dus geen terugknop)
   function renderWorkout() { S.ui.trainSeg = 'kracht'; return renderTraining(); }
+  // Kracht: slider met workouts. Eerst wat vandaag gepland staat, daarna je andere krachtworkouts.
+  // Elke dia een eigen foto (nooit dezelfde foto twee keer), dus maximaal zoveel dia's als foto's.
+  const KRACHT_PHOTOS = ['assets/kracht-hero.jpg', 'assets/kracht2.jpg', 'assets/kracht3.jpg'];
+  function krachtSlider(rec, k) {
+    const ids = [];
+    if (rec) ids.push(rec.id);
+    Object.keys(C.sessions).filter(id => C.sessions[id].custom).forEach(id => { if (!ids.includes(id)) ids.push(id); });
+    Object.keys(C.sessions).filter(id => !C.sessions[id].program && !C.sessions[id].custom && id !== 'PLYO').forEach(id => { if (!ids.includes(id)) ids.push(id); });
+    const slides = ids.slice(0, KRACHT_PHOTOS.length).map((id, i) => {
+      const s0 = sessInfo(id), planned = rec && rec.id === id;
+      const info = [planned && rec.time, `±${s0.minutes} min`, `${s0.exercises} oefeningen`, s0.place && cap(s0.place)].filter(Boolean).join(' · ');
+      return `<section class="act is-hero has-photo" data-key="${id}">
+        <img src="${KRACHT_PHOTOS[i]}" alt="" class="act-img" decoding="async" onerror="this.remove()"><div class="act-shade"></div>
+        <div class="act-top"><span class="act-kind t-kracht">${C.sessions[id].custom ? 'Eigen workout' : 'Fitness'}</span>${planned ? `<span class="act-top-end"><span class="tag">Vandaag</span><button class="icon-btn act-more" data-action="item-menu" data-k="${k}" data-key="${esc(itemKey(rec))}" aria-label="Meer acties">${icon('more')}</button></span>` : ''}</div>
+        <h3>${esc(s0.name)}</h3><p class="act-info">${esc(info)}</p>
+      </section>`;
+    });
+    return sliderHtml(slides);
+  }
   function krachtHtml() {
     const w = draft();
     const t = today(), k = dkey(t);
@@ -2526,15 +2546,14 @@
     return `
       ${sm ? `<div class="hint">${icon('check')}<span><b>${esc(sm.title)} opgeslagen.</b> ${sm.sets} set${sm.sets === 1 ? "" : "s"} in ${sm.minutes} min${sm.rpe != null ? `, zwaarte ${sm.rpe}/10` : ''}.</span></div>` : ''}
       ${rising ? `<div class="hint warn">${icon('alert')}<span>Je dagelijkse check is hoger dan de vorige meting. Volg je afspraak met je kinesist.</span></div>` : ''}
-      ${rec && !w ? actCard(rec, k, true, { photoSrc: 'assets/kracht-hero.jpg' })
-        : `${photoStats('assets/kracht-hero.jpg', [[kr30.length, '', 'Sessies · 30 d'], [sum(kr30.map(woMinutes)), '', 'Min · 30 d'], [own.length, '', 'Eigen workouts']], 'Kracht')}
-      <button class="btn ${w ? '' : 'accent'} block lg mb-12" data-action="new-workout">${icon('plus')} Nieuwe workout</button>`}
+      ${krachtSlider(rec, k)}
+      <button class="btn ${w ? '' : 'accent'} block lg mb-12" data-action="slider-start">${icon('play')} Start workout</button>
       ${w ? `<section class="card resume">
         <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
         <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)} om ${fmtTime(w.startedAt)} · ${w.exercises.flatMap(x => x.sets).filter(s => s.done).length} sets gedaan</p>
         <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
       </section>` : ''}
-      <div class="section"><span>Mijn workouts</span>${own.length && rec && !w ? `<button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button>` : ''}</div>
+      <div class="section"><span>Mijn workouts</span>${own.length ? `<button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button>` : ''}</div>
       ${own.length ? `<section class="card">${own.map(key => {
         const s = sessInfo(key);
         return `<div class="list-row">
@@ -4413,6 +4432,10 @@
     'log-menu': () => openLogMenu(),
     'open-run': el => { closeSheet(); openRunLog(null, el.dataset.date); },
     'slide-go': el => { sliderPauseUntil = Date.now() + 15000; slideTo(+el.dataset.i); },
+    'slider-start': () => {
+      const card = document.querySelector('#act-slider .slide.on [data-key]') || document.querySelector('#app .act[data-key]');
+      if (card) { S.ui.trainSeg = 'kracht'; startSession(card.dataset.key); }
+    },
     'log-new': el => logNew(el.dataset.type),
     'train-seg': el => { S.ui.trainSeg = el.dataset.s; S.ui.timelineAll = false; if (el.dataset.s === 'kracht') S.ui.woView = null; render(); },
     'timeline-all': () => { S.ui.timelineAll = !S.ui.timelineAll; render({ keepScroll: true }); },
