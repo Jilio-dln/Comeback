@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '4.3.1-dev';
+  const APP_VERSION = '4.4.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -880,12 +880,13 @@
       `<button type="button" class="menu-btn" data-action="${action}" data-k="${k}" data-key="${esc(key)}" ${extra}>${icon(ic)}<span><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span></button>`;
     const rows = [];
     if (!done && k <= tk && it.type !== 'rest') {
-      if (s) rows.push(`<button type="button" class="menu-btn" data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')}<span><b>Gedaan</b><small>Afgewerkt zonder details te loggen</small></span></button>`);
+      rows.push(row('check', 'item-done', 'Afgerond', s ? 'Afgewerkt zonder details te loggen' : it.type === 'training' || it.type === 'match' ? 'Opent het logformulier' : ''));
       if (it.type === 'session' || it.type === 'training' || it.type === 'match') rows.push(row('edit', 'adapted', 'Aangepast uitgevoerd', 'Anders gedaan dan gepland'));
     }
     if (!done && !it.confirmed && it.type !== 'rest') rows.push(row('check', 'confirm-item', 'Bevestigen', 'Dit staat vast in je planning'));
     if (canMove) rows.push(row('move', 'open-move', 'Verplaatsen', 'Met advies voor de beste dag'));
     if (!done && it.type !== 'rest') rows.push(row('skip', 'skip-item', 'Overslaan', 'Telt niet als gemist'));
+    if (done && rec) rows.push(row('undo', 'item-undone', 'Terug naar nog te doen', 'Verwijdert de registratie van die dag'));
     if (rec) rows.push(`<button type="button" class="menu-btn" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('list')}<span><b>Bekijk log</b><small>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</small></span></button>`);
     rows.push(row('list', 'item-actions', 'Alles aanpassen…', 'Type, dag en uur, notitie, status, overslaan met reden, verwijderen'));
     openSheet(`<div class="sheet-head"><div><span class="eyebrow">${esc(actKind(it))}</span><h3>${esc(it.type === 'session' ? sessionTitle(it.id) : m.title)}</h3><p>${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
@@ -958,7 +959,7 @@
     if (it.type === 'session') {
       const s = sessInfo(it.id);
       body = `${hero ? `<div class="act-time"><b class="display">${esc(it.time || `±${s.minutes}`)}</b><span>${it.time ? `±${s.minutes} min` : 'min'}</span></div>` : ''}<h3>${esc(s.name)}</h3><p>${esc(s.desc)}</p>
-        <div class="act-meta">${it.time ? `<span>${icon('clock')} ${esc(it.time)}</span>` : ''}<span>${it.time ? '' : icon('clock') + ' '}±${s.minutes} min</span><span>${s.exercises} oefeningen</span>${s.place ? `<span>${esc(s.place)}</span>` : ''}${it.note ? `<span>${esc(it.note)}</span>` : ''}</div>`;
+        <div class="act-meta">${it.time ? `<span>${icon('clock')} ${esc(it.time)}</span>` : ''}${hero && !it.time ? '' : `<span>${it.time ? '' : icon('clock') + ' '}±${s.minutes} min</span>`}<span>${s.exercises} oefeningen</span>${s.place ? `<span>${esc(s.place)}</span>` : ''}${it.note ? `<span>${esc(it.note)}</span>` : ''}</div>`;
       if (!done && k <= tk) {
         actions = hero
           ? heroBtn('start-session', 'play', k < tk ? 'Nu inhalen' : 'Start workout', `data-key="${it.id}"`)
@@ -1479,20 +1480,25 @@
     const cls = it.type === 'rest' ? 'st-rest' : done ? 'st-done' : st.cls === 'missed' ? 'st-missed' : k < tk ? 'st-past' : it.confirmed ? 'st-confirmed' : 'st-suggested';
     const draggable = it.type !== 'rest' && !it.fixture && !done;
     const title = it.type === 'match' && it.fixture ? `${it.fixture.home ? 'Thuis' : 'Uit'} · ${it.fixture.opponent}` : it.type === 'session' ? sessionTitle(it.id) : m.title;
-    // Vinkje als schakelaar: leeg rondje = nog te doen, oranje vinkje = afgerond (vanaf de dag zelf)
-    const viaOther = done && !recordFor(it, k);
-    const toggle = it.type === 'rest' ? '' : done
-      ? `<button class="pc-check on" data-action="${viaOther ? 'item-actions' : 'item-undone'}" data-k="${k}" data-key="${esc(key)}" role="checkbox" aria-checked="true" aria-label="${esc(title)}: afgerond${viaOther ? ' (ingehaald)' : '. Tik om terug te zetten naar nog te doen'}">${icon('check')}</button>`
-      : k <= tk ? `<button class="pc-check" data-action="item-done" data-k="${k}" data-key="${esc(key)}" role="checkbox" aria-checked="false" aria-label="${esc(title)}: nog te doen. Tik om af te ronden">${icon('check')}</button>` : '';
+    // Rustige rij: type, titel, tijd/duur en status; afvinken en de rest zit in het "…"-menu
     return `<div class="pcard ${cls} t-${itemType(it)}" data-k="${k}" data-key="${esc(key)}">
       <button class="pc-main" data-action="item-actions" data-k="${k}" data-key="${esc(key)}" aria-label="${esc(title)}, ${esc(st.label)}. Aanpassen">
-        <span class="pc-kind">${esc(actKind(it))}${it.userNote ? ` · ${icon('edit')}` : ''}</span>
+        <span class="pc-kind">${esc(actKind(it))}${done ? `<span class="pc-ok">${icon('check')}</span>` : ''}${it.userNote ? ` · ${icon('edit')}` : ''}</span>
         <b>${esc(title)}</b>
         <span class="pc-meta">${meta.filter(Boolean).map(esc).join('  ·  ')}</span>
       </button>
-      ${toggle}
       ${draggable ? `<button class="pc-grip" data-action="open-move" data-k="${k}" data-key="${esc(key)}" aria-label="${esc(title)} verplaatsen (slepen of tikken)">${icon('grip')}</button>` : ''}
+      <button class="pc-more" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(title)}">${icon('more')}</button>
     </div>`;
+  }
+
+  // De uitleg over slepen alleen de eerste keer (blijft zichtbaar tijdens die sessie)
+  function dragHelpOnce() {
+    if (S.ui.dragHelp === undefined) {
+      try { S.ui.dragHelp = !localStorage.getItem('comeback-drag-help'); if (S.ui.dragHelp) localStorage.setItem('comeback-drag-help', '1'); }
+      catch (_) { S.ui.dragHelp = false; }
+    }
+    return S.ui.dragHelp;
   }
 
   function weekHtml() {
@@ -1500,22 +1506,25 @@
     const ws = parseKey(S.ui.planWeek || weekKey(t));
     const strip = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(ws, i), k = dkey(d);
-      return `<button class="wk-chip ${k === tk ? 'today' : ''}" data-action="wk-jump" data-k="${k}" aria-label="${fmtDay(k)}">
-        <small>${DAY_LETTER[d.getDay()]}</small><b>${d.getDate()}</b><span class="day-dots">${dayDotsHtml(d)}</span></button>`;
+      return `<button class="day ${k === tk ? 'on' : ''}" data-action="wk-jump" data-k="${k}" aria-label="${fmtDay(k)}"${k === tk ? ' aria-current="date"' : ''}>
+        <small>${cap(DAY_S[d.getDay()])}</small><b>${d.getDate()}</b><span class="day-dots">${dayDotsHtml(d)}</span></button>`;
     }).join('');
     const warns = loadWarnings(ws);
     const pend = pendingSuggestions(ws);
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(ws, i), k = dkey(d);
       const { items, off } = planDetail(d);
-      const offRows = off.filter(o => !String(o.reason).startsWith('moved:')).map(o => {
+      const offList = off.filter(o => !String(o.reason).startsWith('moved:'));
+      const offRows = offList.map(o => {
         const ot = offText(o.reason);
         return `<button class="pc-off" data-action="off-item" data-k="${k}" data-key="${esc(itemKey(o.item))}">${icon(ot.tag === 'Vervangen' ? 'swap' : 'skip')}<span>${esc(itemMeta(o.item).title)} · ${esc(ot.txt)}</span></button>`;
       }).join('');
+      // Logregels (verwijderd, vervangen, overgeslagen) standaard ingeklapt
+      const changes = offList.length ? `<details class="wk-changes"><summary>Wijzigingen tonen (${offList.length})</summary>${offRows}</details>` : '';
       return `<section class="wk-day ${k === tk ? 'is-today' : ''} ${k < tk ? 'is-past' : ''}" data-k="${k}" id="day-${k}">
         <div class="wk-day-head"><span class="wk-day-label">${DAY_UP[d.getDay()]} ${pad(d.getDate())}${k === tk ? '<small>Vandaag</small>' : ''}</span>
           <button class="wk-add" data-action="add-menu" data-k="${k}" aria-label="Iets toevoegen op ${fmtDay(k)}">${icon('plus')}</button></div>
-        <div class="wk-list">${items.map(it => planCard(it, k)).join('')}${offRows}</div>
+        <div class="wk-list">${items.map(it => planCard(it, k)).join('') || '<p class="wk-empty">Niets gepland</p>'}${changes}</div>
       </section>`;
     }).join('');
     const isThis = weekKey(t) === weekKey(ws);
@@ -1526,12 +1535,11 @@
         ${isThis ? '<span class="wk-nav-gap"></span>' : `<button class="link-btn" data-action="wk-today">Naar deze week</button>`}
         ${iconBtn('chevR', 'wk-next', 'Volgende week')}
       </div>
-      <div class="wk-strip card">${strip}</div>
+      <div class="wk-strip">${strip}</div>
       ${warns.map(w => `<div class="hint accent" role="note">${icon('alert')}<span>${esc(w)}</span></div>`).join('')}
       ${pend.length ? `<div class="wk-confirm"><span>${pend.length} voorstel${pend.length === 1 ? '' : 'len'} nog niet bevestigd</span><button class="btn sm" data-action="confirm-week">${icon('check')} Alles bevestigen</button></div>` : ''}
-      <p class="wk-help">Sleep aan ${icon('grip')} naar een andere dag, of tik op ${icon('grip')} om te verplaatsen.</p>
-      <div class="wk-days" id="wk-days">${days}</div>
-      <div class="wk-legend"><span class="lg-sug">Voorgesteld</span><span class="lg-con">Bevestigd</span><span class="lg-done">Uitgevoerd</span></div>`;
+      ${dragHelpOnce() ? `<p class="wk-help">Sleep aan ${icon('grip')} naar een andere dag, of tik op ${icon('grip')} om te verplaatsen.</p>` : ''}
+      <div class="wk-days" id="wk-days">${days}</div>`;
   }
 
   function renderPlanning() {
@@ -2078,24 +2086,18 @@
         <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
         <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)} om ${fmtTime(w.startedAt)} · ${w.exercises.flatMap(x => x.sets).filter(s => s.done).length} sets gedaan</p>
         <div class="row" style="margin-top:12px"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
-      </section>` : rec ? `<section class="card act is-main">
-        <div class="act-top"><span class="act-kind t-${itemType(rec)}">${esc(actKind(rec))}</span><span class="tag">Vandaag gepland</span></div>
-        <h3>${esc(sessionTitle(rec.id))}</h3><p>${esc(sessionDesc(rec.id))}</p>
-        <div class="act-meta"><span>${icon('clock')} ±${sessInfo(rec.id).minutes} min</span><span>${icon('list')} ${sessInfo(rec.id).exercises} oefeningen</span></div>
-        <button class="btn accent block lg" data-action="start-session" data-key="${rec.id}">${icon('play')} Start workout</button>
-      </section>` : ''}
-      <div class="section"><span>Mijn workouts</span><button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button></div>
+      </section>` : rec ? actCard(rec, k, true) : ''}
+      <div class="section"><span>Mijn workouts</span>${own.length ? `<button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button>` : ''}</div>
       ${own.length ? `<section class="card">${own.map(key => {
         const s = sessInfo(key);
         return `<div class="list-row">
           <button class="body row-btn" data-action="workout-sheet" data-key="${key}" aria-label="${esc(s.name)}: inplannen of aanpassen"><b>${esc(s.name)}</b><span>${s.exercises} oefeningen · ±${s.minutes} min</span><span class="${planText(key) ? 'accent-text' : ''}">${esc(planText(key) || 'Nog niet ingepland')}</span></button>
-          <div class="end"><button class="icon-btn" style="background:transparent" data-action="workout-plan" data-key="${key}" aria-label="${esc(s.name)} inplannen">${icon('calendar')}</button>
-            <button class="icon-btn" style="background:var(--card-2)" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
+          <div class="end"><button class="icon-btn ghost" data-action="workout-plan" data-key="${key}" aria-label="${esc(s.name)} inplannen">${icon('calendar')}</button>
+            <button class="icon-btn" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
         </div>`;
-      }).join('')}</section>` : `<section class="card empty-state compact">
-          <h2>Stel je eigen workout samen.</h2>
-          <p>Kies oefeningen per spiergroep of start van een voorgestelde workout, zet je sets, herhalingen en kg, en plan hem op de dagen die jij wil.</p>
-          <button class="btn accent block lg" data-action="new-workout">${icon('plus')} Nieuwe workout</button>
+      }).join('')}</section>` : `<section class="card empty-row">
+          <p>Nog geen eigen workouts.</p>
+          <button class="btn sm" data-action="new-workout">${icon('plus')} Nieuwe workout</button>
         </section>`}
       ${groups.map(([title, fn]) => {
         const ids = Object.keys(C.sessions).filter(fn);
@@ -2105,9 +2107,8 @@
           const off = key === 'PLYO' && currentPhase() !== 'f3';
           const inactive = C.sessions[key].program && !programOn(C.sessions[key].program, key);
           return `<div class="list-row">
-            <div class="ico">${icon(s.icon)}</div>
             <div class="body"><b>${esc(s.name)}</b><span>${off ? 'Pas vanaf fase 2 + 3' : esc(s.desc)}</span><span>${s.place ? cap(s.place) + ' · ' : ''}${s.exercises} oefeningen · ±${s.minutes} min${inactive ? ' · niet in je schema' : ''}</span></div>
-            <div class="end"><button class="icon-btn" style="background:var(--card-2)" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
+            <div class="end"><button class="icon-btn" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
           </div>`;
         }).join('')}</section>`;
       }).join('')}

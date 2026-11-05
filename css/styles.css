@@ -1140,6 +1140,53 @@ code { font-size: .92em; padding: 1px 5px; border-radius: 6px; background: var(-
 .check-row:active .check-go { background: var(--surface-3); }
 .check-compact .status-line { margin-top: 10px; }
 
+/* ================= Planning: dagpills en rustige daglijsten ================= */
+.wk-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-bottom: 14px; padding: 0; }
+.wk-strip .day { min-width: 0; height: 64px; padding: 6px 0; gap: 3px; border-radius: 16px; }
+.wk-strip .day small { font-size: 11px; }
+.wk-strip .day b { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
+.wk-strip .day.on small { color: inherit; opacity: .75; }
+.wk-strip .day.on .dot { --dc: var(--on-accent) !important; }
+.wk-day { display: block; padding: 0; margin: 0 0 var(--gap); border-radius: var(--r-card); }
+.wk-day + .wk-day { border-top: 0; border-radius: var(--r-card); }
+.wk-day-head { flex-direction: row; justify-content: space-between; align-items: center; padding: 6px 2px 6px 4px; gap: 8px; }
+.wk-day-label { font-size: 11px; letter-spacing: .08em; }
+.wk-day-label small { display: inline; margin: 0 0 0 6px; text-transform: none; letter-spacing: 0; font-size: 11px; }
+.wk-add { width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; }
+.wk-add:active { background: var(--surface-2); }
+.wk-list { gap: 0; min-height: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; }
+.wk-day.drop .wk-list { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.wk-empty { margin: 0; padding: 14px 18px; font-size: 13px; color: var(--muted); }
+
+.pcard { border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
+.pcard + .pcard { border-top: 1px solid var(--border); }
+.pcard::before { display: none; }
+.pc-main { padding: 12px 6px 12px 18px; min-height: 64px; gap: 2px; }
+.pc-kind { gap: 6px; letter-spacing: .08em; }
+.pc-kind::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--dc); }
+.pc-ok { display: inline-flex; color: var(--success-text); }
+.pc-ok .ic { width: 13px; height: 13px; stroke-width: 2.4; }
+.pc-meta { white-space: normal; }
+.pc-grip, .pc-more { width: 44px; min-height: 44px; }
+.pc-more { flex: none; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; padding: 0; margin-right: 6px; }
+.pc-more .ic { width: 20px; height: 20px; }
+.pcard.st-suggested, .pcard.st-confirmed, .pcard.st-missed, .pcard.st-rest { border-style: solid; border-color: var(--border); background: transparent; }
+.pcard.st-suggested:first-child, .pcard.st-confirmed:first-child, .pcard.st-missed:first-child, .pcard.st-rest:first-child { border-top: 0; }
+.pc-ghost { background: var(--surface-2) !important; border: 1px solid var(--border-strong) !important; border-radius: 16px !important; }
+.wk-changes { border-top: 1px solid var(--border); }
+.wk-changes > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0 18px; font-size: 12.5px; color: var(--muted); }
+.wk-changes > summary::-webkit-details-marker { display: none; }
+.wk-changes > summary::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin-top: -4px; transition: transform .2s ease-out; }
+.wk-changes[open] > summary::after { transform: rotate(225deg); margin-top: 4px; }
+.wk-changes .pc-off { padding: 6px 18px; border-radius: 0; min-height: 44px; }
+.wk-help { margin: 0 2px 12px; }
+
+/* ================= Workout: lijsten zonder kader per item ================= */
+.icon-btn.ghost { background: transparent; border-color: transparent; }
+.empty-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 14px 14px 18px; }
+.empty-row p { font-size: 14px; color: var(--muted); }
+.empty-row .btn, .wk-confirm .btn { white-space: nowrap; flex: none; }
+
 /* ================= Bottom navigation: zwevende pill ================= */
 .tabbar { bottom: calc(var(--safe-bottom) + 12px); border-radius: var(--r-pill); background: var(--surface); }
 .tab { color: var(--text-muted); border-radius: 50%; }
