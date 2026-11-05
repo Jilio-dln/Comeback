@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.9.0';
+  const APP_VERSION = '5.9.1';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -2775,12 +2775,10 @@
     const done = w.exercises.flatMap(x => x.sets).filter(s => s.done).length;
     openSheet(`<div class="sheet-head"><div><h3>Workout verlaten?</h3><p>${esc(woTitle(w))} · ${done} sets gedaan. Wat je ingevuld hebt, blijft bewaard op deze gsm.</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="menu-list">
-        <button class="menu-btn" data-action="wo-pause">${icon('clock')}<span><b>Pauzeren, later verder</b><small>Hervat via Home of Workout</small></span></button>
+        <button class="menu-btn" data-action="wo-pause">${icon('clock')}<span><b>Pauzeren, later verder</b><small>Hervat via Vandaag of Training</small></span></button>
         <button class="menu-btn" data-action="wo-finish">${icon('check')}<span><b>Afronden en opslaan</b><small>Niet afgevinkte sets worden niet bewaard</small></span></button>
-      </div>
-      <details class="more"><summary>Meer opties</summary>
-        <button class="btn danger block" data-action="wo-cancel">${icon('trash')} Stoppen zonder opslaan</button>
-      </details>`);
+        <button class="menu-btn" data-action="wo-cancel">${icon('trash')}<span><b>Stoppen zonder opslaan</b><small>Deze workout wordt niet bewaard</small></span></button>
+      </div>`);
   }
 
   // Afronden: eerst bevestigen, dan zwaarte en deelname vragen
