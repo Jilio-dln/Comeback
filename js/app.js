@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.5.1';
+  const APP_VERSION = '5.5.0';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -1028,7 +1028,7 @@
       <section class="card"><div class="card-head"><h2>Belasting per week</h2><span class="label">zwaarte × minuten</span></div>${Charts.bars(weeklyLoads(), { selected: 5, action: null, height: 120 })}</section>
       ${checkTrendCard()}
       <div class="section"><span>Herstel</span></div>`;
-    const head = main.querySelector('.page-photo, .page-head');
+    const head = main.querySelector('.page-head');
     if (head) head.insertAdjacentHTML('afterend', prev);
     main.insertAdjacentHTML('beforeend', `<p class="footer-note">Indicatie, geen medisch advies.</p>`);
   }
@@ -3521,12 +3521,8 @@
     const act = list.filter(i => i.status !== 'afgerond'), past = list.filter(i => i.status === 'afgerond');
     const maint = past.flatMap(i => (i.maintenance || []).filter(id => C.sessions[id] || String(id).includes(':')));
     main.innerHTML = `
-      <header class="photo-head page-photo">
-        <img src="assets/lichaam.jpg" alt="" class="photo-img" decoding="async" onerror="this.remove()">
-        <div class="photo-shade"></div>
-        <div class="photo-top"><span class="photo-date">Preventie en herstel</span><button class="icon-btn photo-chip" data-action="inj-new" aria-label="Blessure toevoegen">${icon('plus')}</button></div>
-        <div class="photo-bottom"><h1 class="display">Lichaam.</h1><p>Luister naar je lichaam. Bouw bewust op.</p></div>
-      </header>
+      <header class="page-head"><div><span class="eyebrow">Preventie en herstel</span><h1>Lichaam.</h1><p>Luister naar je lichaam. Bouw bewust op.</p></div>
+        <button class="icon-btn" data-action="inj-new" aria-label="Blessure toevoegen">${icon('plus')}</button></header>
       ${act.map((inj, i) => injuryHero(inj, i === 0)).join('')}
       ${!list.length ? `<section class="card empty-row">
           <p>Nog geen blessures.</p>
