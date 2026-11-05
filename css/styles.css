@@ -1186,6 +1186,11 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 
 /* ================= Premium afwerking ================= */
 .next-match-title { font-size: var(--fs-title); margin-top: 4px; }
+/* Fotokop op een hoofdscherm (zelfde opbouw als Vandaag, iets lager) */
+.photo-head.page-photo { height: calc(var(--safe-top) + min(48vh, 420px)); }
+.page-photo .photo-img { object-position: 50% 30%; }
+.page-photo .photo-bottom p { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: var(--fs-small); }
+.icon-btn.photo-chip { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
 /* Maandkalender: iets breder dan de kaartpadding, zodat elk dagvak 44px haalt */
 .cal-grid { margin: 0 -12px; gap: 4px 2px; }
 /* Cijfers die naast elkaar staan lijnen altijd uit */
