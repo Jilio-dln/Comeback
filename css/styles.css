@@ -61,8 +61,10 @@
   --accent-text: var(--accent);
   --accent-soft: rgba(143, 168, 200, .12);
   --on-accent: #0B0E12;
-  --cta-bg: #E8ECF1;
-  --cta-text: #0B0E12;
+  --cta-bg: #2A3A4E;             /* tonaal staalblauw: aanwezig maar ingetogen */
+  --cta-text: #E8ECF1;           /* 9,8:1 */
+  --cta-border: rgba(143, 168, 200, .22);
+  --cta-bg-active: #32455C;
   --warning-text: var(--warning);
   --warning-soft: rgba(217, 120, 74, .14);
   --on-warning: #0B0E12;
@@ -101,8 +103,10 @@
   --accent-text: var(--accent-strong); /* 5,8:1 op bg: --accent haalt op bg geen AA */
   --accent-soft: rgba(79, 106, 140, .12);
   --on-accent: #F4F6F8;
-  --cta-bg: #11161C;
-  --cta-text: #F4F6F8;
+  --cta-bg: #D5DEEA;             /* tonaal staalblauw, geen zwart blok */
+  --cta-text: #2C4560;           /* 7,1:1 */
+  --cta-border: rgba(79, 106, 140, .2);
+  --cta-bg-active: #C9D4E2;
   --warning-text: #9A4A24;       /* --warning haalt als tekst maar 2,9:1 op licht */
   --warning-soft: rgba(217, 120, 74, .16);
   --on-warning: #11161C;
@@ -258,16 +262,17 @@ a { color: inherit; }
 }
 .btn:active { transform: scale(.98); }
 .btn:disabled { opacity: .35; pointer-events: none; }
-.btn.primary { background: var(--primary); color: var(--primary-ink); border-color: transparent; box-shadow: none; }
-.btn.accent { background: var(--cta-bg); color: var(--cta-text); border-color: transparent; box-shadow: none; }
+.btn.primary { background: var(--primary); color: var(--primary-ink); border-color: var(--cta-border); box-shadow: none; }
+.btn.accent { background: var(--cta-bg); color: var(--cta-text); border-color: var(--cta-border); box-shadow: none; }
 .btn.ghost { background: transparent; border-color: transparent; box-shadow: none; padding: 0 10px; color: var(--ink); }
 .btn.line { background: transparent; border-color: var(--border-strong); box-shadow: none; }
 .btn.danger { color: var(--danger); }
 .btn.lg { min-height: 54px; font-size: 16px; border-radius: 18px; }
 .btn.sm { min-height: 40px; padding: 0 12px; font-size: 13.5px; border-radius: 12px; }
 .btn.block { width: 100%; }
-/* Primaire knop = pill in --cta-bg, nooit een kleurvlak */
+/* Primaire knop = tonale pill in --cta-bg, nooit een fel of zwart vlak */
 .btn.primary, .btn.accent { border-radius: var(--r-pill); }
+.btn.primary:active, .btn.accent:active { background: var(--cta-bg-active); }
 .link-btn { border: 0; background: none; padding: 6px 0; font-size: 13px; font-weight: 600; color: var(--accent-text); display: inline-flex; align-items: center; gap: 2px; }
 .link-btn .ic { width: 16px; height: 16px; }
 .icon-btn {
