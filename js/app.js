@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '4.1.0-dev';
+  const APP_VERSION = '4.2.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }

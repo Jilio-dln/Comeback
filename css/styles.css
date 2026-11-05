@@ -42,6 +42,10 @@
   --radius: var(--r-card);
   --radius-sm: var(--r-chip);
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Archivo", var(--font);   /* titels in hoofdletters */
+  --display-stretch: 112%;
+  --caps-track: .14em;           /* spatiëring van kleine titels, zoals de datum in de fotoheader */
+  --caps-track-btn: .12em;
 }
 
 /* ---------- Donker thema (standaard) ---------- */
@@ -233,7 +237,6 @@ a { color: inherit; }
 .row > .btn { flex: 1; }
 .stack > * + * { margin-top: 8px; }
 .section { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin: 28px 2px 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.section button { text-transform: none; letter-spacing: 0; }
 .divider { height: 1px; background: var(--line); margin: 14px 0; }
 .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
 
@@ -1073,11 +1076,52 @@ button.inj-plan { display: flex; flex-direction: column; gap: 4px; width: 100%; 
 .pw-toggle[aria-pressed="true"] { color: var(--accent-text); }
 code { font-size: .92em; padding: 1px 5px; border-radius: 6px; background: var(--card-2); }
 
+/* ================= Typografie: luxe hoofdletters ================= */
+/* Grote titels: Archivo, iets breder, vet en in hoofdletters */
+.display, .page-head h1, .photo-bottom h1, .ex-title, .inj-name,
+.sheet-head h3, .empty-state h2, .celebrate b, .badge-brand b {
+  font-family: var(--font-display); font-stretch: var(--display-stretch); font-weight: 700;
+  text-transform: uppercase; letter-spacing: -.005em; line-height: 1;
+}
+.photo-bottom h1 { font-size: 34px; }
+.page-head h1 { font-size: 30px; }
+.ex-title { font-size: 27px; }
+.inj-name { font-size: 24px; }
+.sheet-head h3, .empty-state h2 { font-size: 20px; line-height: 1.05; }
+.celebrate b, .badge-brand b { font-size: 19px; }
+.act-time b { font-weight: 600; letter-spacing: -.01em; }
+.act h3 { font-family: var(--font-display); font-stretch: var(--display-stretch); font-weight: 700; text-transform: uppercase; font-size: 19px; letter-spacing: 0; line-height: 1.1; }
+
+/* Kleine titels: zoals de datum in de fotoheader (11–12px, ruime spatiëring) */
+.card-head h2, .card-head h3, .sub-head h1, .editor-title b, .hold-label {
+  font-family: var(--font); font-size: 12px; font-weight: 600;
+  letter-spacing: var(--caps-track); text-transform: uppercase; line-height: 1.3;
+}
+
+/* Knoppen: hoofdletters met dezelfde spatiëring */
+.btn, .link-btn, .toast button, .demo-bar button, .chip-btn, .quick button,
+.seg button, .seg span, .section button {
+  text-transform: uppercase; letter-spacing: var(--caps-track-btn); font-weight: 600;
+}
+.btn { font-size: 12.5px; gap: 10px; padding: 0 20px; }
+.btn.lg { font-size: 13px; }
+.btn.sm, .link-btn, .toast button, .demo-bar button, .chip-btn { font-size: 11px; }
+.btn.ghost { padding: 0 12px; }
+.quick button { font-size: 11px; line-height: 1.3; }
+.seg button, .seg span { font-size: 11px; padding: 10px 8px; }
+/* Twee knoppen naast elkaar in een kaart: compacter, zodat de tekst op één regel past */
+.act-row .btn, .day-actions .btn, .day-item-actions .btn { font-size: 11px; letter-spacing: .1em; padding: 0 8px; white-space: nowrap; }
+.act-row .btn .ic { display: none; }
+/* Tags en de dagenrij in dezelfde stijl */
+.tag { text-transform: uppercase; font-size: 10px; letter-spacing: .1em; padding: 4px 8px; }
+.day { text-transform: uppercase; font-size: 11px; letter-spacing: .08em; }
+.day small { letter-spacing: .04em; }
+
 /* Kleine schermen (bv. 320–360 px breed) */
 @media (max-width: 360px) {
   :root { --gutter: 12px; }
-  .page-head h1 { font-size: 28px; }
-  .photo-bottom h1 { font-size: 32px; }
+  .page-head h1 { font-size: 26px; }
+  .photo-bottom h1 { font-size: 29px; }
   .quick button { font-size: 12.5px; padding: 6px 8px; }
   .status-grid span { font-size: 9.5px; }
   .act-time b { font-size: 30px; }
