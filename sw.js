@@ -1,6 +1,6 @@
 /* Comeback: service worker voor offline gebruik.
  * Verhoog CACHE_VERSION als je bestanden toevoegt of hernoemt. */
-const CACHE_VERSION = 'comeback-v54';
+const CACHE_VERSION = 'comeback-v55';
 const FONT_CACHE = 'comeback-fonts';
 const ASSETS = [
   './',
@@ -29,6 +29,7 @@ const ASSETS = [
   './assets/kracht-hero.jpg',
   './assets/kracht2.jpg',
   './assets/kracht3.jpg',
+  './assets/kracht-core.jpg',
   './assets/lopen-card.jpg',
   './assets/voetbal-card.jpg'
 ];

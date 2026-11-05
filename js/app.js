@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.9.2';
+  const APP_VERSION = '5.9.3';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -2515,16 +2515,20 @@
   // Kracht: slider met workouts. Eerst wat vandaag gepland staat, daarna je andere krachtworkouts.
   // Elke dia een eigen foto (nooit dezelfde foto twee keer), dus maximaal zoveel dia's als foto's.
   const KRACHT_PHOTOS = ['assets/kracht-hero.jpg', 'assets/kracht2.jpg', 'assets/kracht3.jpg'];
+  // Vaste foto per workout; de rest krijgt een vrije foto uit KRACHT_PHOTOS
+  const KRACHT_PHOTO_FOR = { C: 'assets/kracht-core.jpg' };
   function krachtSlider(rec, k) {
     const ids = [];
     if (rec) ids.push(rec.id);
     Object.keys(C.sessions).filter(id => C.sessions[id].custom).forEach(id => { if (!ids.includes(id)) ids.push(id); });
     Object.keys(C.sessions).filter(id => !C.sessions[id].program && !C.sessions[id].custom && id !== 'PLYO').forEach(id => { if (!ids.includes(id)) ids.push(id); });
-    const slides = ids.slice(0, KRACHT_PHOTOS.length).map((id, i) => {
+    const pool = KRACHT_PHOTOS.slice();
+    const photoOf = id => KRACHT_PHOTO_FOR[id] || pool.shift();
+    const slides = ids.slice(0, KRACHT_PHOTOS.length + Object.keys(KRACHT_PHOTO_FOR).length).map(id => [id, photoOf(id)]).filter(([, src]) => src).map(([id, src]) => {
       const s0 = sessInfo(id), planned = rec && rec.id === id;
       const info = [planned && rec.time, `±${s0.minutes} min`, `${s0.exercises} oefeningen`, s0.place && cap(s0.place)].filter(Boolean).join(' · ');
       return `<section class="act is-hero has-photo" data-key="${id}">
-        <img src="${KRACHT_PHOTOS[i]}" alt="" class="act-img" decoding="async" onerror="this.remove()"><div class="act-shade"></div>
+        <img src="${src}" alt="" class="act-img" decoding="async" onerror="this.remove()"><div class="act-shade"></div>
         <div class="act-top"><span class="act-kind t-kracht">${C.sessions[id].custom ? 'Eigen workout' : 'Fitness'}</span>${planned ? `<span class="act-top-end"><span class="tag">Vandaag</span><button class="icon-btn act-more" data-action="item-menu" data-k="${k}" data-key="${esc(itemKey(rec))}" aria-label="Meer acties">${icon('more')}</button></span>` : ''}</div>
         <h3>${esc(s0.name)}</h3><p class="act-info">${esc(info)}</p>
       </section>`;

@@ -1214,6 +1214,7 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 .act-img[src$="kracht-hero.jpg"] { object-position: 50% 20%; }
 .act-img[src$="kracht2.jpg"] { object-position: 50% 30%; }
 .act-img[src$="kracht3.jpg"] { object-position: 40% 22%; }
+.act-img[src$="kracht-core.jpg"] { object-position: 50% 30%; }
 .stats-img[src$="stats.jpg"] { object-position: 50% 48%; }
 .stats-img[src$="lopen-card.jpg"] { object-position: 35% 35%; }
 .stats-img[src$="voetbal-card.jpg"] { object-position: 50% 35%; }
