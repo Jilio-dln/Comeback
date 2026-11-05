@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.5.2';
+  const APP_VERSION = '5.6.0';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -1106,6 +1106,7 @@
       ${activeInjuries().length ? '' : progressCard()}
       ${nextMatchCard()}
     `;
+    initSlider();
     const strip$ = $('#day-strip'), on = strip$ && strip$.querySelector('.day.on');
     if (on) strip$.scrollLeft += on.getBoundingClientRect().left - strip$.getBoundingClientRect().left - 44;
   }
@@ -1207,10 +1208,67 @@
     const rel = k > tk ? null : relevantSession(items, k) || items.find(it => it.type !== 'rest' && !doneOrCaughtUp(it, k)) || null;
     // De hoofdkaart met de primaire knop komt bovenaan
     const ordered = rel ? [rel, ...items.filter(it => it !== rel)] : items;
-    let html = ordered.map(it => actCard(it, k, it === rel)).join('');
+    let html;
+    if (k === tk) {
+      // Vandaag: de herokaart wordt een slider met je geplande activiteit en snelle logkaarten
+      const slides = [];
+      if (rel) slides.push(actCard(rel, k, true, { slide: true }));
+      const planned = new Set(items.map(it => it.type === 'session' ? (itemType(it) === 'kracht' ? 'kracht' : 'herstel') : it.type));
+      QUICK_SLIDES.filter(q => !planned.has(q.type)).forEach(q => slides.push(quickSlide(q)));
+      html = sliderHtml(slides) + ordered.filter(it => it !== rel).map(it => actCard(it, k, false)).join('');
+    } else html = ordered.map(it => actCard(it, k, it === rel)).join('');
     const skipped = off.filter(o => isSkip(o.reason));
     if (skipped.length) html += `<p class="label" style="margin:4px 0 8px">Overgeslagen: ${skipped.map(o => esc(itemMeta(o.item).title)).join(', ')} · <button class="link-btn" style="padding:0" data-action="cal-open" data-k="${k}">bekijk</button></p>`;
     return html || `<section class="card empty-row"><p>Niets gepland.</p><button class="btn sm" data-action="add-menu" data-k="${k}">${icon('plus')} Inplannen</button></section>`;
+  }
+
+  // Snelle logkaarten in de slider (met bijpassende foto)
+  const QUICK_SLIDES = [
+    { type: 'run', kind: 'Lopen', title: 'Lopen', sub: 'Afstand, tempo en zwaarte.', btn: 'Loop loggen', ic: 'edit', action: 'log-new', photo: 'assets/run.jpg', t: 'kracht' },
+    { type: 'training', kind: 'Voetbal', title: 'Voetbaltraining', sub: 'Minuten, zwaarte en hoe het voelde.', btn: 'Training loggen', ic: 'edit', action: 'log-new', photo: 'assets/training.jpg', t: 'training' },
+    { type: 'kracht', kind: 'Fitness', title: 'Kracht', sub: 'Start een workout of maak je eigen.', btn: 'Workout starten', ic: 'play', action: 'log-new', photo: 'assets/kracht.jpg', t: 'kracht' },
+    { type: 'match', kind: 'Match', title: 'Match', sub: 'Je minuten en hoe het ging.', btn: 'Match loggen', ic: 'edit', action: 'log-new', photo: 'assets/match.jpg', t: 'match' }
+  ];
+  const quickSlide = q => `<section class="act is-hero has-photo">
+      <img src="${q.photo}" alt="" class="act-img" decoding="async" onerror="this.remove()"><div class="act-shade"></div>
+      <div class="act-top"><span class="act-kind t-${q.t}">${esc(q.kind)}</span></div>
+      <h3>${esc(q.title)}</h3><p>${esc(q.sub)}</p>
+      <button class="btn accent block lg" data-action="${q.action}" data-type="${q.type}">${icon(q.ic)} ${esc(q.btn)}</button>
+    </section>`;
+  function sliderHtml(slides) {
+    if (!slides.length) return '';
+    if (slides.length === 1) return slides[0];
+    return `<section class="act-slider" id="act-slider" role="region" aria-roledescription="carrousel" aria-label="Activiteiten">
+      <div class="slides">${slides.map((sl, i) => `<div class="slide ${i === 0 ? 'on' : ''}" aria-roledescription="dia" aria-label="${i + 1} van ${slides.length}" ${i === 0 ? '' : 'aria-hidden="true"'}>${sl}</div>`).join('')}</div>
+      <div class="slider-dots">${slides.map((_, i) => `<button class="${i === 0 ? 'on' : ''}" data-action="slide-go" data-i="${i}" aria-label="Toon ${i + 1} van ${slides.length}"><i></i></button>`).join('')}</div>
+    </section>`;
+  }
+  // Automatisch wisselen (6 s, zachte fade), vegen, puntjes; pauze na interactie; uit bij reduced motion
+  let sliderTimer = null, sliderPauseUntil = 0;
+  function slideTo(i) {
+    const el = document.getElementById('act-slider'); if (!el) return;
+    const slides = el.querySelectorAll('.slide'), dots = el.querySelectorAll('.slider-dots button'), n = slides.length;
+    const j = ((i % n) + n) % n;
+    slides.forEach((s2, x) => { s2.classList.toggle('on', x === j); if (x === j) s2.removeAttribute('aria-hidden'); else s2.setAttribute('aria-hidden', 'true'); });
+    dots.forEach((d, x) => d.classList.toggle('on', x === j));
+    el.dataset.i = j;
+  }
+  function initSlider() {
+    clearInterval(sliderTimer);
+    const el = document.getElementById('act-slider'); if (!el) return;
+    if (!reduceMotion()) sliderTimer = setInterval(() => {
+      const cur = document.getElementById('act-slider');
+      if (!cur) { clearInterval(sliderTimer); return; }
+      if (Date.now() < sliderPauseUntil || document.hidden || document.querySelector('.sheet-backdrop')) return;
+      slideTo(+(cur.dataset.i || 0) + 1);
+    }, 6000);
+    let x0 = null;
+    el.addEventListener('pointerdown', e => { x0 = e.clientX; sliderPauseUntil = Date.now() + 15000; });
+    el.addEventListener('pointerup', e => {
+      if (x0 == null) return;
+      const dx = e.clientX - x0; x0 = null;
+      if (Math.abs(dx) > 40) slideTo(+(el.dataset.i || 0) + (dx < 0 ? 1 : -1));
+    });
   }
 
   // Wat er gelogd is voor een gepland item
@@ -1252,9 +1310,10 @@
   // Eigen uur en notitie onder een kaart
   const userBits = it => `${it.userNote ? `<p class="act-note">${icon('edit')}<span>${esc(it.userNote)}</span></p>` : ''}`;
 
-  // Sfeerfoto per type activiteit (alleen in de herokaart)
-  const ACT_PHOTO = { run: 'assets/run.jpg' };
-  function actCard(it, k, isMain) {
+  // Sfeerfoto per type activiteit (alleen in de herokaart / slider)
+  const ACT_PHOTO = { run: 'assets/run.jpg', training: 'assets/training.jpg', match: 'assets/match.jpg', kracht: 'assets/kracht.jpg' };
+  const photoFor = it => it.type === 'session' ? (itemType(it) === 'kracht' ? ACT_PHOTO.kracht : null) : ACT_PHOTO[it.type] || null;
+  function actCard(it, k, isMain, opts = {}) {
     const tk = dkey(today()), st = itemStatus(it, k), key = itemKey(it);
     if (it.type === 'rest') {
       return `<section class="act"><div class="act-top"><span class="act-kind t-rust">Rust</span><span class="tag rest">Volgens plan</span></div>
@@ -1304,7 +1363,7 @@
     }
     const doneLine = rec ? `<button class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : '';
     // Sfeerfoto in de herokaart, alleen als ze bij het type past
-    const photo = hero && ACT_PHOTO[it.type];
+    const photo = hero && opts.photo !== false && (photoFor(it) || (opts.slide ? 'assets/stats.jpg' : null));
     const menuBtn = hero ? `<button class="icon-btn act-more" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(actKind(it))}">${icon('more')}</button>` : '';
     return `<section class="act ${done ? 'is-done' : ''} ${hero ? 'is-main is-hero' : ''} ${photo ? 'has-photo' : ''} ${!done && !it.confirmed && k >= tk && !hero ? 'is-suggested' : ''}">
       ${photo ? `<img src="${photo}" alt="" class="act-img" decoding="async" onerror="this.remove()"><div class="act-shade"></div>` : ''}
@@ -2465,7 +2524,7 @@
         <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
         <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)} om ${fmtTime(w.startedAt)} · ${w.exercises.flatMap(x => x.sets).filter(s => s.done).length} sets gedaan</p>
         <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
-      </section>` : rec ? actCard(rec, k, true) : ''}
+      </section>` : rec ? actCard(rec, k, true, { photo: false }) : ''}
       <div class="section"><span>Mijn workouts</span>${own.length ? `<button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button>` : ''}</div>
       ${own.length ? `<section class="card">${own.map(key => {
         const s = sessInfo(key);
@@ -4341,6 +4400,7 @@
     'item-menu': el => openItemMenu(el.dataset.k, el.dataset.key),
     'log-menu': () => openLogMenu(),
     'open-run': el => { closeSheet(); openRunLog(null, el.dataset.date); },
+    'slide-go': el => { sliderPauseUntil = Date.now() + 15000; slideTo(+el.dataset.i); },
     'log-new': el => logNew(el.dataset.type),
     'train-seg': el => { S.ui.trainSeg = el.dataset.s; S.ui.timelineAll = false; if (el.dataset.s === 'kracht') S.ui.woView = null; render(); },
     'timeline-all': () => { S.ui.timelineAll = !S.ui.timelineAll; render({ keepScroll: true }); },

@@ -1199,6 +1199,17 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 .act.has-photo p, .act.has-photo .act-kind, .act.has-photo .act-time span, .act.has-photo .act-meta { color: var(--photo-text-2); }
 .act.has-photo .tag { background: var(--photo-chip); color: var(--photo-text); box-shadow: none; }
 .act.has-photo .act-more { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
+/* Slider op Vandaag: gestapelde dia's met een zachte fade, puntjes eronder */
+.act-slider { margin-bottom: var(--gap); }
+.act-slider .slides { display: grid; }
+.act-slider .slide { grid-area: 1 / 1; opacity: 0; visibility: hidden; transition: opacity var(--dur-slow) var(--ease), visibility 0s linear var(--dur-slow); }
+.act-slider .slide.on { opacity: 1; visibility: visible; transition: opacity var(--dur-slow) var(--ease), visibility 0s; }
+.act-slider .slide > .act { height: 100%; margin-bottom: 0; }
+.act-slider { touch-action: pan-y; }
+.slider-dots { display: flex; justify-content: center; gap: 0; margin-top: 4px; }
+.slider-dots button { width: 28px; height: 44px; border: 0; background: transparent; padding: 0; display: grid; place-items: center; }
+.slider-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); transition: width var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.slider-dots button.on i { width: 18px; border-radius: var(--r-pill); background: var(--text); }
 /* Maandkalender: iets breder dan de kaartpadding, zodat elk dagvak 44px haalt */
 .cal-grid { margin: 0 -12px; gap: 4px 2px; }
 /* Cijfers die naast elkaar staan lijnen altijd uit */
