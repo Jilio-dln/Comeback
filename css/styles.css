@@ -15,6 +15,12 @@
   --photo-text: rgba(232, 236, 241, .94);
   --photo-text-shadow: 0 1px 8px rgba(11, 14, 18, .45);
   --photo-scrim: linear-gradient(180deg, rgba(11, 14, 18, .55) 0%, rgba(11, 14, 18, 0) 26%);
+  --photo-base: #0B0E12;
+  --photo-text-2: rgba(232, 236, 241, .74);
+  --photo-filter: saturate(.3) contrast(1.05) brightness(1.05);   /* blauwgrijze grading (stats-kaart) */
+  --photo-overlay:
+    linear-gradient(180deg, rgba(11, 14, 18, .05) 0%, rgba(11, 14, 18, .2) 45%, rgba(11, 14, 18, .88) 100%),
+    linear-gradient(0deg, rgba(37, 46, 57, .32), rgba(37, 46, 57, .32));
   --photo-chip: rgba(232, 236, 241, .16);
   --photo-chip-line: rgba(232, 236, 241, .26);
   --photo-fade-mask: linear-gradient(180deg, #000 0%, #000 38%, rgba(0, 0, 0, .55) 62%, transparent 94%); /* maskeralfa, geen zichtbare kleur */
@@ -514,6 +520,7 @@ a { color: inherit; }
 .c-val { font-size: 11px; font-weight: 700; fill: var(--ink); }
 .c-track { stroke: var(--card-3); }
 .c-warn { fill: var(--warning); }
+.c-limit { stroke: var(--text-subtle); stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
 .c-prog { stroke: var(--accent); transition: stroke-dashoffset .8s ease-out; }
 .legend-line { display: flex; gap: 16px; font-size: 12.5px; color: var(--ink-2); margin-top: 10px; }
 .legend-line i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 6px; }
@@ -845,8 +852,8 @@ button.list-row:first-child { border-top: 0; }
 .add-row .btn { padding: 0 14px; }
 
 /* Statistieken */
-.status-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-top: 12px; }
-.status-grid div { background: var(--card-2); border-radius: 10px; padding: 9px 4px; text-align: center; }
+.status-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-top: 12px; border-top: 1px solid var(--border); }
+.status-grid div { background: transparent; border-radius: 0; padding: 10px 2px 2px; text-align: center; }
 .status-grid b { display: block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .status-grid span { font-size: 10.5px; color: var(--muted); }
 .week-split.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -997,11 +1004,11 @@ button.tile.tap { min-height: 112px; }
 .badge-brand .label { color: var(--hero-text-2); text-transform: uppercase; letter-spacing: .1em; font-size: 10.5px; font-weight: 600; }
 .badge-brand b { font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
 .badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
-.badge { border-radius: 14px; padding: 10px 4px; text-align: center; border: 1px dashed var(--border-strong); color: var(--muted); }
+.badge { border-radius: 14px; padding: 10px 4px; text-align: center; border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
 .badge b { display: block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .badge span { font-size: 10.5px; }
-.badge.on { border: 0; background: var(--hero-gradient); color: var(--hero-text); }
-.badge.on span { color: var(--hero-text-2); }
+.badge.on { border-color: transparent; background: var(--surface-3); color: var(--text); }
+.badge.on span { color: var(--muted); }
 .streak-hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; }
 .streak-num { font-size: 64px; font-weight: 500; letter-spacing: -.05em; line-height: 1; font-variant-numeric: tabular-nums; margin: 6px 0 6px; }
 .streak-num span { font-size: 17px; font-weight: 400; letter-spacing: 0; color: var(--muted); margin-left: 6px; }
@@ -1186,6 +1193,31 @@ code { font-size: .92em; padding: 1px 5px; border-radius: 6px; background: var(-
 .empty-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 14px 14px 18px; }
 .empty-row p { font-size: 14px; color: var(--muted); }
 .empty-row .btn, .wk-confirm .btn { white-space: nowrap; flex: none; }
+
+/* ================= Voortgang: stats-fotokaart ================= */
+.stats-hero { position: relative; overflow: hidden; min-height: 176px; margin-bottom: var(--gap); border-radius: var(--r-card); border: 1px solid var(--border); background: var(--photo-base); color: var(--photo-text); display: flex; align-items: flex-end; }
+.stats-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; filter: var(--photo-filter); }
+.stats-shade { position: absolute; inset: 0; background: var(--photo-overlay); }
+.stats-row { position: relative; width: 100%; display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 10px; padding: 18px; }
+.stat { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.stat b { font-family: var(--font-display); font-stretch: var(--display-stretch); font-size: 26px; font-weight: 700; line-height: 1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stat .unit { font-family: var(--font); font-stretch: normal; font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--photo-text-2); margin-left: 2px; }
+.stat > span { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--photo-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ================= Blessures: herokaart, citaat, ingeklapt ================= */
+.inj-pain { display: block; }
+.inj-pain-num { display: flex; align-items: baseline; gap: 4px; margin-top: 6px; }
+.inj-pain-num b { font-family: var(--font-display); font-stretch: var(--display-stretch); font-size: 52px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.inj-pain-num b.over { color: var(--warning-text); }
+.inj-pain-num .unit { font-size: 15px; font-weight: 500; color: var(--muted); }
+.inj-lim { margin-left: auto; font-size: 12px; color: var(--muted); }
+.inj-hero > .inj-cta { display: flex; width: calc(100% - 36px); margin: 4px 18px 18px; }
+.inj-hero > .chart-svg { width: calc(100% - 36px); }
+.quote-card.kine .quote-text { font-size: 17px; line-height: 1.45; }
+.past-fold { padding: 2px 18px 6px; }
+.past-fold > summary { font-size: 12px; font-weight: 600; letter-spacing: var(--caps-track); text-transform: uppercase; color: var(--ink); }
+.past-fold > summary .label { margin-left: auto; margin-right: 10px; }
+.past-fold .list-row:first-of-type { border-top: 1px solid var(--border); padding-top: 12px; }
 
 /* ================= Bottom navigation: zwevende pill ================= */
 .tabbar { bottom: calc(var(--safe-bottom) + 12px); border-radius: var(--r-pill); background: var(--surface); }

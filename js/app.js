@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '4.4.0-dev';
+  const APP_VERSION = '4.5.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -2601,7 +2601,19 @@
   }
 
   function statsOverview() {
-    return streakHero() + badgesHtml() + statsOverviewBody();
+    return statsHero() + badgesHtml() + statsOverviewBody();
+  }
+  // Kerncijfers op een donkere fotokaart: streak, sessies, minuten (30 dagen), matchen
+  function statsHero() {
+    const s = streakInfo(), since = dkey(addDays(today(), -29));
+    const mins = sum(S.workouts.filter(w => w.date >= since).map(woMinutes)) + sum(S.activities.filter(a => a.date >= since).map(a => +a.minutes || 0));
+    const matches = S.activities.filter(a => a.type === 'match').length;
+    const stats = [[s.days, 'd', 'Streak'], [totalDone(), '', 'Sessies'], [mins, '', 'Min · 30 d'], [matches, '', 'Matchen']];
+    return `<section class="stats-hero" aria-label="Kerncijfers">
+      <img src="assets/stats.jpg" alt="" class="stats-img" decoding="async" onerror="this.remove()">
+      <div class="stats-shade"></div>
+      <div class="stats-row">${stats.map(([v, u, l]) => `<div class="stat"><b>${v}${u ? `<span class="unit">${u}</span>` : ''}</b><span>${l}</span></div>`).join('')}</div>
+    </section>`;
   }
   function statsOverviewBody() {
     const t = today();
@@ -3084,7 +3096,7 @@
       return { label: DAY_LETTER[d.getDay()], v: vals.length ? Math.max(...vals) : null };
     });
   }
-  function injuryHero(inj) {
+  function injuryHero(inj, primary = true) {
     const tk = dkey(today()), c = checkFor(tk);
     const vals = injurySides(inj).map(s => checkVal(c, inj.id, 'pain', s)).filter(v => v != null);
     const painNow = vals.length ? Math.max(...vals) : null;
@@ -3102,16 +3114,17 @@
           <span class="muted small">${esc([injurySideText(inj), inj.notes].filter(Boolean).join(' · ') || 'Tik voor details en afspraken')}</span>
         </button>
         <div class="inj-pain">
-          <div><span class="label">Pijn vandaag</span><div class="num md">${painNow == null ? '–' : painNow}<span class="unit">/ 10${lim != null ? ` · afspraak max ${lim}` : ''}</span></div></div>
-          <button class="btn ${painNow == null ? 'accent' : ''} sm" data-action="open-check">${painNow == null ? 'Invullen' : 'Aanpassen'}</button>
+          <span class="label">Pijn vandaag</span>
+          <div class="inj-pain-num"><b class="${painNow != null && lim != null && painNow > lim ? 'over' : ''}">${painNow == null ? '–' : painNow}</b><span class="unit">/10</span>${lim != null ? `<span class="inj-lim">grens ${lim}</span>` : ''}</div>
         </div>
         <p class="label" style="margin-top:14px;margin-bottom:4px">Pijn, laatste 7 dagen</p>
-        ${has ? Charts.line({ labels: series.map(x => x.label), series: [{ color: 'var(--accent)', values: series.map(x => x.v) }], step: false, height: 96, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim }) : '<p class="empty">Nog geen pijnscores. Vul ze in bij je dagelijkse check.</p>'}
+        ${has ? Charts.line({ labels: series.map(x => x.label), series: [{ color: 'var(--accent)', values: series.map(x => x.v) }], step: false, height: 96, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim }) : '<p class="empty">Nog geen pijnscores.</p>'}
+        <button class="btn ${primary ? 'accent' : ''} block lg inj-cta" data-action="open-check">${painNow == null ? 'Pijn invullen' : 'Pijn aanpassen'}</button>
       </section>
       <button class="card inj-plan" data-action="open-injury" data-id="${inj.id}">
         <span class="label">Herstelplan</span><b>${esc(plan || 'Nog geen plan')}</b><span class="muted small">${esc(planSub)}</span>
       </button>
-      ${agr ? `<section class="card quote-card"><span class="label">Afspraak met je kinesist</span><p class="quote-text">“${esc(agr.text)}”</p><span class="label">${esc(fmtFull(agr.date))}</span></section>` : ''}`;
+      ${agr ? `<section class="card quote-card kine"><span class="label">Afspraak met je kinesist</span><p class="quote-text">“${esc(agr.text)}”</p><span class="label">${esc(fmtFull(agr.date))}</span></section>` : ''}`;
   }
 
   function renderInjuries() {
@@ -3121,22 +3134,18 @@
     main.innerHTML = `
       <header class="page-head"><div><span class="eyebrow">Zorg voor je basis</span><h1>Herstel is progressie.</h1><p>Luister naar je lichaam. Bouw bewust op.</p></div>
         <button class="icon-btn" data-action="inj-new" aria-label="Blessure toevoegen">${icon('plus')}</button></header>
-      ${act.map(injuryHero).join('')}
-      ${!list.length ? `<section class="card empty-state">
-          <span class="es-ico">${icon('shield')}</span>
-          <h2>Nog geen blessures.</h2>
-          <p>Houden zo. Je kunt hier klachten en je herstel bijhouden.</p>
-          <button class="btn accent block lg" data-action="inj-new">${icon('plus')} Blessure toevoegen</button>
-        </section>` : !act.length ? `<section class="card empty-state">
-          <span class="es-ico">${icon('check')}</span>
-          <h2>Geen actieve blessure.</h2>
-          <p>Je traint zonder blessure. ${maint.length ? `${maint.length} oefening${maint.length === 1 ? '' : 'en'} blijf${maint.length === 1 ? 't' : 'en'} als onderhoud in je planning.` : 'Vandaag toont geen blessurevragen.'}</p>
-          <button class="btn block" data-action="inj-new">${icon('plus')} Nieuwe blessure</button>
+      ${act.map((inj, i) => injuryHero(inj, i === 0)).join('')}
+      ${!list.length ? `<section class="card empty-row">
+          <p>Nog geen blessures.</p>
+          <button class="btn sm" data-action="inj-new">${icon('plus')} Blessure toevoegen</button>
+        </section>` : !act.length ? `<section class="card empty-row">
+          <p>Geen actieve blessure.${maint.length ? ` ${maint.length} onderhoudsoefening${maint.length === 1 ? '' : 'en'} in je planning.` : ''}</p>
+          <button class="btn sm" data-action="inj-new">${icon('plus')} Nieuwe blessure</button>
         </section>` : ''}
-      ${past.length ? `<div class="section"><span>Hersteld</span><span>${past.length}</span></div>
-        <section class="card">${past.map(i => `<button class="list-row tap row-btn" data-action="open-injury" data-id="${i.id}">
+      ${past.length ? `<details class="card fold past-fold"><summary><span>Hersteld</span><span class="label">${past.length}</span></summary>
+        ${past.map(i => `<button class="list-row tap row-btn" data-action="open-injury" data-id="${i.id}">
           <span class="body"><b>${esc(injuryLabel(i))}</b><span>${esc([injurySideText(i), `${fmtShort(i.start)} – ${i.end ? fmtFull(i.end) : '?'}`].filter(Boolean).join(' · '))}</span></span>
-          <span class="end"><span class="tag">Hersteld</span>${icon('chevR')}</span></button>`).join('')}</section>` : ''}
+          <span class="end">${icon('chevR')}</span></button>`).join('')}</details>` : ''}
       ${act.length > 0 ? `<button class="btn ghost block" style="margin-top:6px" data-action="inj-none">Geen actieve blessure meer</button>` : ''}
       <p class="footer-note">Pijngrenzen, fases en evaluatiedata zijn persoonlijke afspraken. De app geeft geen medische vrijgave.</p>`;
   }
