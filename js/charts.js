@@ -4,7 +4,7 @@ window.Charts = (() => {
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const r1 = n => Math.round(n * 10) / 10;
 
-  /* Staafgrafiek met smalle, platte staven; de geselecteerde staaf is oranje */
+  /* Staafgrafiek met smalle, platte staven; de geselecteerde staaf krijgt --accent */
   function bars(data, { selected = data.length - 1, height = 170, action = 'bar-select' } = {}) {
     const W = 320, H = height, top = 24, bottom = 22, chartH = H - top - bottom;
     const max = Math.max(4, ...data.map(d => d.value));
@@ -18,7 +18,7 @@ window.Charts = (() => {
       const sel = i === selected;
       body += `<g class="c-bar" ${action ? `data-action="${action}" data-i="${i}"` : ''}>
         <rect x="${r1(cx - slot / 2)}" y="0" width="${r1(slot)}" height="${H}" fill="transparent"/>
-        <rect x="${r1(cx - bw / 2)}" y="${r1(y)}" width="${r1(bw)}" height="${r1(h)}" rx="2" style="fill:${sel ? 'var(--accent)' : 'var(--bar)'}"/>
+        <rect x="${r1(cx - bw / 2)}" y="${r1(y)}" width="${r1(bw)}" height="${r1(h)}" rx="${r1(Math.min(bw / 2, 4))}" style="fill:${sel ? 'var(--accent)' : 'var(--bar)'}"/>
         ${sel ? `<text x="${r1(cx)}" y="${r1(y - 7)}" class="c-val" text-anchor="middle">${d.value}</text>` : ''}
         <text x="${r1(cx)}" y="${H - 5}" class="c-lbl${sel ? ' on' : ''}" text-anchor="middle">${esc(d.label)}</text>
       </g>`;
@@ -41,8 +41,9 @@ window.Charts = (() => {
     return d;
   }
 
-  /* Lijngrafiek; values mogen null bevatten (dan wordt de lijn onderbroken) */
-  function line({ labels, series, yMin = 0, yMax = 10, ticks = [0, 5, 10], height = 170, xTicks = 4, step = false }) {
+  /* Lijngrafiek; values mogen null bevatten (dan wordt de lijn onderbroken).
+   warnAbove: punten boven die grens (bv. de pijngrens) krijgen --warning */
+  function line({ labels, series, yMin = 0, yMax = 10, ticks = [0, 5, 10], height = 170, xTicks = 4, step = false, warnAbove = null }) {
     const W = 320, H = height, L = 26, R = 8, T = 10, B = 22;
     const cw = W - L - R, ch = H - T - B, n = labels.length;
     const x = i => L + (n <= 1 ? cw / 2 : (cw * i) / (n - 1));
@@ -50,7 +51,8 @@ window.Charts = (() => {
     let out = '';
     ticks.forEach(t => {
       const yy = r1(y(t));
-      out += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" class="c-grid"/><text x="${L - 8}" y="${yy + 3.5}" class="c-axis" text-anchor="end">${esc(t)}</text>`;
+      // De afgesproken grens als dunne stippellijn
+      out += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" class="${warnAbove != null && t === warnAbove ? 'c-limit' : 'c-grid'}"/><text x="${L - 8}" y="${yy + 3.5}" class="c-axis" text-anchor="end">${esc(t)}</text>`;
     });
     const idx = new Set();
     const k = Math.min(xTicks, n);
@@ -65,9 +67,11 @@ window.Charts = (() => {
       if (cur.length) segs.push(cur);
       const last = lastIndex(s.values);
       segs.forEach(seg => {
-        if (seg.length > 1) out += `<path d="${path(seg, step)}" fill="none" style="stroke:${s.color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+        if (seg.length > 1) out += `<path d="${path(seg, step)}" fill="none" style="stroke:${s.color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
         seg.forEach(p => {
-          if (p[2] === last || seg.length === 1) out += `<circle cx="${r1(p[0])}" cy="${r1(p[1])}" r="3.5" style="fill:${s.color}"/>`;
+          const over = warnAbove != null && s.values[p[2]] > warnAbove;
+          if (over) out += `<circle cx="${r1(p[0])}" cy="${r1(p[1])}" r="3.5" class="c-warn"/>`;
+          else if (p[2] === last || seg.length === 1) out += `<circle cx="${r1(p[0])}" cy="${r1(p[1])}" r="3.5" style="fill:${s.color}"/>`;
         });
       });
     });

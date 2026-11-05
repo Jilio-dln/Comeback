@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Comeback</title>
   <meta name="description" content="Persoonlijke app om te trainen, te herstellen en weer volledig fit te worden voor voetbal.">
-  <meta name="theme-color" content="#EFEFEF" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#090909" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#DCE1E7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0B0E12" media="(prefers-color-scheme: dark)">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,600..800&family=Inter:wght@400;500;600;700&display=swap">
   <script>
     // Thema meteen zetten, zodat er geen witte flits is in dark mode
     (function () {
@@ -27,7 +27,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
-  <link rel="preload" href="assets/hero.jpg" as="image">
+  <link rel="preload" href="assets/hero.webp" as="image">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -66,7 +66,7 @@
           var box = document.querySelector('.boot');
           if (!box) return;
           box.style.cssText = 'padding:40px 8px;font:14px/1.5 system-ui,sans-serif;text-align:left';
-          box.innerHTML = '<b>De app start niet.</b><br>Controle van de bestanden:<pre style="white-space:pre-wrap;background:rgba(0,0,0,.06);padding:12px;border-radius:12px">' +
+          box.innerHTML = '<b>De app start niet.</b><br>Controle van de bestanden:<pre style="white-space:pre-wrap;background:var(--surface-2);padding:12px;border-radius:12px">' +
             lines.join('\n') + (errors.length ? '\n\nFouten:\n' + errors.join('\n') : '') +
             '\n\nIndexedDB: ' + ('indexedDB' in window ? 'ok' : 'niet beschikbaar') + '</pre>' +
             'Staat er "ONTBREEKT"? Upload dat bestand dan in de juiste map op GitHub.<br>' +

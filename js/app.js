@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '4.0.0-dev';
+  const APP_VERSION = '5.4.0';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -69,6 +69,7 @@
     back: '<path d="M15 18l-6-6 6-6"/>',
     chevL: '<path d="M15 18l-6-6 6-6"/>',
     chevR: '<path d="M9 18l6-6-6-6"/>',
+    more: '<circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     minus: '<path d="M5 12h14"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
@@ -125,7 +126,8 @@
     const dark = p === 'dark' || (p === 'auto' && darkQuery && darkQuery.matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     // Gekozen thema wint van de systeeminstelling, ook voor de statusbalk
-    document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.setAttribute('content', dark ? '#090909' : '#EFEFEF'); m.removeAttribute('media'); });
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.setAttribute('content', bg); m.removeAttribute('media'); });
   }
   function setTheme(p) {
     try { localStorage.setItem('comeback-theme', p); } catch (_) { }
@@ -259,31 +261,20 @@
   const isSkip = r => typeof r === 'string' && r.startsWith('skip');
   const skipReason = r => isSkip(r) && r.length > 5 ? r.slice(5) : '';
 
-  // Standaardschema van een dag (zonder jouw eigen wijzigingen)
+  // Vaste planning (herhalingen) die je zelf instelt: { id, item: { type, id?, label? }, days: [0–6], time?, min?, since, until? }
+  const planRules = () => S.settings.schedule || [];
+  // Basisplanning van een dag: standaard leeg. Alleen jouw herhalingen en de weekplanning van een herstelplan.
+  // (Het vaste weekschema uit config.js en de RBFA-matchen staan niet meer automatisch in de kalender.)
   function basePlan(date, phaseId = currentPhase(), opts = {}) {
-    const useFixtures = opts.fixtures !== false;
     const wd = date.getDay(), k = dkey(date);
-    const span = useFixtures ? fixtureSpan() : null;
-    const covered = !!(span && k >= span.first && k <= span.last);
-    let sat = opts.satMatch;
-    if (sat === undefined) sat = satMatchWeek(date) || (covered && !!fixtureOn(dkey(addDays(startOfWeek(date), 5))));
-    const alt = sat && C.weekWithSaturdayMatch && C.weekWithSaturdayMatch[wd];
-    let items = (alt || C.week[wd] || []).filter(it => !it.phases || it.phases.includes(phaseId))
-      .filter(it => it.type !== 'session' || !C.sessions[it.id] || programOn(C.sessions[it.id].program, it.id)).map(it => ({ ...it }));
-    if (covered) {
-      const f = fixtureOn(k);
-      items = items.filter(it => it.type !== 'match');
-      if (f) items.push({ type: 'match', fixture: f });
-    }
-    const daily = (C.daily && C.daily[phaseId]) || [];
-    daily.slice().reverse().forEach(id => {
-      if (!programOn((C.sessions[id] || {}).program, id)) return;
-      if (!items.some(it => it.type === 'session' && it.id === id)) items = [{ type: 'session', id, note: 'Dagelijks in deze fase' }, ...items];
-    });
-    // Eigen workouts die je zelf op vaste weekdagen zette (Workout → Inplannen)
-    if (opts.mine !== false) (S.settings.workoutSchedule || []).forEach(sc => {
-      if (!C.sessions[sc.id] || !(sc.days || []).includes(wd) || (sc.since && k < sc.since)) return;
-      if (!items.some(it => it.type === 'session' && it.id === sc.id)) items.push({ type: 'session', id: sc.id, mine: true, note: 'Jouw weekplanning' });
+    const items = [];
+    if (opts.mine !== false) planRules().forEach(r => {
+      if (!(r.days || []).includes(wd) || (r.since && k < r.since) || (r.until && k > r.until)) return;
+      if (r.item.type === 'session' && !C.sessions[r.item.id]) return;
+      const it = { ...r.item, rule: r.id, mine: true, note: 'Vaste planning' };
+      if (r.time) it.time = r.time;
+      if (r.min) it.min = r.min;
+      if (!items.some(x => itemKey(x) === itemKey(it))) items.push(it);
     });
     // Herstelplannen: wekelijks ingeplande workouts van een lopende blessure (of als onderhoud na herstel)
     if (opts.rehab !== false) injuries().forEach(inj => {
@@ -292,12 +283,10 @@
         if (!C.sessions[sc.id] || !(sc.days || []).includes(wd)) return;
         if (sc.since && k < sc.since) return;
         if (inj.start && k < inj.start) return;
-        // Na afronden: alleen wat je als onderhoud houdt; daarvoor gold het plan gewoon (geschiedenis blijft kloppen)
         if (done && inj.end && k > inj.end && !(inj.maintenance || []).includes(sc.id)) return;
         if (!items.some(it => it.type === 'session' && it.id === sc.id)) items.push({ type: 'session', id: sc.id, note: done && inj.end && k > inj.end ? `Onderhoud · ${injuryLabel(inj)}` : `Herstel · ${injuryLabel(inj)}` });
       });
     });
-    if (!items.length) items =[{ type: 'rest', note: covered && wd === 0 ? 'Geen match dit weekend' : undefined }];
     return items;
   }
 
@@ -347,6 +336,8 @@
   // Naam van een opgeslagen workout: altijd de huidige naam uit de config (oude workouts heetten "Sessie A")
   const woTitle = w => (C.sessions[w.sessionKey] && C.sessions[w.sessionKey].name) || w.title;
   const sessionDesc = key => key === 'PLYO' ? `Stap ${plyoStep()} van 4: ${C.sessions.PLYO.steps[plyoStep() - 1].title}` : ((C.sessions[key] && (C.sessions[key].desc || C.sessions[key].subtitle)) || '');
+  // Standaardduur van een workout (schatting, gelogde snelle "Gedaan" en voorinvulling)
+  const DEFAULT_WORKOUT_MIN = 60;
   function sessionStats(key) {
     const items = sessionItems(key);
     let sets = 0, secs = 0;
@@ -356,7 +347,7 @@
       sets += n;
       secs += n * ((ex.rest || C.defaultRest) + (ex.kind === 'hold' ? ex.duration : 35));
     });
-    return { exercises: items.length, sets, minutes: Math.max(5, Math.round(secs / 60 / 5) * 5) };
+    return { exercises: items.length, sets, minutes: DEFAULT_WORKOUT_MIN };
   }
 
   function prescription(it, ex) {
@@ -559,6 +550,7 @@
     render({ keepScroll: true });
     toast(`${sessionTitle(id)}: gedaan zonder details`, { action: 'undo-done', label: 'Ongedaan' });
     checkMilestones();
+    askRpe('workouts', rec.id);
   }
 
   // Kine, herstel of een eigen type afvinken: één tik, duur vooraf ingevuld
@@ -573,6 +565,7 @@
     render({ keepScroll: true });
     toast(`${itemMeta(it).title}: gedaan`, { action: 'undo-done', label: 'Ongedaan' });
     checkMilestones();
+    askRpe('activities', rec.id);
   }
 
   // Verwijderen: weg uit de planning (telt niet als gemist). Terugzetten kan in de planning.
@@ -670,14 +663,14 @@
     const best = days.find(o => o.best);
     openSheet(`<div class="sheet-head"><div><h3>${esc(m.title)} verplaatsen</h3><p>Nu gepland op ${fmtDay(k)}.</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       ${best ? `<button class="btn accent block lg" data-action="move-to" data-from="${k}" data-key="${esc(key)}" data-to="${best.k}">${icon('magic')} Beste dag: ${fmtDay(best.k)}</button>
-      <p class="label" style="margin:8px 2px 16px">Zware sessies komen nooit op een matchdag of de dag ervoor, en de app vermijdt dagen waarop al een sessie staat.</p>` : ''}
-      <p class="label" style="margin:0 2px 8px">Of kies zelf</p>
+      <p class="label" style="margin:8px 0 16px">Zware sessies komen nooit op een matchdag of de dag ervoor, en de app vermijdt dagen waarop al een sessie staat.</p>` : ''}
+      <p class="label" style="margin:0 0 8px">Of kies zelf</p>
       <div class="day-pick">${days.map(o => `<button class="${o.best ? 'best' : ''}" data-action="move-to" data-from="${k}" data-key="${esc(key)}" data-to="${o.k}">
         <b>${cap(DAY_S[o.d.getDay()])} ${o.d.getDate()} ${MON[o.d.getMonth()]}</b>
         <span>${esc(o.label)}</span>
         <span class="tag ${o.best ? 'done' : o.score >= 0 ? '' : 'missed'}">${o.best ? 'Aanbevolen' : o.score >= 0 ? 'Kan' : esc(o.why[0] || 'Liever niet')}</span>
       </button>`).join('')}</div>
-      <label class="field" style="margin-top:14px"><span>Andere datum</span>
+      <label class="field mt-16"><span>Andere datum</span>
         <div class="row"><input class="input" type="date" id="move-date" min="${dkey(today())}"><button class="btn primary" style="flex:0 0 auto" data-action="move-custom" data-from="${k}" data-key="${esc(key)}">Zet</button></div></label>`);
   }
 
@@ -687,13 +680,12 @@
   const ROUTES = {
     vandaag: { label: 'Vandaag', icon: 'home', render: () => renderToday() },
     planning: { label: 'Planning', icon: 'calendar', render: () => renderPlanning() },
-    workout: { label: 'Workout', icon: 'dumbbell', render: () => renderWorkout() },
-    statistieken: { label: 'Voortgang', icon: 'chart', render: () => renderStats() },
-    blessures: { label: 'Blessures', icon: 'heart', render: () => renderInjuries() }
+    workout: { label: 'Training', icon: 'dumbbell', render: () => renderTraining() },
+    blessures: { label: 'Lichaam', icon: 'heart', render: () => renderLichaam() }
   };
   // Account open je via je avatar op Vandaag (geen eigen tab)
-  const SUBS = { account: { parent: null, render: () => renderAccount() }, matchen: { parent: 'account', render: () => renderMatches() }, blessure: { parent: 'blessures', render: () => renderInjury() } };
-  const ALIASES = { profiel: 'account', kalender: 'planning', voortgang: 'statistieken' };
+  const SUBS = { statistieken: { parent: 'workout', render: () => renderStats() }, account: { parent: null, render: () => renderAccount() }, matchen: { parent: 'account', render: () => renderMatches() }, blessure: { parent: 'blessures', render: () => renderInjury() } };
+  const ALIASES = { profiel: 'account', kalender: 'planning', voortgang: 'statistieken', training: 'workout', lichaam: 'blessures' };
   let lastRoute = null;
   const currentRoute = () => {
     const r = location.hash.slice(1);
@@ -711,19 +703,45 @@
     renderTabbar(SUBS[r] ? SUBS[r].parent : r);
     if (S.settings.demo) main.insertAdjacentHTML('afterbegin', `<div class="demo-bar" role="status"><span><b>Demostand</b> · voorbeelddata telt mee</span><button data-action="demo-off">Uitzetten</button></div>`);
     if (keepScroll || r === lastRoute) window.scrollTo(0, y);
-    else window.scrollTo(0, 0);
+    else { window.scrollTo(0, 0); enterView(); }
     lastRoute = r;
+  }
+
+  // Schermwissel: zachte fade + 8px, kaarten gestaffeld; grote cijfers tellen op (uit bij reduced motion)
+  const reduceMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function enterView() {
+    if (reduceMotion()) return;
+    main.classList.remove('view-enter'); void main.offsetWidth; main.classList.add('view-enter');
+    clearTimeout(enterView.t); enterView.t = setTimeout(() => main.classList.remove('view-enter'), 700);
+    countUp(main);
+  }
+  function countUp(root) {
+    root.querySelectorAll('.tile-num, .stat b, .inj-pain-num b, .streak-num, .gauge-center .num, .ring b').forEach(el => {
+      const tn = [...el.childNodes].find(n => n.nodeType === 3 && /^\s*\d+\s*$/.test(n.nodeValue));
+      if (!tn) return;
+      const to = parseInt(tn.nodeValue, 10); if (!(to > 1)) return;
+      const t0 = performance.now();
+      const step = t => {
+        const p = Math.min(1, (t - t0) / 400), e = 1 - Math.pow(1 - p, 3);
+        tn.nodeValue = String(Math.round(to * e));
+        if (p < 1) requestAnimationFrame(step);
+      };
+      tn.nodeValue = '0'; requestAnimationFrame(step);
+    });
   }
 
   function renderTabbar(active) {
     const keys = Object.keys(ROUTES);
     const bar = $('#tabbar');
-    bar.style.gridTemplateColumns = `repeat(${keys.length}, 1fr)`;
-    bar.innerHTML = keys.map(key => {
+    bar.style.gridTemplateColumns = `repeat(${keys.length + 1}, 1fr)`;
+    const tabs = keys.map(key => {
       const r = ROUTES[key];
       // Alleen het icoon is zichtbaar; de naam blijft voor schermlezers en als tooltip
       return `<a class="tab ${key === active ? 'active' : ''}" href="#${key}" aria-label="${r.label}" title="${r.label}" ${key === active ? 'aria-current="page"' : ''}><span class="box">${icon(r.icon)}</span></a>`;
-    }).join('');
+    });
+    // Centrale "+" om alle sport te loggen
+    tabs.splice(2, 0, `<button class="tab tab-plus" data-action="add-menu" data-k="${dkey(today())}" aria-label="Inplannen" title="Inplannen"><span class="box">${icon('plus')}</span></button>`);
+    bar.innerHTML = tabs.join('');
   }
 
   // Kop voor een hoofdtab (geen terugknop) en voor een subscherm (wel een terugknop)
@@ -731,6 +749,285 @@
     `<header class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right}</header>`;
   const subHead = (title, back, sub = '', right = '') =>
     `<header class="sub-head">${iconBtn('back', 'go', 'Terug', `data-to="${back}"`)}<div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right || '<span></span>'}</header>`;
+
+
+  /* ================= Preventie: belasting, zones en readiness ================= */
+  // Belasting per sessie = zwaarte (0–10) × minuten (sRPE, Foster).
+  // Ontbreekt de zwaarte (oude registraties, snelle "Gedaan"), dan schatten we per type.
+  const RPE_EST = { kracht: 6, herstel: 3, training: 6, match: 8, run: 6, kine: 3, recovery: 2, sport: 6, custom: 5 };
+  function loadsBetween(fromK, toK) {
+    const out = [];
+    S.workouts.forEach(w => {
+      if (w.date < fromK || w.date > toK) return;
+      const est = C.sessions[w.sessionKey] && C.sessions[w.sessionKey].program ? RPE_EST.herstel : RPE_EST.kracht;
+      const r = num(w.rpe);
+      out.push({ date: w.date, load: (r ?? est) * woMinutes(w), est: r == null });
+    });
+    S.activities.forEach(a => {
+      if (a.date < fromK || a.date > toK) return;
+      const r = num(a.rpe);
+      out.push({ date: a.date, load: (r ?? (RPE_EST[a.type] ?? 5)) * (+a.minutes || 0), est: r == null });
+    });
+    return out;
+  }
+  // Zones op basis van de acute:chronische verhouding (ACWR, Gabbett 2016):
+  //   acuut   = belasting van de laatste 7 dagen (vandaag inbegrepen)
+  //   chronisch = gemiddelde weekbelasting van de 4 weken daarvoor (dag 8 t/m 35)
+  //   < 0,8 te laag · 0,8–1,3 optimaal · 1,3–1,5 let op · > 1,5 piek
+  //   Minder dan 14 dagen geschiedenis of geen chronische belasting: nog te weinig gegevens.
+  const ZONES = { laag: 'Te laag', optimaal: 'Optimaal', letop: 'Let op', piek: 'Piek', onbekend: 'Nog te weinig gegevens' };
+  function loadInfo() {
+    const t = today(), tk = dkey(t);
+    const acuteL = loadsBetween(dkey(addDays(t, -6)), tk), chronL = loadsBetween(dkey(addDays(t, -34)), dkey(addDays(t, -7)));
+    const acute = Math.round(sum(acuteL.map(x => x.load))), chronic = Math.round(sum(chronL.map(x => x.load)) / 4);
+    const all = [...S.workouts, ...S.activities].map(x => x.date).filter(Boolean).sort();
+    const history = all.length ? daysBetween(parseKey(all[0]), t) : 0;
+    const ratio = chronic > 0 ? acute / chronic : null;
+    const zone = history < 14 || ratio == null ? 'onbekend' : ratio < 0.8 ? 'laag' : ratio <= 1.3 ? 'optimaal' : ratio <= 1.5 ? 'letop' : 'piek';
+    const est = [...acuteL, ...chronL].filter(x => x.est).length;
+    return { acute, chronic, ratio, zone, est };
+  }
+  function weeklyLoads(n = 6) {
+    const ws0 = startOfWeek(today()), out = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const ws = addDays(ws0, -7 * i);
+      out.push({ label: `W${isoWeek(ws)}`, value: Math.round(sum(loadsBetween(dkey(ws), dkey(addDays(ws, 6))).map(x => x.load))) });
+    }
+    return out;
+  }
+  // Readiness: Rust (pijn boven grens, vermoeidheid 5 of piek), Opletten (stijging, pijn op de grens,
+  // vermoeidheid 4 of let op), anders Klaar. Zonder check van vandaag telt alleen de belasting.
+  function readiness() {
+    const c = checkFor(dkey(today())), act = activeInjuries(), L = loadInfo();
+    const fat = c && c.fatigue != null ? c.fatigue : null;
+    const painToday = inj => { const v = injurySides(inj).map(s => checkVal(c, inj.id, 'pain', s)).filter(x => x != null); return v.length ? Math.max(...v) : null; };
+    const over = act.filter(i => { const p = painToday(i), l = num(i.painLimit); return p != null && l != null && p > l; });
+    const atLim = act.filter(i => { const p = painToday(i), l = num(i.painLimit); return p != null && l != null && p === l; });
+    const rise = act.filter(i => checkRise(i).length);
+    const has = act.length ? act.every(i => checkEntry(c, i.id)) : fat != null;
+    const why = [];
+    let state = 'klaar';
+    if (over.length || fat === 5 || L.zone === 'piek') {
+      state = 'rust';
+      if (over.length) why.push(`pijn boven je grens (${over.map(injuryLabel).join(', ')})`);
+      if (fat === 5) why.push('erg moe');
+      if (L.zone === 'piek') why.push('piek in je belasting');
+    } else if (rise.length || atLim.length || fat === 4 || L.zone === 'letop') {
+      state = 'opletten';
+      if (rise.length) why.push('hoger dan je vorige check');
+      if (atLim.length) why.push('pijn op je grens');
+      if (fat === 4) why.push('vermoeid');
+      if (L.zone === 'letop') why.push('belasting hoger dan gewoonlijk');
+    } else why.push(L.zone === 'optimaal' ? 'belasting in balans' : L.zone === 'laag' ? 'belasting lager dan gewoonlijk' : 'niets bijzonders');
+    if (!has) why.push('check nog niet ingevuld');
+    return { state, label: { klaar: 'Klaar', opletten: 'Opletten', rust: 'Rust' }[state], why: cap(why.join(' · ')) };
+  }
+  function readinessTile() {
+    const r = readiness();
+    return `<button class="card readiness ${r.state}" data-action="go" data-to="blessures" aria-label="Readiness: ${r.label}. ${esc(r.why)}. Naar Lichaam">
+      <span class="label">Readiness</span><b>${r.label}</b><span class="rd-why">${esc(r.why)}</span>${icon('chevR')}</button>`;
+  }
+  // Belastingsmeter: vier zones op een balk, met een markering op de verhouding
+  function loadCard() {
+    const L = loadInfo();
+    const pos = L.ratio == null ? null : Math.max(0, Math.min(1, L.ratio / 2));
+    const warn = L.zone === 'letop' || L.zone === 'piek';
+    return `<section class="card load-card">
+      <div class="card-head"><h2>Belasting</h2><span class="label">7 d tegenover 4 weken</span></div>
+      <div class="load-zone ${warn ? 'warn' : L.zone}"><b>${ZONES[L.zone]}</b>${L.ratio != null ? `<span>${fmtNum(Math.round(L.ratio * 100) / 100)}</span>` : ''}</div>
+      <div class="load-meter" aria-hidden="true"><i class="z-laag"></i><i class="z-optimaal"></i><i class="z-letop"></i><i class="z-piek"></i>${pos != null ? `<em style="left:${(pos * 100).toFixed(1)}%"></em>` : ''}</div>
+      <div class="load-nums"><div><b>${L.acute}</b><span>deze 7 dagen</span></div><div><b>${L.chronic}</b><span>gemiddeld per week</span></div></div>
+      ${L.est ? `<p class="label mt-8">${L.est} registratie${L.est === 1 ? '' : 's'} zonder zwaarte: geschat.</p>` : ''}
+    </section>`;
+  }
+  // Trend van de dagelijkse check (14 dagen): pijn per lopend traject, anders vermoeidheid
+  function checkTrendCard() {
+    const t = today(), days = [], labels = [];
+    for (let i = 13; i >= 0; i--) { const d = addDays(t, -i); days.push(dkey(d)); labels.push(fmtShort(d)); }
+    const act = activeInjuries();
+    let body;
+    if (act.length) {
+      const inj = act[0], lim = num(inj.painLimit);
+      const vals = days.map(k => { const c = checkFor(k); const v = injurySides(inj).map(s => checkVal(c, inj.id, 'pain', s)).filter(x => x != null); return v.length ? Math.max(...v) : null; });
+      body = vals.some(v => v != null) ? `<p class="label">Pijn · ${esc(injuryLabel(inj))}</p>${Charts.line({ labels, series: [{ color: 'var(--accent)', values: vals }], step: true, height: 110, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim })}` : '<p class="empty">Nog geen checks in deze periode.</p>';
+    } else {
+      const vals = days.map(k => { const c = checkFor(k); return c && c.fatigue != null ? c.fatigue : null; });
+      body = vals.some(v => v != null) ? `<p class="label">Vermoeidheid (1–5)</p>${Charts.line({ labels, series: [{ color: 'var(--accent)', values: vals }], step: true, height: 110, yMin: 1, yMax: 5, ticks: [1, 3, 5] })}` : '<p class="empty">Nog geen checks in deze periode.</p>';
+    }
+    return `<section class="card"><div class="card-head"><h2>Dagelijkse check</h2><span class="label">14 dagen</span></div>${body}</section>`;
+  }
+
+  /* ================= Alle sport loggen ================= */
+  const RUN_TYPES = { duurloop: 'Duurloop', interval: 'Interval', herstel: 'Herstelloop', sprint: 'Sprint' };
+  const RUN_SURF = { gras: 'Gras', asfalt: 'Asfalt', piste: 'Piste', loopband: 'Loopband' };
+  // Tempo in min/km als tekst (bv. 5:12), of '–'
+  function paceText(km, min) {
+    const k = num(km), m = num(min);
+    if (!k || !m) return '–';
+    const s = Math.round((m * 60) / k);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+  function openLogMenu() {
+    const tiles = [['kracht', 'dumbbell', 'Kracht', 'Workout starten'], ['run', 'bolt', 'Lopen', 'Afstand en tempo'], ['training', 'whistle', 'Voetbaltraining', 'Met de ploeg'],
+      ['match', 'ball', 'Match', 'Minuten en gevoel'], ['kine', 'heart', 'Kine', 'Sessie bij je kinesist'], ['sport', 'pulse', 'Andere sport', 'Padel, fietsen, zwemmen…']];
+    openSheet(`<div class="sheet-head"><div><h3>Loggen</h3><p>Wat heb je al gedaan?</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <div class="type-grid">${tiles.map(([t, ic, l, s]) => `<button class="type-tile" data-action="log-new" data-type="${t}">${icon(ic)}<b>${l}</b><span>${s}</span></button>`).join('')}</div>`);
+  }
+  function logNew(type) {
+    if (type === 'kracht') { closeSheet(); S.ui.trainSeg = 'kracht'; S.ui.woView = 'picker'; go('workout'); return; }
+    if (type === 'run') return openRunLog();
+    if (type === 'training' || type === 'match') return openLog(type);
+    return openSimpleLog(type);
+  }
+  function openRunLog(id = null) {
+    const ex = id ? S.activities.find(a => a.id === id) : null;
+    const rt = (ex && ex.runType) || 'duurloop', sf = (ex && ex.surface && RUN_SURF[ex.surface] ? ex.surface : null) || (S.settings.runPrefs || {}).surface || 'gras';
+    openSheet(`<form id="run-form" data-id="${ex ? ex.id : ''}">
+      <div class="sheet-head"><h3>${ex ? 'Bewerken: ' : ''}Lopen</h3>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <div class="form-grid">
+        <label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${ex ? ex.date : dkey(today())}" max="${dkey(today())}" required></label>
+        <label class="field"><span>Afstand (km)</span><input class="input" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" name="km" value="${ex && ex.distanceKm != null ? String(ex.distanceKm).replace('.', ',') : ''}" placeholder="bv. 6,5" required></label>
+        <label class="field"><span>Duur (min)</span><input class="input" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" name="minutes" value="${ex && ex.minutes != null ? String(ex.minutes).replace('.', ',') : ''}" placeholder="bv. 35" required></label>
+        <div class="field"><span>Tempo</span><output class="input run-pace" id="run-pace">${ex ? paceText(ex.distanceKm, ex.minutes) : '–'} /km</output></div>
+      </div>
+      <p class="label">Type</p><div class="seg">${Object.entries(RUN_TYPES).map(([v, l]) => radio('runType', v, l, rt)).join('')}</div>
+      <p class="label">Ondergrond</p><div class="seg">${Object.entries(RUN_SURF).map(([v, l]) => radio('surface', v, l, sf)).join('')}</div>
+      <p class="label">Zwaarte · 1 = heel licht, 10 = maximaal</p>${pickGroup('rpe', ex ? ex.rpe ?? null : null, 1, 10, null)}
+      <label class="field mt-12"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. rustig tempo, kuit voelde goed">${esc((ex && ex.note) || '')}</textarea></label>
+      <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
+    </form>`);
+  }
+  async function saveRun(form) {
+    const f = new FormData(form), id = form.dataset.id ? +form.dataset.id : null;
+    const old = id ? S.activities.find(a => a.id === id) : null;
+    const rec = { ...(old || {}), type: 'run', date: f.get('date') || dkey(today()), distanceKm: num(String(f.get('km')).replace(',', '.')),
+      minutes: num(String(f.get('minutes')).replace(',', '.')) || 0, runType: f.get('runType') || 'duurloop', surface: f.get('surface') || 'gras',
+      rpe: padValue('rpe'), note: (f.get('note') || '').trim(), participation: 'volledig', createdAt: old ? old.createdAt : Date.now(), sample: false };
+    rec.id = await DB.put('activities', rec);
+    S.activities = S.activities.filter(a => a.id !== rec.id).concat(rec);
+    await setSetting('runPrefs', { surface: rec.surface });
+    closeSheet(); render({ keepScroll: true });
+    toast(old ? 'Wijzigingen opgeslagen' : `Loop opgeslagen · ${fmtNum(rec.distanceKm || 0)} km`);
+    checkMilestones();
+  }
+  // Kine, herstel, eigen activiteit of andere sport: datum, minuten, zwaarte, notitie
+  function openSimpleLog(type, id = null) {
+    const ex = id ? S.activities.find(a => a.id === id) : null;
+    if (ex) type = ex.type;
+    const title = type === 'kine' ? 'Kine' : type === 'recovery' ? 'Herstel & mobiliteit' : type === 'sport' ? 'Andere sport' : 'Activiteit';
+    openSheet(`<form id="simple-form" data-id="${ex ? ex.id : ''}" data-type="${type}">
+      <div class="sheet-head"><h3>${ex ? 'Bewerken: ' : ''}${title}</h3>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${type === 'sport' || type === 'custom' ? `<label class="field"><span>${type === 'sport' ? 'Sport' : 'Naam'}</span><input class="input" name="label" value="${esc((ex && ex.label) || '')}" placeholder="Bv. padel" required></label>` : ''}
+      <div class="form-grid">
+        <label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${ex ? ex.date : dkey(today())}" max="${dkey(today())}" required></label>
+        <label class="field"><span>Duur (min)</span><input class="input" type="number" inputmode="numeric" min="0" max="600" name="minutes" value="${ex ? ex.minutes ?? '' : type === 'kine' ? 30 : ''}" required></label>
+      </div>
+      <p class="label">Zwaarte · 1 = heel licht, 10 = maximaal</p>${pickGroup('rpe', ex ? ex.rpe ?? null : null, 1, 10, null)}
+      <label class="field mt-12"><span>Notitie</span><textarea class="input" name="note" rows="2">${esc((ex && ex.note) || '')}</textarea></label>
+      <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
+    </form>`);
+  }
+  async function saveSimple(form) {
+    const f = new FormData(form), id = form.dataset.id ? +form.dataset.id : null;
+    const old = id ? S.activities.find(a => a.id === id) : null;
+    const rec = { ...(old || {}), type: form.dataset.type, date: f.get('date') || dkey(today()), minutes: +f.get('minutes') || 0,
+      rpe: padValue('rpe'), note: (f.get('note') || '').trim(), participation: (old && old.participation) || 'volledig', createdAt: old ? old.createdAt : Date.now(), sample: false };
+    if (f.has('label')) rec.label = (f.get('label') || '').trim() || null;
+    rec.id = await DB.put('activities', rec);
+    S.activities = S.activities.filter(a => a.id !== rec.id).concat(rec);
+    closeSheet(); render({ keepScroll: true });
+    toast(old ? 'Wijzigingen opgeslagen' : `${actTitle(rec)} opgeslagen`);
+    checkMilestones();
+  }
+  // Na een snelle "Gedaan": kort de zwaarte vragen (overslaan mag)
+  function askRpe(store, id) {
+    const rec = S[store].find(x => x.id === id); if (!rec) return;
+    openSheet(`<form id="rpe-form" data-store="${store}" data-id="${id}">
+      <div class="sheet-head"><div><h3>Hoe zwaar was het?</h3><p>${esc(store === 'workouts' ? woTitle(rec) : actTitle(rec))} · nodig voor je belasting</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${pickGroup('rpe', null, 1, 10, null)}
+      <div class="row mt-16"><button type="button" class="btn" data-action="close-sheet">Overslaan</button><button class="btn accent" type="submit">Opslaan</button></div>
+    </form>`);
+  }
+  async function saveRpe(form) {
+    const store = form.dataset.store, rec = S[store].find(x => x.id === +form.dataset.id), v = padValue('rpe');
+    closeSheet();
+    if (!rec || v == null) return;
+    rec.rpe = v; await DB.put(store, rec);
+    render({ keepScroll: true });
+    toast(`Zwaarte ${v}/10 opgeslagen`);
+  }
+
+  /* ================= Training: Overzicht, Kracht, Lopen, Voetbal ================= */
+  const TRAIN_SEGS = [['overzicht', 'Overzicht'], ['kracht', 'Kracht'], ['lopen', 'Lopen'], ['voetbal', 'Voetbal']];
+  function renderTraining() {
+    const w = draft();
+    const seg = S.ui.trainSeg || 'overzicht';
+    if (w && (S.ui.woView === 'active' || (seg === 'kracht' && S.ui.woView !== 'picker'))) return renderActive(w);
+    const body = { overzicht: trainOverview, kracht: krachtHtml, lopen: runsHtml, voetbal: footballHtml }[seg]();
+    main.innerHTML = `
+      ${pageHead('Training', activeInjuries().length ? `${esc(phaseObj(currentPhase()).label)} · ${esc(phaseObj(currentPhase()).title)}` : esc(GOAL_LABEL[goal().type]))}
+      <div class="seg" role="tablist">${TRAIN_SEGS.map(([k, l]) => `<button class="${k === seg ? 'on' : ''}" role="tab" aria-selected="${k === seg}" data-action="train-seg" data-s="${k}">${l}</button>`).join('')}</div>
+      ${body}`;
+  }
+  // Tijdlijn per dag
+  function timelineHtml(list, max = 12) {
+    if (!list.length) return `<section class="card"><p class="empty">Nog niets gelogd.</p></section>`;
+    const shown = S.ui.timelineAll ? list : list.slice(0, max);
+    let html = '', last = '';
+    shown.forEach(x => {
+      if (x.date !== last) { html += `<p class="tl-day">${cap(relDay(x.date))}</p>`; last = x.date; }
+      html += recentRows([x]);
+    });
+    return `<section class="card timeline">${html}
+      ${list.length > max ? `<button class="btn block sm mt-12" data-action="timeline-all">${S.ui.timelineAll ? 'Minder tonen' : `Alles tonen (${list.length})`}</button>` : ''}</section>`;
+  }
+  function trainOverview() {
+    const w = draft();
+    return `${statsHero()}
+      ${w ? `<section class="card resume"><div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
+        <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)}</p>
+        <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div></section>` : ''}
+      <button class="btn ${w ? '' : 'accent'} block lg mb-12" data-action="log-menu">${icon('plus')} Loggen</button>
+      <div class="section"><span>Tijdlijn</span><button class="link-btn" data-action="go" data-to="statistieken">Alle voortgang ${icon('chevR')}</button></div>
+      ${timelineHtml(entries())}`;
+  }
+  function runsHtml() {
+    const runs = S.activities.filter(a => a.type === 'run');
+    const t = today(), wk = weekKey(t), mStart = dkey(new Date(t.getFullYear(), t.getMonth(), 1));
+    const km = l => fmtNum(Math.round(sum(l.map(a => +a.distanceKm || 0)) * 10) / 10);
+    const thisWeek = runs.filter(a => inWeek(a.date, wk)), thisMonth = runs.filter(a => a.date >= mStart);
+    return `<div class="tiles">
+        <div class="tile"><span class="label">Deze week</span><div class="num">${km(thisWeek)}<span class="unit">km</span></div><p>${thisWeek.length} loop${thisWeek.length === 1 ? '' : 'jes'}</p></div>
+        <div class="tile"><span class="label">Deze maand</span><div class="num">${km(thisMonth)}<span class="unit">km</span></div><p>${thisMonth.length} loop${thisMonth.length === 1 ? '' : 'jes'}</p></div>
+      </div>
+      <button class="btn accent block lg mb-12" data-action="log-new" data-type="run">${icon('plus')} Loop loggen</button>
+      ${runs.length ? timelineHtml(entries().filter(x => x.store === 'activities' && x.type === 'run')) : `<section class="card"><p class="empty">Nog geen loopjes gelogd.</p></section>`}`;
+  }
+  function footballHtml() {
+    const acts = S.activities.filter(a => a.type === 'training' || a.type === 'match');
+    const since = dkey(addDays(today(), -29));
+    const tr = acts.filter(a => a.type === 'training' && a.date >= since), ma = acts.filter(a => a.type === 'match' && a.date >= since);
+    return `<div class="tiles">
+        <div class="tile"><span class="label">Trainingen · 30 d</span><div class="num">${tr.length}</div><p>${sum(tr.map(a => +a.minutes || 0))} min</p></div>
+        <div class="tile"><span class="label">Matchen · 30 d</span><div class="num">${ma.length}</div><p>${sum(ma.map(a => +a.minutes || 0))} min</p></div>
+      </div>
+      <div class="row mb-12"><button class="btn" data-action="log-new" data-type="training">${icon('plus')} Training</button><button class="btn" data-action="log-new" data-type="match">${icon('plus')} Match</button></div>
+      <div class="section"><span>Gelogd</span><button class="link-btn" data-action="go" data-to="matchen">Matchen beheren ${icon('chevR')}</button></div>
+      ${timelineHtml(entries().filter(x => x.store === 'activities' && (x.type === 'training' || x.type === 'match')))}`;
+  }
+
+  /* ================= Lichaam: Preventie en Herstel ================= */
+  function renderLichaam() {
+    renderInjuries();
+    const prev = `<div class="section"><span>Preventie</span></div>
+      ${loadCard()}
+      <section class="card"><div class="card-head"><h2>Belasting per week</h2><span class="label">zwaarte × minuten</span></div>${Charts.bars(weeklyLoads(), { selected: 5, action: null, height: 120 })}</section>
+      ${checkTrendCard()}
+      <div class="section"><span>Herstel</span></div>`;
+    const head = main.querySelector('.page-head');
+    if (head) head.insertAdjacentHTML('afterend', prev);
+    main.insertAdjacentHTML('beforeend', `<p class="footer-note">Indicatie, geen medisch advies.</p>`);
+  }
 
   /* ================= Home (vandaag) ================= */
   // Info over een sessie zoals de gebruiker ze ziet
@@ -761,8 +1058,9 @@
     : ({ training: 'Voetbal', match: 'Match', rest: 'Rust', kine: 'Kine', recovery: 'Herstel', custom: 'Eigen' }[it.type] || '');
   // Titel van een gelogde training, match of eenvoudige activiteit
   const actTitle = a => a.type === 'match' ? (a.opponent ? `Match tegen ${a.opponent}` : 'Match') : a.type === 'training' ? 'Voetbaltraining'
-    : a.type === 'kine' ? 'Kine' : a.type === 'recovery' ? 'Herstel & mobiliteit' : (a.label || 'Activiteit');
-  const actIcon = a => ({ match: 'ball', training: 'whistle', kine: 'heart', recovery: 'pulse' }[a.type] || 'list');
+    : a.type === 'kine' ? 'Kine' : a.type === 'recovery' ? 'Herstel & mobiliteit' : a.type === 'run' ? (RUN_TYPES[a.runType] || 'Lopen')
+    : a.type === 'sport' ? (a.label || 'Andere sport') : (a.label || 'Activiteit');
+  const actIcon = a => ({ match: 'ball', training: 'whistle', kine: 'heart', recovery: 'pulse', run: 'bolt', sport: 'pulse' }[a.type] || 'list');
 
   // De sessie die de grote startknop krijgt: eerst open krachtwerk, anders herstel
   function relevantSession(items, k) {
@@ -792,6 +1090,7 @@
     main.innerHTML = `
       ${homeHeader()}
       ${progressTiles()}
+      ${readinessTile()}
       ${resumeCard()}
       ${checkCard()}
       <div class="section"><span>${k === tk ? 'Vandaag gepland' : cap(fmtDay(k))}</span>${k !== tk ? `<button class="link-btn" data-action="home-day" data-k="${tk}">Naar vandaag</button>` : ''}</div>
@@ -834,7 +1133,7 @@
     return `<section class="card resume">
       <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
       <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)} om ${fmtTime(w.startedAt)} · ${done} van ${all.length} sets</p>
-      <div class="row" style="margin-top:12px"><button class="btn" data-action="wo-finish">Afronden</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
+      <div class="row mt-12"><button class="btn" data-action="wo-finish">Afronden</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
     </section>`;
   }
 
@@ -843,39 +1142,71 @@
     const tk = dkey(today()), c = checkFor(tk), act = activeInjuries();
     if (!act.length) {
       const f = c && c.fatigue != null ? c.fatigue : null;
-      return `<section class="card">
-        <div class="card-head"><h2>Dagelijkse check</h2><span class="tag ${f != null ? 'done' : ''}">${f != null ? 'Vandaag ingevuld' : 'Nog niet ingevuld'}</span></div>
-        ${f != null ? `<div class="num md">${f}<span class="unit">van 5 · vermoeidheid</span></div>` : `<p class="small muted">Hoe fris voel je je vandaag? Eén tik.</p>`}
-        <button class="btn ${f != null ? 'line' : 'accent'} block" style="margin-top:12px" data-action="open-check">${f != null ? 'Aanpassen' : 'Invullen'}</button>
-      </section>`;
+      return checkRow(f != null ? `Ingevuld · vermoeidheid ${f} van 5` : 'Hoe fris voel je je vandaag? Eén tik.', f != null);
     }
     const filled = act.every(i => checkEntry(c, i.id));
-    const rows = act.map(inj => {
-      const e = checkEntry(c, inj.id), prev = lastCheckFor(inj.id, tk), rise = checkRise(inj), agr = latestAgreement(inj);
-      return `<div class="inj-row">
-        <div class="inj-title"><b>${esc(injuryLabel(inj))}</b><span>${esc([injurySideText(inj), STATUS_LABEL[inj.status]].filter(Boolean).join(' · '))}</span></div>
-        ${e ? `<div class="inj-vals"><div><span class="label">Stijfheid</span><b>${valsText(c, inj, 'stiff')}</b></div><div><span class="label">Pijn</span><b>${valsText(c, inj, 'pain')}</b></div></div>`
-          : `<p class="status-line">Nog niet ingevuld${prev ? ` · laatste meting op ${fmtDay(prev.date)}: stijfheid ${valsText(prev, inj, 'stiff')}` : ''}</p>`}
-        ${rise.length ? `<p class="status-line warn">Hoger dan de vorige meting (${esc(rise.join(', '))}). ${esc(agr ? 'Jouw afspraak: ' + agr.text : 'Bespreek met je kinesist hoe je hiermee omgaat.')}</p>` : ''}
-      </div>`;
+    const summary = filled
+      ? act.map(inj => `${injuryLabel(inj)}: pijn ${valsText(c, inj, 'pain')}`).join(' · ')
+      : `Nog niet ingevuld · ${act.length === 1 ? injuryLabel(act[0]) : `${act.length} trajecten`}`;
+    const warns = act.map(inj => {
+      const rise = checkRise(inj), agr = latestAgreement(inj);
+      return rise.length ? `<p class="status-line warn">${esc(injuryLabel(inj))}: hoger dan de vorige meting (${esc(rise.join(', '))}). ${esc(agr ? 'Jouw afspraak: ' + agr.text : 'Bespreek met je kinesist hoe je hiermee omgaat.')}</p>` : '';
     }).join('');
-    return `<section class="card">
-      <div class="card-head"><h2>Dagelijkse check</h2><span class="tag ${filled ? 'done' : ''}">${filled ? 'Vandaag ingevuld' : 'Nog niet ingevuld'}</span></div>
-      ${rows}
-      <button class="btn ${filled ? 'line' : 'accent'} block" style="margin-top:12px" data-action="open-check">${filled ? 'Aanpassen' : 'Check invullen'}</button>
+    return checkRow(summary, filled, warns);
+  }
+
+  // Dagelijkse check als één rij: tekst links, kleine secundaire knop rechts
+  function checkRow(sub, filled, warns = '') {
+    return `<section class="card check-compact">
+      <button class="check-row" data-action="open-check" aria-label="Dagelijkse check ${filled ? 'aanpassen' : 'invullen'}">
+        <span class="body"><b>Dagelijkse check</b><span>${esc(sub)}</span></span>
+        <span class="check-go">${filled ? 'Aanpassen' : 'Invullen'}${icon('chevR')}</span>
+      </button>${warns}
     </section>`;
+  }
+
+  // Bottom sheet achter de "…"-knop van de sessiekaart: alle secundaire acties
+  function openItemMenu(k, key) {
+    const it = findItem(k, key); if (!it) return;
+    const tk = dkey(today()), m = itemMeta(it);
+    const done = it.type !== 'rest' && doneOrCaughtUp(it, k), rec = recordFor(it, k);
+    const s = it.type === 'session' ? C.sessions[it.id] : null;
+    const fixed = !!it.fixture;
+    const canMove = !done && !fixed && it.type !== 'rest' && (!s || s.catchUp !== false);
+    const row = (ic, action, title, sub, extra = '') =>
+      `<button type="button" class="menu-btn" data-action="${action}" data-k="${k}" data-key="${esc(key)}" ${extra}>${icon(ic)}<span><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</span></button>`;
+    const rows = [];
+    if (!done && k <= tk && it.type !== 'rest') {
+      rows.push(row('check', 'item-done', 'Afgerond', s ? 'Afgewerkt zonder details te loggen' : it.type === 'training' || it.type === 'match' ? 'Opent het logformulier' : ''));
+      if (it.type === 'session' || it.type === 'training' || it.type === 'match') rows.push(row('edit', 'adapted', 'Aangepast uitgevoerd', 'Anders gedaan dan gepland'));
+    }
+    if (!done && !it.confirmed && it.type !== 'rest') rows.push(row('check', 'confirm-item', 'Bevestigen', 'Dit staat vast in je planning'));
+    if (canMove) rows.push(row('move', 'open-move', 'Verplaatsen', 'Met advies voor de beste dag'));
+    if (!done && it.type !== 'rest') rows.push(row('skip', 'skip-item', 'Overslaan', 'Telt niet als gemist'));
+    if (done && rec) rows.push(row('undo', 'item-undone', 'Terug naar nog te doen', 'Verwijdert de registratie van die dag'));
+    if (rec) rows.push(`<button type="button" class="menu-btn" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('list')}<span><b>Bekijk log</b><small>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</small></span></button>`);
+    if (it.rule && ruleById(it.rule)) {
+      rows.push(`<button type="button" class="menu-btn" data-action="rp-edit" data-id="${it.rule}">${icon('sync')}<span><b>Herhaling aanpassen</b><small>${esc(ruleText(ruleById(it.rule)))}</small></span></button>`);
+      rows.push(`<button type="button" class="menu-btn" data-action="rp-stop" data-id="${it.rule}" data-k="${k}">${icon('x')}<span><b>Herhaling stoppen</b><small>Vanaf ${esc(fmtDay(k))}; eerdere dagen blijven</small></span></button>`);
+    }
+    if (!fixed && it.type !== 'rest') rows.push(row('trash', 'del-item', 'Uit de planning halen', it.rule ? 'Alleen deze dag; de herhaling blijft' : 'Je kan het terugzetten in de kalender'));
+    rows.push(row('list', 'item-actions', 'Alles aanpassen…', 'Type, dag en uur, notitie, status, overslaan met reden, verwijderen'));
+    openSheet(`<div class="sheet-head"><div><span class="eyebrow">${esc(actKind(it))}</span><h3>${esc(it.type === 'session' ? sessionTitle(it.id) : m.title)}</h3><p>${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <div class="menu-list">${rows.join('')}</div>`);
   }
 
   // Geplande activiteiten van een dag, elk als eigen kaart
   function activitiesHtml(k) {
     const { items, off } = planDetail(parseKey(k));
-    const rel = relevantSession(items, k);
-    // De sessie met de grote startknop komt bovenaan
+    const tk = dkey(today());
+    // Hoofdkaart: eerst open krachtwerk/herstel, anders het eerste openstaande item van de dag (alleen vandaag of eerder)
+    const rel = k > tk ? null : relevantSession(items, k) || items.find(it => it.type !== 'rest' && !doneOrCaughtUp(it, k)) || null;
+    // De hoofdkaart met de primaire knop komt bovenaan
     const ordered = rel ? [rel, ...items.filter(it => it !== rel)] : items;
     let html = ordered.map(it => actCard(it, k, it === rel)).join('');
     const skipped = off.filter(o => isSkip(o.reason));
-    if (skipped.length) html += `<p class="label" style="margin:4px 2px 10px">Overgeslagen: ${skipped.map(o => esc(itemMeta(o.item).title)).join(', ')} · <button class="link-btn" style="padding:0" data-action="cal-open" data-k="${k}">bekijk</button></p>`;
-    return html || `<section class="act"><p class="empty">Niets gepland.</p></section>`;
+    if (skipped.length) html += `<p class="label" style="margin:4px 0 8px">Overgeslagen: ${skipped.map(o => esc(itemMeta(o.item).title)).join(', ')} · <button class="link-btn" style="padding:0" data-action="cal-open" data-k="${k}">bekijk</button></p>`;
+    return html || `<section class="card empty-row"><p>Niets gepland.</p><button class="btn sm" data-action="add-menu" data-k="${k}">${icon('plus')} Inplannen</button></section>`;
   }
 
   // Wat er gelogd is voor een gepland item
@@ -898,6 +1229,7 @@
   function recordLine({ store, r }) {
     const bits = [];
     if (store === 'workouts') { bits.push(`${woMinutes(r)} min`); if (r.rpe != null) bits.push(`zwaarte ${r.rpe}/10`); }
+    else if (r.type === 'run') { bits.push(`${fmtNum(r.distanceKm || 0)} km`, `${fmtNum(r.minutes)} min`, `${paceText(r.distanceKm, r.minutes)} /km`); if (r.rpe != null) bits.push(`zwaarte ${r.rpe}/10`); }
     else { bits.push(`${r.minutes} min`); if (r.rpe != null) bits.push(`zwaarte ${r.rpe}/10`); }
     return bits.join(' · ');
   }
@@ -923,39 +1255,45 @@
         <h3>Rustdag</h3><p>${esc(it.note || 'Herstel hoort erbij: wandelen, mobiliteit en goed slapen.')}</p>${userBits(it)}</section>`;
     }
     const rec = recordFor(it, k), done = doneOrCaughtUp(it, k);
+    const hero = isMain && !done && k <= tk;
     const more = `<button class="btn" data-action="item-actions" data-k="${k}" data-key="${esc(key)}">Aanpassen</button>`;
+    const heroBtn = (action, ic, label, extra) => `<button class="btn accent block lg" data-action="${action}" ${extra}>${icon(ic)} ${label}</button>`;
     let body = '', actions = '';
     if (it.type === 'session') {
       const s = sessInfo(it.id);
-      body = `<h3>${esc(s.name)}</h3><p>${esc(s.desc)}</p>
-        <div class="act-meta">${it.time ? `<span>${icon('clock')} ${esc(it.time)}</span>` : ''}<span>${it.time ? '' : icon('clock') + ' '}±${s.minutes} min</span><span>${s.exercises} oefeningen</span>${s.place ? `<span>${esc(s.place)}</span>` : ''}${it.note ? `<span>${esc(it.note)}</span>` : ''}</div>`;
+      body = `${hero ? `<div class="act-time"><b class="display">${esc(it.time || `±${s.minutes}`)}</b><span>${it.time ? `±${s.minutes} min` : 'min'}</span></div>` : ''}<h3>${esc(s.name)}</h3><p>${esc(s.desc)}</p>
+        <div class="act-meta">${it.time ? `<span>${icon('clock')} ${esc(it.time)}</span>` : ''}${hero && !it.time ? '' : `<span>${it.time ? '' : icon('clock') + ' '}±${s.minutes} min</span>`}<span>${s.exercises} oefeningen</span>${s.place ? `<span>${esc(s.place)}</span>` : ''}${it.note ? `<span>${esc(it.note)}</span>` : ''}</div>`;
       if (!done && k <= tk) {
-        actions = isMain
-          ? `<button class="btn accent block lg" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Nu inhalen' : 'Start workout'}</button>${quickRow(it, k)}`
-          : `<div class="act-row"><button class="btn primary" data-action="start-session" data-key="${it.id}">${icon('play')} Start</button>${more}</div>`;
+        actions = hero
+          ? heroBtn('start-session', 'play', k < tk ? 'Nu inhalen' : 'Start workout', `data-key="${it.id}"`)
+          : `<div class="act-row"><button class="btn" data-action="start-session" data-key="${it.id}">${icon('play')} Start</button>${more}</div>`;
       } else if (!done) actions = `<div class="act-row">${it.confirmed ? '' : `<button class="btn" data-action="confirm-item" data-k="${k}" data-key="${esc(key)}">${icon('check')} Bevestigen</button>`}${more}</div>`;
     } else if (it.type === 'training') {
       const [from, to] = String(it.time || '').split(/[–-]/);
       body = `<div class="act-time"><b class="display">${esc(from || 'Training')}</b>${to ? `<span>tot ${esc(to)}</span>` : ''}</div>
         <h3>Voetbaltraining</h3><p>Met de ploeg${plannedMinutes(it) ? ` · gepland ${plannedMinutes(it)} min` : ''}</p>`;
-      if (!done && k <= tk) actions = `<div class="act-row"><button class="btn ${isMain ? 'accent' : 'primary'}" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button>${more}</div>`;
+      if (!done && k <= tk) actions = hero ? heroBtn('open-log', 'edit', 'Training loggen', `data-type="training" data-date="${k}"`)
+        : `<div class="act-row"><button class="btn" data-action="open-log" data-type="training" data-date="${k}">${icon('edit')} Training loggen</button>${more}</div>`;
       else if (!done) actions = `<div class="act-row">${it.confirmed ? '' : `<button class="btn" data-action="confirm-item" data-k="${k}" data-key="training">${icon('check')} Bevestigen</button>`}${more}</div>`;
     } else if (it.type === 'match') {
       const f = it.fixture;
       body = `${f && f.time ? `<div class="act-time"><b class="display">${esc(f.time)}</b><span>${f.home ? 'thuis' : 'uit'}</span></div>` : ''}
         <h3>${f ? esc(f.opponent) : 'Match'}</h3><p>${f && f.comp ? esc(f.comp) : 'Log na de match je minuten en hoe het voelde.'}${f && played(f) ? ` · ${f.gf}–${f.ga}` : ''}</p>`;
-      if (!done && k <= tk) actions = `<div class="act-row"><button class="btn primary" data-action="${f && played(f) ? 'open-minutes' : 'open-log'}" data-type="match" data-date="${k}">${icon('edit')} Minuten invullen</button>${more}</div>`;
+      if (!done && k <= tk) actions = hero ? heroBtn(f && played(f) ? 'open-minutes' : 'open-log', 'edit', 'Minuten invullen', `data-type="match" data-date="${k}"`)
+        : `<div class="act-row"><button class="btn" data-action="${f && played(f) ? 'open-minutes' : 'open-log'}" data-type="match" data-date="${k}">${icon('edit')} Minuten invullen</button>${more}</div>`;
       else if (!done && !f) actions = `<div class="act-row">${more}</div>`;
     } else {
       const m = itemMeta(it);
       body = `${it.time ? `<div class="act-time"><b class="display">${esc(it.time)}</b>${it.min ? `<span>${esc(it.min)} min</span>` : ''}</div>` : ''}
         <h3>${esc(m.title)}</h3><p>${esc(it.note || (it.type === 'kine' ? 'Afspraak bij je kinesist' : it.type === 'recovery' ? 'Mobiliteit, losfietsen of wandelen' : 'Eigen activiteit'))}</p>`;
-      if (!done && k <= tk) actions = `<div class="act-row"><button class="btn ${isMain ? 'accent' : 'primary'}" data-action="mark-simple" data-k="${k}" data-key="${esc(key)}">${icon('check')} Gedaan</button>${more}</div>`;
+      if (!done && k <= tk) actions = hero ? heroBtn('mark-simple', 'check', 'Gedaan', `data-k="${k}" data-key="${esc(key)}"`)
+        : `<div class="act-row"><button class="btn" data-action="mark-simple" data-k="${k}" data-key="${esc(key)}">${icon('check')} Gedaan</button>${more}</div>`;
       else if (!done) actions = `<div class="act-row">${it.confirmed ? '' : `<button class="btn" data-action="confirm-item" data-k="${k}" data-key="${esc(key)}">${icon('check')} Bevestigen</button>`}${more}</div>`;
     }
     const doneLine = rec ? `<button class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : '';
-    return `<section class="act ${done ? 'is-done' : ''} ${isMain && !done ? 'is-main' : ''} ${!done && !it.confirmed && k >= tk ? 'is-suggested' : ''}">
-      <div class="act-top"><span class="act-kind t-${itemType(it)}">${esc(actKind(it))}</span><span class="tag ${st.cls}">${st.label}</span></div>
+    const menuBtn = hero ? `<button class="icon-btn act-more" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(actKind(it))}">${icon('more')}</button>` : '';
+    return `<section class="act ${done ? 'is-done' : ''} ${hero ? 'is-main is-hero' : ''} ${!done && !it.confirmed && k >= tk && !hero ? 'is-suggested' : ''}">
+      <div class="act-top"><span class="act-kind t-${itemType(it)}">${esc(actKind(it))}</span><span class="act-top-end"><span class="tag ${st.cls}">${st.label}</span>${menuBtn}</span></div>
       ${body}${userBits(it)}${doneLine}${actions}
     </section>`;
   }
@@ -1005,7 +1343,7 @@
     const { items: all, off } = planDetail(d);
     const items = all.filter(it => it.type !== 'rest');
     // Alles bewust overgeslagen (ziek, geen tijd…): breekt niets, telt ook niet mee
-    if (!items.length) return off.some(o => isSkip(o.reason)) ? 'neutral' : 'rest';
+    if (!items.length) return 'neutral';
     if (items.some(it => doneOrCaughtUp(it, k))) return 'active';
     if (k === tk) return 'pending';
     if (items.some(it => it.confirmed && !it.extra && !doneOrCaughtUp(it, k))) return 'broken';
@@ -1041,9 +1379,9 @@
     const marks = Array.from({ length: Math.min(12, Math.max(s.days, 1)) }, (_, i) => `<i class="${i < s.days ? 'on' : ''}"></i>`).join('');
     return `<div class="tiles mini">
       <button class="tile tap" data-action="go" data-to="statistieken" aria-label="Streak: ${s.days} dagen volgens plan. Naar voortgang">
-        <span class="label">Streak</span><b class="tile-num">${s.days} ${s.days === 1 ? 'dag' : 'dagen'}</b><span class="mini-bars">${marks}</span></button>
+        <span class="label">Streak</span><b class="tile-num">${s.days}<span class="unit">d</span></b><span class="mini-bars">${marks}</span></button>
       <button class="tile tap" data-action="go" data-to="planning" aria-label="Deze week ${w.done} van ${w.total} uitgevoerd. Naar planning">
-        <span class="label">Deze week</span><b class="tile-num">${w.done} / ${w.total}</b><span class="mini-bars">${w.bars.map(b => `<i class="${b}"></i>`).join('')}</span></button>
+        <span class="label">Deze week</span><b class="tile-num">${w.done}<span class="unit">/${w.total}</span></b><span class="mini-bars">${w.bars.map(b => `<i class="${b}"></i>`).join('')}</span></button>
     </div>`;
   }
 
@@ -1073,7 +1411,7 @@
     await setSetting('badges', seen);
     const top = fresh[fresh.length - 1];
     // Na de felicitatie van de sessie, niet erover
-    setTimeout(() => celebrate(`Mijlpaal: ${top.title}`, top.sub), document.querySelector('.celebrate') ? 2500 : 300);
+    setTimeout(() => celebrate(`Mijlpaal: ${top.title}`, top.sub), document.querySelector('.celebrate') ? 1600 : 300);
   }
   function badgesHtml() {
     const seen = S.settings.badges || {};
@@ -1087,21 +1425,10 @@
         <div class="badge-grid">${BADGES.map(b => `<div class="badge ${seen[b.id] ? 'on' : ''}" aria-label="${esc(b.title + ' ' + b.sub)}${seen[b.id] ? ', behaald' : ', nog niet behaald'}">
           <b>${b.n}</b><span>${b.kind === 'streak' ? 'dagen' : 'sessies'}</span></div>`).join('')}</div>
         ${next ? `<p class="status-line">Volgende: ${esc(next.title)} Nog ${Math.max(0, next.n - badgeValue(next, s, t))} ${next.kind === 'streak' ? 'dag' : 'sessie'}${next.n - badgeValue(next, s, t) === 1 ? '' : next.kind === 'streak' ? 'en' : 's'}.</p>` : ''}
-        <p class="label" style="margin-top:8px">Rustdagen en bewust overgeslagen sessies breken je streak niet.</p>
+        <p class="label mt-8">Rustdagen en bewust overgeslagen sessies breken je streak niet.</p>
       </section>`;
   }
-  function streakHero() {
-    const s = streakInfo(), w = weekProgress();
-    const pct = w.total ? w.done / w.total : 0;
-    const R = 46, Cc = 2 * Math.PI * R;
-    return `<section class="streak-hero">
-      <div><span class="label">Jouw streak</span><div class="streak-num">${s.days}<span>${s.days === 1 ? 'dag' : 'dagen'}</span></div>
-        <p class="small muted">${s.days ? 'Dagen volgens plan, rust inbegrepen.' : 'Begint bij je eerste sessie.'}</p></div>
-      <div class="ring" role="img" aria-label="Deze week ${w.done} van ${w.total} uitgevoerd">
-        <svg viewBox="0 0 110 110"><circle class="c-track" cx="55" cy="55" r="${R}" fill="none" stroke-width="8"/><circle class="c-prog" cx="55" cy="55" r="${R}" fill="none" stroke-width="8" stroke-linecap="round" stroke-dasharray="${Cc.toFixed(1)}" stroke-dashoffset="${(Cc * (1 - pct)).toFixed(1)}" transform="rotate(-90 55 55)"/></svg>
-        <div><b>${w.done} / ${w.total}</b><span>deze week</span></div></div>
-    </section>`;
-  }
+
 
   function weekCard() {
     const c = weekStats();
@@ -1132,7 +1459,7 @@
         <div class="tile"><span class="label">Trainingsminuten deze week</span><div class="num">${minutes}<span class="unit">min</span></div></div>
         <div class="tile"><span class="label">Gemiddelde zwaarte</span><div class="num">${rpes.length ? fmtNum(Math.round(sum(rpes) / rpes.length * 10) / 10) : '–'}<span class="unit">/ 10</span></div></div>
       </div>
-      ${g.text || g.evalDate ? `<section class="card"><span class="label">Doel</span><p style="margin-top:4px"><b>${esc(g.text || GOAL_LABEL[g.type])}</b></p>${g.evalDate ? `<p class="status-line">Evaluatie op ${fmtDay(g.evalDate)}${days != null && days >= 0 ? ` · over ${days} dagen` : ''}</p>` : ''}</section>` : ''}`;
+      ${g.text || g.evalDate ? `<section class="card"><span class="label">Doel</span><p class="mt-4"><b>${esc(g.text || GOAL_LABEL[g.type])}</b></p>${g.evalDate ? `<p class="status-line">Evaluatie op ${fmtDay(g.evalDate)}${days != null && days >= 0 ? ` · over ${days} dagen` : ''}</p>` : ''}</section>` : ''}`;
   }
 
   function nextMatchCard() {
@@ -1143,7 +1470,7 @@
       return `<section class="card list-row tap" style="padding:16px" data-action="cal-open" data-k="${f.date}">
         <div class="ico">${icon('ball')}</div>
         <div class="body"><span class="label">Volgende match · ${days === 0 ? 'vandaag' : days === 1 ? 'morgen' : `over ${days} dagen`}</span>
-          <b style="font-size:17px;margin-top:2px">${esc(f.opponent)}</b>
+          <b class="next-match-title">${esc(f.opponent)}</b>
           <span>${f.home ? 'Thuis' : 'Uit'} · ${fmtDay(f.date)}${f.time ? ' · ' + esc(f.time) : ''}</span></div>
         <div class="end">${icon('chevR')}</div>
       </section>`;
@@ -1153,7 +1480,7 @@
     return `<section class="card list-row" style="padding:16px">
       <div class="ico">${icon('ball')}</div>
       <div class="body"><span class="label">Volgende match</span>
-        <b style="margin-top:2px">${next ? cap(fmtDay(next)) : 'Geen match gepland'}</b>
+        <b style="margin-top:0">${next ? cap(fmtDay(next)) : 'Geen match gepland'}</b>
         <span>Tegenstander en uur zie je na het importeren van de RBFA-kalender.</span></div>
       <div class="end"><button class="btn sm" data-action="open-rbfa">Importeer</button></div>
     </section>`;
@@ -1180,17 +1507,17 @@
       return `<div class="check-block">
         <h4>${esc(injuryLabel(inj))}${injurySideText(inj) ? `<span>${esc(injurySideText(inj))}</span>` : ''}</h4>
         <p class="label">Stijfheid bij het opstaan · 0 = niets, 10 = heel stijf</p>${sideRows('stiff', null)}
-        <p class="label" style="margin-top:12px">Pijn · 0 = geen pijn${lim != null ? `, jouw afspraak: max ${lim}` : ''}</p>${sideRows('pain', lim)}
-        ${yLoad.length && inj.status !== 'afgerond' ? `<p class="label" style="margin-top:12px">Reactie op ${esc(yLoad.join(' en '))} van gisteren</p>
+        <p class="label mt-12">Pijn · 0 = geen pijn${lim != null ? `, jouw afspraak: max ${lim}` : ''}</p>${sideRows('pain', lim)}
+        ${yLoad.length && inj.status !== 'afgerond' ? `<p class="label mt-12">Reactie op ${esc(yLoad.join(' en '))} van gisteren</p>
           <div class="choice pick-group" data-group="react|${inj.id}">${[['beter', 'Beter'], ['gelijk', 'Gelijk'], ['slechter', 'Slechter']].map(([v, l]) => `<button type="button" class="${e.reaction === v ? 'on' : ''}" data-action="pick" data-v="${v}">${l}</button>`).join('')}</div>` : ''}
       </div>`;
     }).join('');
-    const fatigue = `<p class="label" style="margin-top:12px">Vermoeidheid · 1 = uitgerust, 5 = erg moe</p>${pickGroup('fatigue', c.fatigue ?? null, 1, 5, null)}`;
+    const fatigue = `<p class="label mt-12">Vermoeidheid · 1 = uitgerust, 5 = erg moe</p>${pickGroup('fatigue', c.fatigue ?? null, 1, 5, null)}`;
     openSheet(`<div class="sheet-head"><div><h3>Dagelijkse check</h3><p>${cap(fmtDay(date))}${date === dkey(today()) ? '' : ' · aanpassing achteraf'}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       ${blocks || fatigue}
       ${list.length ? `<details class="more"><summary>Meer opties</summary>${fatigue}
-        <label class="field" style="margin-top:12px"><span>Notitie</span><textarea class="input" id="check-note" rows="2">${esc(c.note || '')}</textarea></label></details>` : ''}
-      <p class="label" style="margin:10px 2px 0">Wat je leeg laat, wordt niet als 0 bewaard.</p>
+        <label class="field mt-12"><span>Notitie</span><textarea class="input" id="check-note" rows="2">${esc(c.note || '')}</textarea></label></details>` : ''}
+      <p class="label" style="margin:8px 0 0">Wat je leeg laat, wordt niet als 0 bewaard.</p>
       <button class="btn accent block lg" data-action="save-check" data-date="${date}">${icon('check')} Opslaan</button>`);
   }
 
@@ -1343,28 +1670,20 @@
         html += `<div class="day-item"><div class="day-item-top"><span class="type-bar" style="background:var(--c-rust)"></span><div class="body"><b>Rustdag</b><span>${esc(it.note || 'Wandelen, mobiliteit en goed slapen')}</span></div></div></div>`;
         return;
       }
+      // Eén hoofdactie waar dat zinvol is (starten of loggen); al de rest zit in het "…"-menu
       let actions = '';
-      // Voorbije holds en dagen vóór de start van de fase hoef je niet meer in te halen
       const noCatchUp = it.type === 'session' && k < tk && (C.sessions[it.id].catchUp === false || k < planStart());
-      if (!doneOrCaughtUp(it, k) && !noCatchUp) {
-        if (it.type === 'session') {
-          const s = C.sessions[it.id];
-          actions = `<button class="btn sm ${k <= tk ? 'accent' : ''}" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Inhalen' : 'Start'}</button>
-            ${k <= tk ? `<button class="btn sm" data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')} Zonder details</button>
-            <button class="btn sm" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')} Aangepast</button>` : ''}
-            <button class="btn sm" data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')} Overslaan</button>
-            ${s.catchUp === false ? '' : `<button class="btn sm" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('move')} Verplaatsen</button>`}
-            <button class="btn sm" data-action="item-actions" data-k="${k}" data-key="${esc(key)}">Meer</button>`;
-        } else {
-          actions = `${past ? `<button class="btn sm accent" data-action="open-log" data-type="${it.type}" data-date="${k}">${icon('edit')} Loggen</button>` : ''}
-            <button class="btn sm" data-action="skip-item" data-k="${k}" data-key="${esc(key)}">${icon('skip')} ${it.type === 'match' ? 'Niet gespeeld' : 'Niet gegaan'}</button>`;
-        }
+      if (!doneOrCaughtUp(it, k) && !noCatchUp && k <= tk) {
+        if (it.type === 'session') actions = `<button class="btn sm" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Inhalen' : 'Start'}</button>`;
+        else if (it.type === 'training' || it.type === 'match') actions = `<button class="btn sm" data-action="open-log" data-type="${it.type}" data-date="${k}">${icon('edit')} Loggen</button>`;
+        else if (SIMPLE.includes(it.type)) actions = `<button class="btn sm" data-action="mark-simple" data-k="${k}" data-key="${esc(key)}">${icon('check')} Gedaan</button>`;
       }
+      const more = `<button class="icon-btn ghost" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(m.title)}">${icon('more')}</button>`;
       const rec = recordFor(it, k);
       html += `<div class="day-item">
         <div class="day-item-top"><span class="type-bar" style="background:var(--c-${itemType(it)})"></span>
           <div class="body"><b>${esc(m.title)}</b><span>${esc(actKind(it))} · ${esc(it.type === 'session' ? sessionDesc(it.id) : m.sub)}${it.note ? ' · ' + esc(it.note) : ''}</span></div>
-          <span class="tag ${st.cls}">${st.label}</span></div>
+          <span class="tag ${st.cls}">${st.label}</span>${more}</div>
         ${rec ? `<button class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : ''}
         ${actions ? `<div class="day-item-actions">${actions}</div>` : ''}
       </div>`;
@@ -1387,7 +1706,7 @@
     ws.filter(w => !items.some(it => it.type === 'session' && it.id === w.sessionKey)).forEach(w => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="workouts" data-id="${w.id}"><div class="ico">${icon((C.sessions[w.sessionKey] || {}).icon || 'dumbbell')}</div><div class="body"><b>${esc(woTitle(w))}</b><span>${esc(recStatus({ store: 'workouts', r: w }).label)} · ${esc(recordLine({ store: 'workouts', r: w }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
     acts.filter(a => !items.some(it => actMatches(a, it)) && !(f && a.type === 'match')).forEach(a => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="activities" data-id="${a.id}"><div class="ico">${icon(actIcon(a))}</div><div class="body"><b>${esc(actTitle(a))}</b><span>${esc(recordLine({ store: 'activities', r: a }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
     if (f) acts.filter(a => a.type === 'match').forEach(a => logged.push(`<div class="list-row tap" data-action="show-entry" data-store="activities" data-id="${a.id}"><div class="ico">${icon('ball')}</div><div class="body"><b>Match · ${esc(recStatus({ store: 'activities', r: a }).label)}</b><span>${esc(recordLine({ store: 'activities', r: a }))}</span></div><div class="end">${icon('chevR')}</div></div>`));
-    if (logged.length) html += `<div class="divider"></div><p class="label" style="margin-bottom:6px">Gelogd</p>${logged.join('')}`;
+    if (logged.length) html += `<div class="divider"></div><p class="label mb-8">Gelogd</p>${logged.join('')}`;
 
     html += `<div class="divider"></div><div class="day-actions">
       <button class="btn sm" data-action="add-menu" data-k="${k}">${icon('plus')} Sessie</button>
@@ -1445,20 +1764,25 @@
     const cls = it.type === 'rest' ? 'st-rest' : done ? 'st-done' : st.cls === 'missed' ? 'st-missed' : k < tk ? 'st-past' : it.confirmed ? 'st-confirmed' : 'st-suggested';
     const draggable = it.type !== 'rest' && !it.fixture && !done;
     const title = it.type === 'match' && it.fixture ? `${it.fixture.home ? 'Thuis' : 'Uit'} · ${it.fixture.opponent}` : it.type === 'session' ? sessionTitle(it.id) : m.title;
-    // Vinkje als schakelaar: leeg rondje = nog te doen, oranje vinkje = afgerond (vanaf de dag zelf)
-    const viaOther = done && !recordFor(it, k);
-    const toggle = it.type === 'rest' ? '' : done
-      ? `<button class="pc-check on" data-action="${viaOther ? 'item-actions' : 'item-undone'}" data-k="${k}" data-key="${esc(key)}" role="checkbox" aria-checked="true" aria-label="${esc(title)}: afgerond${viaOther ? ' (ingehaald)' : '. Tik om terug te zetten naar nog te doen'}">${icon('check')}</button>`
-      : k <= tk ? `<button class="pc-check" data-action="item-done" data-k="${k}" data-key="${esc(key)}" role="checkbox" aria-checked="false" aria-label="${esc(title)}: nog te doen. Tik om af te ronden">${icon('check')}</button>` : '';
+    // Rustige rij: type, titel, tijd/duur en status; afvinken en de rest zit in het "…"-menu
     return `<div class="pcard ${cls} t-${itemType(it)}" data-k="${k}" data-key="${esc(key)}">
       <button class="pc-main" data-action="item-actions" data-k="${k}" data-key="${esc(key)}" aria-label="${esc(title)}, ${esc(st.label)}. Aanpassen">
-        <span class="pc-kind">${esc(actKind(it))}${it.userNote ? ` · ${icon('edit')}` : ''}</span>
+        <span class="pc-kind">${esc(actKind(it))}${done ? `<span class="pc-ok">${icon('check')}</span>` : ''}${it.userNote ? ` · ${icon('edit')}` : ''}</span>
         <b>${esc(title)}</b>
         <span class="pc-meta">${meta.filter(Boolean).map(esc).join('  ·  ')}</span>
       </button>
-      ${toggle}
       ${draggable ? `<button class="pc-grip" data-action="open-move" data-k="${k}" data-key="${esc(key)}" aria-label="${esc(title)} verplaatsen (slepen of tikken)">${icon('grip')}</button>` : ''}
+      <button class="pc-more" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(title)}">${icon('more')}</button>
     </div>`;
+  }
+
+  // De uitleg over slepen alleen de eerste keer (blijft zichtbaar tijdens die sessie)
+  function dragHelpOnce() {
+    if (S.ui.dragHelp === undefined) {
+      try { S.ui.dragHelp = !localStorage.getItem('comeback-drag-help'); if (S.ui.dragHelp) localStorage.setItem('comeback-drag-help', '1'); }
+      catch (_) { S.ui.dragHelp = false; }
+    }
+    return S.ui.dragHelp;
   }
 
   function weekHtml() {
@@ -1466,22 +1790,25 @@
     const ws = parseKey(S.ui.planWeek || weekKey(t));
     const strip = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(ws, i), k = dkey(d);
-      return `<button class="wk-chip ${k === tk ? 'today' : ''}" data-action="wk-jump" data-k="${k}" aria-label="${fmtDay(k)}">
-        <small>${DAY_LETTER[d.getDay()]}</small><b>${d.getDate()}</b><span class="day-dots">${dayDotsHtml(d)}</span></button>`;
+      return `<button class="day ${k === tk ? 'on' : ''}" data-action="wk-jump" data-k="${k}" aria-label="${fmtDay(k)}"${k === tk ? ' aria-current="date"' : ''}>
+        <small>${cap(DAY_S[d.getDay()])}</small><b>${d.getDate()}</b><span class="day-dots">${dayDotsHtml(d)}</span></button>`;
     }).join('');
     const warns = loadWarnings(ws);
     const pend = pendingSuggestions(ws);
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = addDays(ws, i), k = dkey(d);
       const { items, off } = planDetail(d);
-      const offRows = off.filter(o => !String(o.reason).startsWith('moved:')).map(o => {
+      const offList = off.filter(o => !String(o.reason).startsWith('moved:'));
+      const offRows = offList.map(o => {
         const ot = offText(o.reason);
         return `<button class="pc-off" data-action="off-item" data-k="${k}" data-key="${esc(itemKey(o.item))}">${icon(ot.tag === 'Vervangen' ? 'swap' : 'skip')}<span>${esc(itemMeta(o.item).title)} · ${esc(ot.txt)}</span></button>`;
       }).join('');
+      // Logregels (verwijderd, vervangen, overgeslagen) standaard ingeklapt
+      const changes = offList.length ? `<details class="wk-changes"><summary>Wijzigingen tonen (${offList.length})</summary>${offRows}</details>` : '';
       return `<section class="wk-day ${k === tk ? 'is-today' : ''} ${k < tk ? 'is-past' : ''}" data-k="${k}" id="day-${k}">
         <div class="wk-day-head"><span class="wk-day-label">${DAY_UP[d.getDay()]} ${pad(d.getDate())}${k === tk ? '<small>Vandaag</small>' : ''}</span>
           <button class="wk-add" data-action="add-menu" data-k="${k}" aria-label="Iets toevoegen op ${fmtDay(k)}">${icon('plus')}</button></div>
-        <div class="wk-list">${items.map(it => planCard(it, k)).join('')}${offRows}</div>
+        <div class="wk-list">${items.map(it => planCard(it, k)).join('') || '<p class="wk-empty">Niets gepland</p>'}${changes}</div>
       </section>`;
     }).join('');
     const isThis = weekKey(t) === weekKey(ws);
@@ -1492,12 +1819,12 @@
         ${isThis ? '<span class="wk-nav-gap"></span>' : `<button class="link-btn" data-action="wk-today">Naar deze week</button>`}
         ${iconBtn('chevR', 'wk-next', 'Volgende week')}
       </div>
-      <div class="wk-strip card">${strip}</div>
+      <div class="wk-strip">${strip}</div>
       ${warns.map(w => `<div class="hint accent" role="note">${icon('alert')}<span>${esc(w)}</span></div>`).join('')}
       ${pend.length ? `<div class="wk-confirm"><span>${pend.length} voorstel${pend.length === 1 ? '' : 'len'} nog niet bevestigd</span><button class="btn sm" data-action="confirm-week">${icon('check')} Alles bevestigen</button></div>` : ''}
-      <p class="wk-help">Sleep aan ${icon('grip')} naar een andere dag, of tik op ${icon('grip')} om te verplaatsen.</p>
-      <div class="wk-days" id="wk-days">${days}</div>
-      <div class="wk-legend"><span class="lg-sug">Voorgesteld</span><span class="lg-con">Bevestigd</span><span class="lg-done">Uitgevoerd</span></div>`;
+      ${dragHelpOnce() ? `<p class="wk-help">Sleep aan ${icon('grip')} naar een andere dag, of tik op ${icon('grip')} om te verplaatsen.</p>` : ''}
+      ${rulesCard()}
+      <div class="wk-days" id="wk-days">${days}</div>`;
   }
 
   function renderPlanning() {
@@ -1606,23 +1933,99 @@
     const own = ids.filter(id => C.sessions[id].custom), std = ids.filter(id => !C.sessions[id].custom && programOn(C.sessions[id].program, id));
     const cur = replaceKey ? findItem(k, replaceKey) : null;
     const rep = replaceKey ? ` data-replace="${esc(replaceKey)}"` : '';
-    const small = 'style="width:40px;height:40px;background:transparent"';
+    const small = '';
     const row = id => `<div class="list-row"><div class="ico">${icon(C.sessions[id].icon)}</div>
         <div class="body" style="cursor:pointer" data-action="add-session" data-k="${k}" data-id="${id}"${rep}><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span></div>
-        <div class="end">${!replaceKey && C.sessions[id].custom ? `<button class="icon-btn" ${small} data-action="edit-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} aanpassen">${icon('edit')}</button><button class="icon-btn" ${small} data-action="delete-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} verwijderen">${icon('trash')}</button>` : ''}
-          <button class="icon-btn" style="width:40px;height:40px" data-action="add-session" data-k="${k}" data-id="${id}"${rep} aria-label="${esc(sessionTitle(id))} ${replaceKey ? 'kiezen' : 'toevoegen'}">${icon(replaceKey ? 'check' : 'plus')}</button></div></div>`;
+        <div class="end">${!replaceKey && C.sessions[id].custom ? `<button class="icon-btn ghost" data-action="edit-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} aanpassen">${icon('edit')}</button><button class="icon-btn ghost" data-action="delete-custom" data-key="${id}" aria-label="${esc(sessionTitle(id))} verwijderen">${icon('trash')}</button>` : ''}
+          <button class="icon-btn" data-action="add-session" data-k="${k}" data-id="${id}"${rep} aria-label="${esc(sessionTitle(id))} ${replaceKey ? 'kiezen' : 'toevoegen'}">${icon(replaceKey ? 'check' : 'plus')}</button></div></div>`;
     const types = QUICK_TYPES.filter(([t]) => !(replaceKey && cur && cur.type === t)).map(([t, l, ic, sub]) =>
       `<button class="type-tile" data-action="add-type" data-k="${k}" data-type="${t}"${rep}>${icon(ic)}<b>${l}</b><span>${sub}</span></button>`).join('');
-    openSheet(`<div class="sheet-head"><div><h3>${replaceKey ? 'Vervangen door' : 'Toevoegen'}</h3><p>${replaceKey && cur ? `${esc(itemMeta(cur).title)} · ` : ''}${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+    openSheet(`<div class="sheet-head"><div><h3>${replaceKey ? 'Vervangen door' : 'Inplannen'}</h3><p>${replaceKey && cur ? `${esc(itemMeta(cur).title)} · ` : ''}${cap(fmtDay(k))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <div class="type-grid">${types}</div>
-      <div class="add-row two" style="margin-top:12px"><input class="input" id="custom-label" placeholder="Eigen type, bv. Zwemmen" aria-label="Naam van een eigen type" maxlength="40"><button class="btn" data-action="add-custom" data-k="${k}"${rep}>${icon(replaceKey ? 'check' : 'plus')}<span class="sr">${replaceKey ? 'Vervangen' : 'Toevoegen'}</span></button></div>
+      <div class="add-row two mt-12"><input class="input" id="custom-label" placeholder="Eigen type, bv. Zwemmen" aria-label="Naam van een eigen type" maxlength="40"><button class="btn" data-action="add-custom" data-k="${k}"${rep}>${icon(replaceKey ? 'check' : 'plus')}<span class="sr">${replaceKey ? 'Vervangen' : 'Toevoegen'}</span></button></div>
       ${own.length ? `<div class="section"><span>Mijn workouts</span></div>${own.map(row).join('')}` : ''}
-      <div class="section"><span>Fitness en herstel uit je schema</span></div>${std.map(row).join('')}
-      ${replaceKey ? '' : `<button class="btn block" style="margin-top:14px" data-action="new-custom" data-k="${k}">${icon('plus')} Eigen workout maken</button>`}`);
+      <div class="section"><span>Workouts</span></div>${std.map(row).join('')}
+      ${replaceKey ? '' : `<button class="btn block mt-16" data-action="new-custom" data-k="${k}">${icon('plus')} Eigen workout maken</button>`}`);
   }
   function addOrReplace(el, item) {
     if (el.dataset.replace) replaceItem(el.dataset.k, el.dataset.replace, item);
-    else addItemTo(el.dataset.k, item);
+    else openRepeat(el.dataset.k, item);
+  }
+
+
+  /* ---------- Inplannen: één dag of herhalen op vaste weekdagen ---------- */
+  const ruleById = id => planRules().find(r => r.id === id);
+  const ruleFor = item => planRules().find(r => itemKey(r.item) === itemKey(item) && (!r.until || r.until >= dkey(today())));
+  function ruleText(r) {
+    const d = r.days || [];
+    const every = d.length === 7 ? 'Elke dag' : d.length === 5 && [1, 2, 3, 4, 5].every(x => d.includes(x)) ? 'Elke weekdag' : `Elke ${daysText(d)}`;
+    return [every, r.time, r.until ? `tot ${fmtShort(r.until)}` : ''].filter(Boolean).join(' · ');
+  }
+  // item = wat je inplant; k = de gekozen dag; ruleId = bestaande herhaling aanpassen
+  function openRepeat(k, item, ruleId = null) {
+    const r = ruleId ? ruleById(ruleId) : null;
+    S.ui.rp = { k, item: cleanItem(r ? r.item : item), ruleId: r ? r.id : null, days: r ? [...r.days] : [parseKey(k).getDay()], mode: r ? 'repeat' : 'once' };
+    renderRepeat(r);
+  }
+  function renderRepeat(r = null) {
+    const rp = S.ui.rp, m = itemMeta(rp.item);
+    const title = rp.item.type === 'session' ? sessionTitle(rp.item.id) : m.title;
+    openSheet(`<form id="repeat-form">
+      <div class="sheet-head"><div><span class="eyebrow">${rp.ruleId ? 'Herhaling aanpassen' : 'Inplannen'}</span><h3>${esc(title)}</h3><p>${rp.ruleId ? esc(ruleText(r)) : `Vanaf ${fmtDay(rp.k)}`}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${rp.ruleId ? '' : `<label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${rp.k}" required></label>
+      <div class="seg">${radio('rpmode', 'once', 'Alleen deze dag', rp.mode)}${radio('rpmode', 'repeat', 'Herhalen', rp.mode)}</div>`}
+      <div id="rp-repeat" ${rp.mode === 'repeat' ? '' : 'hidden'}>
+        <p class="field-label">Elke week op</p>
+        <div class="wd-pick">${WD_ORDER.map(d => `<button type="button" class="tchip ${rp.days.includes(d) ? 'on' : ''}" data-action="rp-wd" data-d="${d}" aria-pressed="${rp.days.includes(d)}" aria-label="${DAY[d]}">${cap(DAY_S[d])}</button>`).join('')}</div>
+        <div class="chips mb-12"><button type="button" class="loc-chip" data-action="rp-preset" data-p="2,4">Di + Do</button><button type="button" class="loc-chip" data-action="rp-preset" data-p="1,2,3,4,5">Elke weekdag</button><button type="button" class="loc-chip" data-action="rp-preset" data-p="0,1,2,3,4,5,6">Elke dag</button></div>
+        <div class="form-grid">
+          <label class="field"><span>Uur (optioneel)</span><input class="input" type="time" name="time" value="${esc((r && r.time) || '')}"></label>
+          <label class="field"><span>Tot (optioneel)</span><input class="input" type="date" name="until" min="${rp.k}" value="${esc((r && r.until) || '')}"></label>
+        </div>
+      </div>
+      <button class="btn accent block lg" type="submit">${icon('check')} ${rp.ruleId ? 'Opslaan' : 'Inplannen'}</button>
+      ${rp.ruleId ? `<button type="button" class="btn block mt-8" data-action="rp-delete" data-id="${rp.ruleId}">${icon('trash')} Herhaling verwijderen</button>` : ''}
+    </form>`);
+  }
+  async function saveRepeat(form) {
+    const rp = S.ui.rp, f = new FormData(form);
+    if (f.get('date')) rp.k = f.get('date');
+    const mode = rp.ruleId ? 'repeat' : f.get('rpmode');
+    if (mode === 'once') { addItemTo(rp.k, rp.item); return; }
+    const days = [...new Set(rp.days)].sort();
+    if (!days.length) { toast('Kies minstens één dag'); return; }
+    const list = planRules().filter(r => r.id !== rp.ruleId);
+    const old = rp.ruleId ? ruleById(rp.ruleId) : null;
+    const rule = { id: rp.ruleId || newId(), item: rp.item, days, time: f.get('time') || null, since: old ? old.since : rp.k, until: f.get('until') || null };
+    list.push(rule);
+    await setSetting('schedule', list);
+    closeSheet(); render({ keepScroll: true });
+    toast(`${itemMeta(rp.item).title}: ${ruleText(rule).toLowerCase()}`);
+  }
+  // Herhaling stoppen vanaf een dag (eerdere dagen blijven zoals ze waren)
+  async function stopRule(id, k) {
+    const r = ruleById(id); if (!r) return;
+    const until = dkey(addDays(parseKey(k), -1));
+    const list = planRules().filter(x => x.id !== id);
+    if (r.since && until >= r.since) list.push({ ...r, until });
+    await setSetting('schedule', list);
+    closeSheet(); render({ keepScroll: true });
+    toast(`Herhaling gestopt vanaf ${fmtDay(k)}`);
+  }
+  async function deleteRule(id) {
+    if (!await ask('Deze herhaling helemaal verwijderen? Ze verdwijnt uit alle dagen van je planning. Wat je al logde, blijft bewaard.', { ok: 'Verwijderen', danger: true })) return;
+    await setSetting('schedule', planRules().filter(x => x.id !== id));
+    closeSheet(); render({ keepScroll: true });
+    toast('Herhaling verwijderd');
+  }
+  // Compact overzicht van je vaste planning (bovenaan Planning)
+  function rulesCard() {
+    const tk = dkey(today());
+    const list = planRules().filter(r => !r.until || r.until >= tk);
+    if (!list.length) return '';
+    return `<section class="card rules-card"><div class="card-head"><h2>Vaste planning</h2><span class="label">${list.length}</span></div>
+      ${list.map(r => `<button class="list-row tap row-btn" data-action="rp-edit" data-id="${r.id}"><span class="body"><b>${esc(r.item.type === 'session' ? sessionTitle(r.item.id) : itemMeta(r.item).title)}</b><span>${esc(ruleText(r))}</span></span><span class="end">${icon('chevR')}</span></button>`).join('')}
+    </section>`;
   }
 
   /* ================= Eigen workouts ================= */
@@ -1690,7 +2093,7 @@
         : ex.kind === 'distance' ? '' : mini(i, 'duration', 'Seconden', it.duration, 5);
       return `<div class="b-item">
         <div class="b-top"><div><b>${esc(ex.name)}</b>${ex.perSide ? `<span class="label" style="display:block">per ${esc(ex.sideWord || 'kant')}${ex.kind === 'distance' ? ` · ${ex.distance} m` : ''}</span>` : ex.kind === 'distance' ? `<span class="label" style="display:block">${ex.distance} m</span>` : ''}</div>
-          <button type="button" class="icon-btn" style="width:36px;height:36px;background:transparent" data-action="b-remove" data-i="${i}" aria-label="Oefening verwijderen">${icon('x')}</button></div>
+          <button type="button" class="icon-btn ghost" data-action="b-remove" data-i="${i}" aria-label="Oefening verwijderen">${icon('x')}</button></div>
         <div class="b-grid">
           ${mini(i, 'sets', 'Sets', it.sets, 1)}
           ${second}
@@ -1705,7 +2108,7 @@
         <button type="button" class="b-choice" data-action="b-open-pick" data-tab="spiergroep">${icon('list')}<b>Zelf samenstellen</b><span>Per spiergroep oefeningen kiezen</span></button>
       </div>`}
       ${rows}
-      ${b.items.length ? `<div class="row" style="margin:4px 0 6px">
+      ${b.items.length ? `<div class="row" style="margin:4px 0 8px">
         <button type="button" class="btn" data-action="b-open-pick" data-tab="spiergroep">${icon('plus')} Oefening</button>
         <button type="button" class="btn" data-action="b-open-pick" data-tab="voorgesteld">${icon('magic')} Voorgesteld</button>
       </div>` : ''}
@@ -1740,7 +2143,7 @@
         <div style="flex:1;min-width:0"><h3>${tab === 'voorgesteld' ? 'Voorgestelde workouts' : b.group ? esc(groupName(b.group)) : 'Oefeningen'}</h3><p>${b.items.length} oefening${b.items.length === 1 ? '' : 'en'} gekozen</p></div>
         <button class="btn primary sm" data-action="b-back">Klaar</button></div>
       <div class="seg">${[['spiergroep', 'Spiergroepen'], ['voorgesteld', 'Voorgesteld']].map(([v, l]) => `<button class="${tab === v ? 'on' : ''}" data-action="b-tab" data-v="${v}">${l}</button>`).join('')}</div>
-      <div class="chips" style="margin:-4px 0 14px">${[['alles', 'Alles'], ['thuis', 'Thuis'], ['gym', 'Gym']].map(([v, l]) => `<button class="loc-chip ${loc === v ? 'on' : ''}" data-action="b-loc" data-v="${v}">${l}</button>`).join('')}</div>`;
+      <div class="chips" style="margin:-4px 0 16px">${[['alles', 'Alles'], ['thuis', 'Thuis'], ['gym', 'Gym']].map(([v, l]) => `<button class="loc-chip ${loc === v ? 'on' : ''}" data-action="b-loc" data-v="${v}">${l}</button>`).join('')}</div>`;
 
     if (tab === 'voorgesteld') {
       const list = LIB.templates.filter(t => fitsLoc(t.where, loc));
@@ -1749,19 +2152,19 @@
           <span class="body"><b>${esc(t.name)}</b><span>${esc(t.desc)}</span>
             <span class="tpl-meta"><span class="tag">${whereLabel(t.where)}</span><span class="tag">${t.items.length} oefeningen</span><span class="tag">±${templateMinutes(t)} min</span>${t.plyo && plyoLocked() ? '<span class="tag missed">vanaf fase 2 + 3</span>' : ''}</span></span>
           <span class="end">${icon('plus')}</span></button>`).join('') || '<p class="empty">Geen voorgestelde workouts voor deze plaats.</p>')
-        + `<p class="label" style="margin-top:10px">Na het kiezen kun je elke oefening nog aanpassen of verwijderen.</p>`;
+        + `<p class="label mt-12">Na het kiezen kun je elke oefening nog aanpassen of verwijderen.</p>`;
     }
 
     if (b.group) {
       const ids = groupExercises(b.group, loc);
       const g = LIB.categories.flatMap(c => c.groups).find(x => x.id === b.group);
       return head + `<button class="link-btn" style="margin:-4px 0 8px" data-action="b-group" data-id="">${icon('chevL')} Alle spiergroepen</button>
-        ${g && g.hint ? `<p class="label" style="margin:0 2px 10px">${esc(g.hint)}</p>` : ''}
-        <section class="card" style="padding:4px 14px">${ids.map(id => {
+        ${g && g.hint ? `<p class="label" style="margin:0 0 8px">${esc(g.hint)}</p>` : ''}
+        <section class="card" style="padding:4px 16px">${ids.map(id => {
           const ex = C.exercises[id], on = b.items.some(i => i.ex === id);
           return `<div class="list-row">
             <div class="body"><b>${esc(ex.name)}</b><span>${esc(prescription({ sets: 3 }, ex).replace(/^3 × /, ''))}${ex.where ? ' · ' + whereLabel(ex.where) : ''}</span>
-              ${ex.plyo && plyoLocked() ? '<span class="tag missed" style="margin-top:4px">vanaf fase 2 + 3</span>' : ''}</div>
+              ${ex.plyo && plyoLocked() ? '<span class="tag missed mt-4">vanaf fase 2 + 3</span>' : ''}</div>
             <div class="end"><button class="icon-btn pick-btn ${on ? 'on' : ''}" data-action="b-pick-ex" data-id="${id}" aria-label="${on ? 'Verwijderen' : 'Toevoegen'}">${icon(on ? 'check' : 'plus')}</button></div>
           </div>`;
         }).join('') || '<p class="empty">Geen oefeningen voor deze plaats in deze groep.</p>'}</section>`;
@@ -1771,12 +2174,12 @@
     return head + LIB.categories.map(c => {
       const groups = c.groups.map(g => ({ ...g, n: groupExercises(g.id, loc).length })).filter(g => g.n);
       if (!groups.length) return '';
-      return `<div class="section" style="margin-top:14px"><span>${esc(c.name)}</span></div>
+      return `<div class="section mt-16"><span>${esc(c.name)}</span></div>
         <div class="group-grid">${groups.map(g => `<button class="group-tile" data-action="b-group" data-id="${g.id}">
           <b>${esc(g.name)}</b><span>${esc(g.hint || '')}</span><em>${g.n} oefeningen${c.id === 'power' && plyoLocked() ? ' · vanaf fase 2 + 3' : ''}</em></button>`).join('')}</div>`;
     }).join('') + `
-      ${mine.length ? `<div class="section" style="margin-top:14px"><span>Mijn oefeningen</span></div><div class="group-grid"><button class="group-tile" data-action="b-group" data-id="mine"><b>Mijn oefeningen</b><span>Zelf gemaakt</span><em>${mine.length} oefeningen</em></button></div>` : ''}
-      <div class="b-add" style="margin-top:14px">
+      ${mine.length ? `<div class="section mt-16"><span>Mijn oefeningen</span></div><div class="group-grid"><button class="group-tile" data-action="b-group" data-id="mine"><b>Mijn oefeningen</b><span>Zelf gemaakt</span><em>${mine.length} oefeningen</em></button></div>` : ''}
+      <div class="b-add mt-16">
         ${b.adding ? `<label class="field"><span>Naam van je eigen oefening</span><input class="input" id="b-new-name" placeholder="Bv. Hamstring curl"></label>
           <div class="seg">${radio('b-kind', 'reps', 'Herh. + kg', 'reps')}${radio('b-kind', 'bw', 'Herh.', 'reps')}${radio('b-kind', 'time', 'Op tijd', 'reps')}</div>
           <button type="button" class="btn block" data-action="b-new-add">${icon('plus')} Toevoegen</button>`
@@ -1866,7 +2269,7 @@
   }
 
   /* ---------- Eigen workouts inplannen: wekelijks op vaste dagen of één keer ---------- */
-  const mySchedule = id => (S.settings.workoutSchedule || []).find(x => x.id === id);
+  const mySchedule = id => { const r = ruleFor({ type: 'session', id }); return r ? { id, days: r.days, since: r.since } : null; };
   function planText(id) {
     const sc = mySchedule(id);
     const rehab = injuries().filter(i => i.status !== 'afgerond').map(i => (i.schedule || []).find(x => x.id === id)).filter(Boolean)[0];
@@ -1875,6 +2278,8 @@
   }
   function openWorkoutPlan(id, fresh = false) {
     if (!C.sessions[id]) return;
+    const r = ruleFor({ type: 'session', id });
+    return openRepeat(dkey(today()), { type: 'session', id }, r ? r.id : null);
     S.ui.planDays = [...((mySchedule(id) || {}).days || [])];
     S.ui.planOnce = [];
     renderWorkoutPlan(id, fresh);
@@ -1884,10 +2289,10 @@
     openSheet(`<div class="sheet-head"><div><span class="eyebrow">${fresh ? 'Nieuwe workout' : 'Inplannen'}</span><h3>${esc(sessionTitle(id))}</h3><p>${esc(sessionDesc(id))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <p class="field-label">Elke week op</p>
       <div class="wd-pick">${WD_ORDER.map(d => `<button type="button" class="tchip ${S.ui.planDays.includes(d) ? 'on' : ''}" data-action="plan-wd" data-d="${d}" aria-pressed="${S.ui.planDays.includes(d)}" aria-label="${DAY[d]}">${cap(DAY_S[d])}</button>`).join('')}</div>
-      <p class="label" style="margin:2px 2px 14px">Staat vanaf vandaag in je planning. Per dag kun je hem nog verplaatsen, vervangen of overslaan.</p>
+      <p class="label" style="margin:0 0 16px">Staat vanaf vandaag in je planning. Per dag kun je hem nog verplaatsen, vervangen of overslaan.</p>
       <p class="field-label">Of op losse dagen</p>
       <div class="add-row two"><input class="input" type="date" id="plan-once" min="${tk}" value="${tk}" aria-label="Datum"><button class="btn" data-action="plan-once-add">${icon('plus')}<span class="sr">Datum toevoegen</span></button></div>
-      <div class="chips" id="plan-once-list" style="margin-top:8px">${S.ui.planOnce.map(d => `<button class="loc-chip on" data-action="plan-once-del" data-d="${d}" aria-label="${fmtDay(d)} weghalen">${esc(cap(fmtDay(d)))} ${icon('x')}</button>`).join('')}</div>
+      <div class="chips mt-8" id="plan-once-list">${S.ui.planOnce.map(d => `<button class="loc-chip on" data-action="plan-once-del" data-d="${d}" aria-label="${fmtDay(d)} weghalen">${esc(cap(fmtDay(d)))} ${icon('x')}</button>`).join('')}</div>
       <button class="btn accent block lg" data-action="plan-save" data-key="${id}">${icon('check')} Inplannen</button>
       ${fresh ? `<button class="btn ghost block" data-action="close-sheet">Later</button>` : ''}`);
   }
@@ -1916,8 +2321,8 @@
     const s = sessInfo(id), exs = (C.sessions[id].items || []).map(it => C.exercises[it.ex]).filter(Boolean);
     openSheet(`<div class="sheet-head"><div><span class="eyebrow">Mijn workout</span><h3>${esc(s.name)}</h3><p>${s.exercises} oefeningen · ±${s.minutes} min${planText(id) ? ` · ${esc(planText(id))}` : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <button class="btn accent block lg" data-action="start-session" data-key="${id}">${icon('play')} Nu starten</button>
-      <div class="row" style="margin-top:8px"><button class="btn" data-action="workout-plan" data-key="${id}">${icon('calendar')} Inplannen</button><button class="btn" data-action="edit-custom" data-key="${id}">${icon('edit')} Aanpassen</button></div>
-      <p class="field-label" style="margin-top:20px">Oefeningen</p>
+      <div class="row mt-8"><button class="btn" data-action="workout-plan" data-key="${id}">${icon('calendar')} Inplannen</button><button class="btn" data-action="edit-custom" data-key="${id}">${icon('edit')} Aanpassen</button></div>
+      <p class="field-label mt-20">Oefeningen</p>
       <section class="card" style="padding:4px 16px">${(C.sessions[id].items || []).map(it => { const ex = C.exercises[it.ex]; return ex ? `<div class="list-row"><div class="body"><b>${esc(ex.name)}</b><span>${esc(prescription({ ...it, sets: it.sets || 3 }, { ...ex, ...(it.reps ? { reps: [it.reps, it.reps], repsText: null } : {}), ...(it.duration ? { duration: it.duration } : {}) }))}${it.weight ? ` · ${fmtNum(it.weight)} kg` : ''}</span></div></div>` : ''; }).join('') || '<p class="empty">Nog geen oefeningen.</p>'}</section>
       <details class="more"><summary>Meer opties</summary><button class="btn danger block" data-action="delete-custom" data-key="${id}">${icon('trash')} Workout verwijderen</button></details>`);
   }
@@ -1927,7 +2332,7 @@
     if (!cs[key] || !await ask(`"${cs[key].name}" verwijderen? Hij verdwijnt ook uit je planning. Afgewerkte workouts blijven bewaard.`, { ok: 'Verwijderen', danger: true })) return;
     delete cs[key];
     await setSetting('customSessions', cs);
-    await setSetting('workoutSchedule', (S.settings.workoutSchedule || []).filter(x => x.id !== key));
+    await setSetting('schedule', planRules().filter(r => !(r.item.type === 'session' && r.item.id === key)));
     if (injuries().some(i => (i.linked || []).includes(key))) {
       await setSetting('injuries', injuries().map(i => ({ ...i, linked: (i.linked || []).filter(x => x !== key), schedule: (i.schedule || []).filter(x => x.id !== key), maintenance: (i.maintenance || []).filter(x => x !== key) })));
     }
@@ -2025,9 +2430,9 @@
   }
 
   // Overzicht van alle sessies (hoofdtab, dus geen terugknop)
-  function renderWorkout() {
+  function renderWorkout() { S.ui.trainSeg = 'kracht'; return renderTraining(); }
+  function krachtHtml() {
     const w = draft();
-    if (w && S.ui.woView !== 'picker') return renderActive(w);
     const t = today(), k = dkey(t);
     const todays = planFor(t).filter(it => it.type === 'session' && !itemDone(it, k));
     const rec = relevantSession(todays, k);
@@ -2036,32 +2441,25 @@
     const groups = [['Kracht', id => !C.sessions[id].program && !C.sessions[id].custom], ['Herstel', id => !!C.sessions[id].program]];
     const own = Object.keys(C.sessions).filter(id => C.sessions[id].custom);
 
-    main.innerHTML = `
-      ${pageHead('Workout', activeInjuries().length ? `${esc(phaseObj(currentPhase()).label)} · ${esc(phaseObj(currentPhase()).title)}` : esc(GOAL_LABEL[goal().type]))}
+    return `
       ${sm ? `<div class="hint">${icon('check')}<span><b>${esc(sm.title)} opgeslagen.</b> ${sm.sets} set${sm.sets === 1 ? "" : "s"} in ${sm.minutes} min${sm.rpe != null ? `, zwaarte ${sm.rpe}/10` : ''}.</span></div>` : ''}
       ${rising ? `<div class="hint warn">${icon('alert')}<span>Je dagelijkse check is hoger dan de vorige meting. Volg je afspraak met je kinesist.</span></div>` : ''}
       ${w ? `<section class="card resume">
         <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
         <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)} om ${fmtTime(w.startedAt)} · ${w.exercises.flatMap(x => x.sets).filter(s => s.done).length} sets gedaan</p>
-        <div class="row" style="margin-top:12px"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
-      </section>` : rec ? `<section class="card act is-main">
-        <div class="act-top"><span class="act-kind t-${itemType(rec)}">${esc(actKind(rec))}</span><span class="tag">Vandaag gepland</span></div>
-        <h3>${esc(sessionTitle(rec.id))}</h3><p>${esc(sessionDesc(rec.id))}</p>
-        <div class="act-meta"><span>${icon('clock')} ±${sessInfo(rec.id).minutes} min</span><span>${icon('list')} ${sessInfo(rec.id).exercises} oefeningen</span></div>
-        <button class="btn accent block lg" data-action="start-session" data-key="${rec.id}">${icon('play')} Start workout</button>
-      </section>` : ''}
-      <div class="section"><span>Mijn workouts</span><button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button></div>
+        <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
+      </section>` : rec ? actCard(rec, k, true) : ''}
+      <div class="section"><span>Mijn workouts</span>${own.length ? `<button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button>` : ''}</div>
       ${own.length ? `<section class="card">${own.map(key => {
         const s = sessInfo(key);
         return `<div class="list-row">
           <button class="body row-btn" data-action="workout-sheet" data-key="${key}" aria-label="${esc(s.name)}: inplannen of aanpassen"><b>${esc(s.name)}</b><span>${s.exercises} oefeningen · ±${s.minutes} min</span><span class="${planText(key) ? 'accent-text' : ''}">${esc(planText(key) || 'Nog niet ingepland')}</span></button>
-          <div class="end"><button class="icon-btn" style="background:transparent" data-action="workout-plan" data-key="${key}" aria-label="${esc(s.name)} inplannen">${icon('calendar')}</button>
-            <button class="icon-btn" style="background:var(--card-2)" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
+          <div class="end"><button class="icon-btn ghost" data-action="workout-plan" data-key="${key}" aria-label="${esc(s.name)} inplannen">${icon('calendar')}</button>
+            <button class="icon-btn" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
         </div>`;
-      }).join('')}</section>` : `<section class="card empty-state compact">
-          <h2>Stel je eigen workout samen.</h2>
-          <p>Kies oefeningen per spiergroep of start van een voorgestelde workout, zet je sets, herhalingen en kg, en plan hem op de dagen die jij wil.</p>
-          <button class="btn accent block lg" data-action="new-workout">${icon('plus')} Nieuwe workout</button>
+      }).join('')}</section>` : `<section class="card empty-row">
+          <p>Nog geen eigen workouts.</p>
+          <button class="btn sm" data-action="new-workout">${icon('plus')} Nieuwe workout</button>
         </section>`}
       ${groups.map(([title, fn]) => {
         const ids = Object.keys(C.sessions).filter(fn);
@@ -2071,9 +2469,8 @@
           const off = key === 'PLYO' && currentPhase() !== 'f3';
           const inactive = C.sessions[key].program && !programOn(C.sessions[key].program, key);
           return `<div class="list-row">
-            <div class="ico">${icon(s.icon)}</div>
             <div class="body"><b>${esc(s.name)}</b><span>${off ? 'Pas vanaf fase 2 + 3' : esc(s.desc)}</span><span>${s.place ? cap(s.place) + ' · ' : ''}${s.exercises} oefeningen · ±${s.minutes} min${inactive ? ' · niet in je schema' : ''}</span></div>
-            <div class="end"><button class="icon-btn" style="background:var(--card-2)" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
+            <div class="end"><button class="icon-btn ghost" data-action="workout-plan" data-key="${key}" aria-label="${esc(s.name)} inplannen">${icon('calendar')}</button><button class="icon-btn" data-action="start-session" data-key="${key}" aria-label="Start ${esc(s.name)}">${icon('play')}</button></div>
           </div>`;
         }).join('')}</section>`;
       }).join('')}
@@ -2176,7 +2573,7 @@
       <p class="ex-presc">${esc(e.presc)}</p>
       ${prevLine(e)}
       ${e.cue ? `<p class="ex-cue">${esc(e.cue)}</p>` : ''}
-      <div id="wo-hints" style="margin-top:12px">${hintsHtml(e)}</div>
+      <div class="mt-12" id="wo-hints">${hintsHtml(e)}</div>
       <section class="editor" id="editor">${editorHtml(e)}</section>
       <details class="fold card" ${S.ui.setsOpen ? 'open' : ''} data-fold="sets">
         <summary>Alle sets van deze oefening <span class="label">${doneSets} van ${e.sets.length}</span></summary>
@@ -2293,11 +2690,11 @@
     openSheet(`<form id="finish-form">
       <div class="sheet-head"><div><h3>Workout afronden</h3><p>${esc(woTitle(w))} · ${done.length} sets</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <p class="label">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', null, 0, 10, null)}
-      <p class="label" style="margin-top:14px">Hoe heb je meegedaan?</p>
+      <p class="label mt-16">Hoe heb je meegedaan?</p>
       <div class="seg">${radio('mode', 'volledig', 'Volledig', done.length < all.length ? 'aangepast' : 'volledig')}${radio('mode', 'aangepast', 'Aangepast', done.length < all.length ? 'aangepast' : 'volledig')}</div>
       <details class="more"><summary>Meer opties</summary>
         <p class="label">Vermoeidheid na afloop · 1 = fris, 5 = erg moe</p>${pickGroup('fatigue', null, 1, 5, null)}
-        <label class="field" style="margin-top:12px"><span>Duur (minuten)</span><input class="input" name="minutes" type="number" inputmode="numeric" value="${mins}"></label>
+        <label class="field mt-12"><span>Duur (minuten)</span><input class="input" name="minutes" type="number" inputmode="numeric" value="${mins}"></label>
         <label class="field"><span>Notitie</span><textarea class="input" name="note" rows="2"></textarea></label>
       </details>
       <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
@@ -2354,10 +2751,11 @@
     const el = document.createElement('div');
     el.className = 'celebrate';
     el.setAttribute('role', 'status');
-    el.innerHTML = `<span>${icon('check')}</span><b>${esc(text)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}`;
+    const line = sub || (Q.after && Q.after.length ? Q.after[Math.floor(Math.random() * Q.after.length)] : '');
+    el.innerHTML = `<b>${esc(text)}</b>${line ? `<small>${esc(line)}</small>` : ''}`;
     document.body.appendChild(el);
     signal(1);
-    setTimeout(() => el.remove(), sub ? 2400 : 1400);
+    setTimeout(() => el.remove(), 1500);
   }
 
   /* ---------- Motivatie: eigen korte teksten (quotes.json), zonder toeschrijving ---------- */
@@ -2560,13 +2958,25 @@
     const tab = S.ui.statsTab || 'overzicht';
     const body = { overzicht: statsOverview, herstel: statsRecovery, kracht: statsStrength, matchen: statsMatches }[tab]();
     main.innerHTML = `
-      <header class="page-head"><div><span class="eyebrow">Het grotere plaatje</span><h1>Jouw vooruitgang.</h1><p>Kleine stappen. Zichtbaar resultaat.</p></div></header>
+      <header class="page-head"><div><span class="eyebrow">Het grotere plaatje</span><h1>Jouw vooruitgang.</h1><p>Kleine stappen. Zichtbaar resultaat.</p></div>${iconBtn('back', 'go', 'Terug naar Training', 'data-to="workout"')}</header>
       <div class="seg" role="tablist">${STATS_TABS.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" role="tab" aria-selected="${k === tab}" data-action="stats-tab" data-t="${k}">${l}</button>`).join('')}</div>
       ${body}`;
   }
 
   function statsOverview() {
-    return streakHero() + badgesHtml() + statsOverviewBody();
+    return statsHero() + badgesHtml() + statsOverviewBody();
+  }
+  // Kerncijfers op een donkere fotokaart: streak, sessies, minuten (30 dagen), matchen
+  function statsHero() {
+    const s = streakInfo(), since = dkey(addDays(today(), -29));
+    const mins = sum(S.workouts.filter(w => w.date >= since).map(woMinutes)) + sum(S.activities.filter(a => a.date >= since).map(a => +a.minutes || 0));
+    const matches = S.activities.filter(a => a.type === 'match').length;
+    const stats = [[s.days, 'd', 'Streak'], [totalDone(), '', 'Sessies'], [mins, '', 'Min · 30 d'], [matches, '', 'Matchen']];
+    return `<section class="stats-hero" aria-label="Kerncijfers">
+      <img src="assets/stats.jpg" alt="" class="stats-img" decoding="async" onerror="this.remove()">
+      <div class="stats-shade"></div>
+      <div class="stats-row">${stats.map(([v, u, l]) => `<div class="stat"><b>${v}${u ? `<span class="unit">${u}</span>` : ''}</b><span>${l}</span></div>`).join('')}</div>
+    </section>`;
   }
   function statsOverviewBody() {
     const t = today();
@@ -2587,7 +2997,7 @@
     const all = entries();
     const shown = S.ui.recentAll ? all : all.slice(0, 5);
     return `
-      ${g.text || g.evalDate ? `<section class="card"><span class="label">Jouw doel · ${esc(GOAL_LABEL[g.type])}</span><p style="margin-top:4px"><b>${esc(g.text || GOAL_LABEL[g.type])}</b></p>${g.evalDate ? `<p class="status-line">Evaluatie op ${fmtDay(g.evalDate)}. Een evaluatiemoment, geen automatisch oordeel.</p>` : ''}</section>` : ''}
+      ${g.text || g.evalDate ? `<section class="card"><span class="label">Jouw doel · ${esc(GOAL_LABEL[g.type])}</span><p class="mt-4"><b>${esc(g.text || GOAL_LABEL[g.type])}</b></p>${g.evalDate ? `<p class="status-line">Evaluatie op ${fmtDay(g.evalDate)}. Een evaluatiemoment, geen automatisch oordeel.</p>` : ''}</section>` : ''}
       <section class="card">
         <div class="card-head"><h2>Workouts per week</h2><span class="label">tik op een week</span></div>
         ${Charts.bars(weeks, { selected: sel })}
@@ -2602,7 +3012,7 @@
       </section>
       <div class="section"><span>Recent</span><span>${all.length}</span></div>
       <section class="card">${recentRows(shown)}
-        ${all.length > 5 ? `<button class="btn block sm" style="margin-top:10px" data-action="recent-all">${S.ui.recentAll ? 'Minder tonen' : `Alles tonen (${all.length})`}</button>` : ''}
+        ${all.length > 5 ? `<button class="btn block sm mt-12" data-action="recent-all">${S.ui.recentAll ? 'Minder tonen' : `Alles tonen (${all.length})`}</button>` : ''}
       </section>`;
   }
 
@@ -2620,11 +3030,11 @@
     });
     const loadBars = Charts.bars(load.map((l, i) => ({ label: i % Math.ceil(range / 6) === 0 ? labels[i] : '', value: l.min })), { selected: -1, action: null, height: 120 });
     const rpeLine = load.some(l => l.rpe != null) ? Charts.line({ labels, series: [{ color: 'var(--ink)', values: load.map(l => l.rpe) }], step: false, height: 120, ticks: [0, 5, 10] }) : '';
-    const rangeSeg = `<div class="seg" style="margin:0;padding:2px">${[14, 30, 90].map(r => `<button class="${r === range ? 'on' : ''}" style="padding:6px 10px" data-action="line-range" data-r="${r}">${r} d</button>`).join('')}</div>`;
+    const rangeSeg = `<div class="seg" style="margin:0;padding:0">${[14, 30, 90].map(r => `<button class="${r === range ? 'on' : ''}" style="padding:8px 8px" data-action="line-range" data-r="${r}">${r} d</button>`).join('')}</div>`;
     const loadCard = `<section class="card">
         <div class="card-head"><h2>Belasting</h2>${rangeSeg}</div>
         <p class="label">Minuten training per dag</p>${loadBars}
-        ${rpeLine ? `<p class="label" style="margin-top:10px">Ervaren zwaarte (0–10)</p>${rpeLine}` : '<p class="empty">Nog geen zwaarte ingevuld in deze periode.</p>'}
+        ${rpeLine ? `<p class="label mt-12">Ervaren zwaarte (0–10)</p>${rpeLine}` : '<p class="empty">Nog geen zwaarte ingevuld in deze periode.</p>'}
       </section>`;
     if (!list.length) return `<section class="card"><p class="empty">Geen hersteltraject. Je trainingsbelasting staat hieronder.</p></section>${loadCard}`;
     const inj = injuryById(S.ui.statsInjury) || list[0];
@@ -2636,13 +3046,13 @@
     const has = arr => arr.some(s => s.values.some(v => v != null));
     const lim = num(inj.painLimit);
     return `
-      ${list.length > 1 ? `<div class="chips" style="margin-bottom:12px">${list.map(i => `<button class="loc-chip ${i.id === inj.id ? 'on' : ''}" data-action="stats-inj" data-id="${i.id}">${esc(injuryLabel(i))}${i.status === 'afgerond' ? ' · afgerond' : ''}</button>`).join('')}</div>` : ''}
+      ${list.length > 1 ? `<div class="chips mb-12">${list.map(i => `<button class="loc-chip ${i.id === inj.id ? 'on' : ''}" data-action="stats-inj" data-id="${i.id}">${esc(injuryLabel(i))}${i.status === 'afgerond' ? ' · afgerond' : ''}</button>`).join('')}</div>` : ''}
       <section class="card">
         <div class="card-head"><h2>${esc(injuryLabel(inj))}</h2><span class="tag ${inj.status === 'afgerond' ? '' : 'adapted'}">${STATUS_LABEL[inj.status]}</span></div>
         <p class="label">Stijfheid bij het opstaan (0–10)</p>
         ${has(stiff) ? Charts.line({ labels, series: stiff, step: true, height: 150 }) + legend : '<p class="empty">Nog geen metingen in deze periode.</p>'}
-        <p class="label" style="margin-top:12px">Pijn (0–10)${lim != null ? ` · lijn op ${lim} = jouw afspraak` : ''}</p>
-        ${has(pain) ? Charts.line({ labels, series: pain, step: true, height: 150, ticks: lim != null ? [0, lim, 10] : [0, 5, 10] }) + legend : '<p class="empty">Nog geen pijnscores in deze periode.</p>'}
+        <p class="label mt-12">Pijn (0–10)${lim != null ? ` · lijn op ${lim} = jouw afspraak` : ''}</p>
+        ${has(pain) ? Charts.line({ labels, series: pain, step: true, height: 150, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim }) + legend : '<p class="empty">Nog geen pijnscores in deze periode.</p>'}
       </section>
       ${loadCard}`;
   }
@@ -2670,7 +3080,7 @@
       <section class="card">
         <div class="card-head"><h2>Gewicht per oefening</h2><span class="label">zwaarste set</span></div>
         <select class="select" data-change="weight-ex" aria-label="Kies oefening">${exIds.map(id => `<option value="${id}" ${id === S.ui.weightEx ? 'selected' : ''}>${esc(exWithWeight[id])}</option>`).join('')}</select>
-        <div class="recovery-nums" style="margin-bottom:10px">
+        <div class="recovery-nums mb-12">
           <div class="num md">${fmtNum(vals[vals.length - 1])}<span class="unit">kg nu</span></div>
           <div class="num md" style="color:var(--muted)">${fmtNum(vals[0])}<span class="unit">kg start</span></div>
         </div>
@@ -2701,7 +3111,7 @@
       <section class="card">
         <div class="card-head"><h2>Uitslagen ${esc(C.rbfa.teamLabel)}</h2><button class="link-btn" data-action="go" data-to="matchen">Beheren ${icon('chevR')}</button></div>
         ${rows || `<p class="empty">Nog geen gespeelde matchen. Importeer de RBFA-kalender of voeg matchen toe.</p>`}
-        ${playedFx.length > 6 ? `<button class="btn block sm" style="margin-top:10px" data-action="matches-all">${S.ui.matchesAll ? 'Minder tonen' : `Alles tonen (${playedFx.length})`}</button>` : ''}
+        ${playedFx.length > 6 ? `<button class="btn block sm mt-12" data-action="matches-all">${S.ui.matchesAll ? 'Minder tonen' : `Alles tonen (${playedFx.length})`}</button>` : ''}
       </section>`;
   }
 
@@ -2715,7 +3125,7 @@
       });
     });
     S.activities.forEach(a => list.push({
-      store: 'activities', id: a.id, date: a.date, ts: a.createdAt || 0, icon: actIcon(a),
+      store: 'activities', id: a.id, date: a.date, ts: a.createdAt || 0, icon: actIcon(a), type: a.type,
       title: actTitle(a),
       sub: `${cap(relDay(a.date))} · ${recStatus({ store: 'activities', r: a }).label} · ${recordLine({ store: 'activities', r: a })}`, sample: a.sample
     }));
@@ -2744,20 +3154,29 @@
     const st = recStatus({ store, r: rec });
     const menu = `<details class="more"><summary>Meer opties</summary>
         <button class="btn danger block" data-action="del-entry" data-store="${store}" data-id="${rec.id}">${icon('trash')} Verwijderen</button></details>`;
+    if (store === 'activities' && rec.type === 'run') {
+      openSheet(`<div class="sheet-head"><div><h3>${esc(actTitle(rec))}</h3><p>${cap(fmtDay(rec.date))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+        <div class="run-stats"><div><b>${fmtNum(rec.distanceKm || 0)}</b><span>km</span></div><div><b>${paceText(rec.distanceKm, rec.minutes)}</b><span>min/km</span></div><div><b>${fmtNum(rec.minutes)}</b><span>min</span></div></div>
+        <div class="chips">${rec.surface ? `<span class="chip">${esc(RUN_SURF[rec.surface] || rec.surface)}</span>` : ''}${rec.rpe != null ? `<span class="chip">Zwaarte ${rec.rpe}/10</span>` : ''}</div>
+        ${rec.note ? `<p class="small mt-12">${esc(rec.note)}</p>` : ''}
+        <button class="btn primary block lg mt-16" data-action="edit-entry" data-store="activities" data-id="${rec.id}">${icon('edit')} Bewerken</button>
+        ${menu}`);
+      return;
+    }
     if (store === 'activities') {
       openSheet(`<div class="sheet-head"><div><h3>${esc(actTitle(rec))}</h3><p>${cap(fmtDay(rec.date))} · ${esc(st.label)}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-        <div class="num" style="margin-bottom:14px">${rec.minutes}<span class="unit">min${rec.plannedMinutes && rec.plannedMinutes !== rec.minutes ? ` van ${rec.plannedMinutes} gepland` : ''}</span></div>
+        <div class="num" style="margin-bottom:16px">${rec.minutes}<span class="unit">min${rec.plannedMinutes && rec.plannedMinutes !== rec.minutes ? ` van ${rec.plannedMinutes} gepland` : ''}</span></div>
         <div class="chips">${rec.score ? `<span class="chip">${esc(rec.score)}</span>` : ''}${rec.role ? `<span class="chip">${esc(rec.role)}</span>` : ''}${rec.rpe != null ? `<span class="chip">Zwaarte ${rec.rpe}/10</span>` : ''}${rec.fatigue != null ? `<span class="chip">Vermoeidheid ${rec.fatigue}/5</span>` : ''}<span class="chip">${esc(rec.surface || '')}</span><span class="chip">${esc(rec.shoes || '')}</span><span class="chip">Pijn achteraf: ${esc(painText(rec))}</span>${rec.source === 'rbfa' ? '<span class="chip">via RBFA</span>' : ''}</div>
-        ${rec.note ? `<p class="small" style="margin-top:12px">${esc(rec.note)}</p>` : ''}
-        <button class="btn primary block lg" style="margin-top:16px" data-action="edit-entry" data-store="activities" data-id="${rec.id}">${icon('edit')} Bewerken</button>
+        ${rec.note ? `<p class="small mt-12">${esc(rec.note)}</p>` : ''}
+        <button class="btn primary block lg mt-16" data-action="edit-entry" data-store="activities" data-id="${rec.id}">${icon('edit')} Bewerken</button>
         ${menu}`);
       return;
     }
     openSheet(`<div class="sheet-head"><div><h3>${esc(woTitle(rec))}</h3><p>${cap(fmtDay(rec.date))} · ${esc(st.label)} · ${esc(recordLine({ store, r: rec }))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
-      ${(rec.adaptations || []).length ? `<div class="chips" style="margin-bottom:8px">${rec.adaptations.map(a => `<span class="chip">${esc(a)}</span>`).join('')}</div>` : ''}
+      ${(rec.adaptations || []).length ? `<div class="chips mb-8">${rec.adaptations.map(a => `<span class="chip">${esc(a)}</span>`).join('')}</div>` : ''}
       ${(rec.exercises || []).map(e => `<div class="list-row"><div class="body"><b>${esc(e.name)}</b><span>${e.sets.map(s => `${s.side ? s.side + ' ' : ''}${setText(s, e.kind) || '–'}${s.pain != null ? ` (pijn ${s.pain})` : ''}`).join(' · ')}</span></div></div>`).join('') || `<p class="empty">${rec.quick || rec.logged === 'quick' ? 'Uitgevoerd zonder details: geen sets ingevuld.' : 'Geen sets gelogd.'}</p>`}
-      ${rec.note ? `<p class="small" style="margin-top:8px">${esc(rec.note)}</p>` : ''}
-      <button class="btn primary block lg" style="margin-top:12px" data-action="edit-entry" data-store="workouts" data-id="${rec.id}">${icon('edit')} Bewerken</button>
+      ${rec.note ? `<p class="small mt-8">${esc(rec.note)}</p>` : ''}
+      <button class="btn primary block lg mt-12" data-action="edit-entry" data-store="workouts" data-id="${rec.id}">${icon('edit')} Bewerken</button>
       ${menu}`);
   }
 
@@ -2772,11 +3191,15 @@
         <label class="field"><span>Duur (min)</span><input class="input" name="minutes" type="number" inputmode="numeric" value="${woMinutes(w)}"></label>
       </div>
       <div class="seg">${radio('mode', 'volledig', 'Volledig', w.mode === 'aangepast' ? 'aangepast' : 'volledig')}${radio('mode', 'aangepast', 'Aangepast', w.mode === 'aangepast' ? 'aangepast' : 'volledig')}</div>
+      <div id="wedit-adapt" ${w.mode === 'aangepast' ? '' : 'hidden'}>
+        <p class="label">Wat deed je anders?</p>
+        <div class="chip-pick">${ADAPT_OPTS.map(t => `<label><input type="checkbox" name="adapt" value="${t}" ${(w.adaptations || []).includes(t) ? 'checked' : ''}><span>${t}</span></label>`).join('')}</div>
+      </div>
       <p class="label">Ervaren zwaarte (0–10)</p>${pickGroup('rpe', w.rpe ?? null, 0, 10, null)}
       ${(w.exercises || []).map((e, ei) => `<div class="wedit-ex"><b>${esc(e.name)}</b>${e.sets.map((s, si) => `<div class="wedit-set"><span>${s.side ? s.side : ''} ${si + 1}</span>
         ${e.kind === 'reps' ? inp(ei, si, 'reps', s.reps, 'herh.') : e.kind === 'distance' ? inp(ei, si, 'dist', s.dist, 'meter') : inp(ei, si, 'duration', s.duration, 'sec')}
         ${inp(ei, si, 'weight', s.weight, 'kg')}${inp(ei, si, 'pain', s.pain, 'pijn')}</div>`).join('')}</div>`).join('')}
-      <label class="field" style="margin-top:12px"><span>Notitie</span><textarea class="input" name="note" rows="2">${esc(w.note || '')}</textarea></label>
+      <label class="field mt-12"><span>Notitie</span><textarea class="input" name="note" rows="2">${esc(w.note || '')}</textarea></label>
       <button class="btn accent block lg" type="submit">${icon('check')} Wijzigingen opslaan</button>
     </form>`);
   }
@@ -2788,6 +3211,7 @@
     upd.date = d.get('date') || w.date;
     upd.durationMin = num(d.get('minutes'));
     upd.mode = d.get('mode');
+    upd.adaptations = upd.mode === 'aangepast' ? d.getAll('adapt') : [];
     upd.rpe = padValue('rpe');
     upd.note = (d.get('note') || '').trim();
     form.querySelectorAll('[data-we]').forEach(i => { const [ei, si, f] = i.dataset.we.split('|'); upd.exercises[ei].sets[si][f] = num(i.value); });
@@ -2878,13 +3302,13 @@
 
       <div class="section"><span>Gegevens</span></div>
       <section class="card">
-        <p class="small ${lastExp ? 'muted' : 'warn-text'}" style="margin-bottom:12px">${lastExp ? `Laatste back-up: ${fmtFull(dkey(new Date(lastExp)))} om ${fmtTime(lastExp)}.` : 'Nog geen back-up gemaakt.'} ${Sync.user() ? 'Een back-up is een JSON-bestand met al je gegevens.' : 'Je gegevens staan alleen op deze gsm.'}</p>
+        <p class="small ${lastExp ? 'muted' : 'warn-text'} mb-12">${lastExp ? `Laatste back-up: ${fmtFull(dkey(new Date(lastExp)))} om ${fmtTime(lastExp)}.` : 'Nog geen back-up gemaakt.'} ${Sync.user() ? 'Een back-up is een JSON-bestand met al je gegevens.' : 'Je gegevens staan alleen op deze gsm.'}</p>
         <div class="row"><button class="btn primary" data-action="export">${icon('download')} Back-up maken</button><button class="btn" data-action="import">${icon('upload')} Terugzetten</button></div>
         <input type="file" id="import-file" accept="application/json,.json" hidden data-change="import">
         <div class="divider"></div>
         <label class="switch-row"><span><b>Demostand</b><small>Toont voorbeelddata in planning en statistieken. Je eigen registraties blijven apart en worden nooit gewist.</small></span>
           <input type="checkbox" class="switch" data-change="demo" ${S.settings.demo ? 'checked' : ''}></label>
-        ${sampleCount ? `<button class="btn block" style="margin-top:12px" data-action="clear-sample">${icon('trash')} Voorbeelddata wissen (${sampleCount})</button>` : ''}
+        ${sampleCount ? `<button class="btn block mt-12" data-action="clear-sample">${icon('trash')} Voorbeelddata wissen (${sampleCount})</button>` : ''}
         <details class="more"><summary>Meer opties</summary>
           <button class="btn danger block" data-action="clear-all">Alles wissen</button>
         </details>
@@ -2959,7 +3383,7 @@
       <label class="field"><span>Afspraak met je kinesist (optioneel)</span><input class="input" name="agreement" maxlength="160" placeholder="Bv. 2 weken geen sprints"></label>
       ${progFree && ['kuit', 'achillespees'].includes(n.location) ? `<label class="check"><input type="checkbox" name="program"><span class="box">${icon('check')}</span><span class="t">Kuit- en peesprogramma uit je schema gebruiken<small>Holds, kuitkracht en veerkracht in fases, zoals in je oorspronkelijke plan</small></span></label>` : ''}
       <button class="btn accent block lg" type="submit">${icon('check')} Blessure toevoegen</button>
-      <p class="label" style="margin-top:10px">Een grens of datum is een persoonlijke afspraak, geen medische regel of vrijgave.</p>
+      <p class="label mt-12">Een grens of datum is een persoonlijke afspraak, geen medische regel of vrijgave.</p>
     </form>`);
   }
   async function saveNewInjury(form) {
@@ -2989,7 +3413,7 @@
     const linked = (inj.linked || []).filter(id => C.sessions[id]);
     const sch = id => (inj.schedule || []).find(s => s.id === id);
     const others = Object.keys(C.sessions).filter(id => C.sessions[id].custom && !linked.includes(id));
-    return `<p class="small muted" style="margin-bottom:6px">${done
+    return `<p class="small muted mb-8">${done
         ? 'Wat je als onderhoud houdt, blijft in je planning staan. De rest verdwijnt, je geschiedenis niet.'
         : 'Stel je oefeningen samen zoals je kinesist ze voorschrijft en plan ze in. De app schrijft zelf geen behandeling voor.'}</p>
       ${linked.map(id => {
@@ -2998,7 +3422,7 @@
           <div class="body"><b>${esc(sessionTitle(id))}</b><span>${esc(sessionDesc(id))}</span><span>${done ? (keep ? `Onderhoud · ${daysText(s && s.days)}` : 'Niet meer ingepland') : esc(daysText(s && s.days))}</span></div>
           <div class="end"><button class="btn sm" data-action="rehab-plan" data-id="${id}">${icon('calendar')} Inplannen</button></div></div>`;
       }).join('') || `<p class="empty">Nog geen herstelplan.</p>`}
-      <div class="row" style="margin-top:10px"><button class="btn" data-action="rehab-new">${icon('plus')} Oefeningen samenstellen</button></div>
+      <div class="row mt-12"><button class="btn" data-action="rehab-new">${icon('plus')} Oefeningen samenstellen</button></div>
       ${others.length ? `<details class="more"><summary>Bestaande workout koppelen</summary>
         ${others.map(id => `<label class="check"><input type="checkbox" data-change="inj-link" value="${id}"><span class="box">${icon('check')}</span><span class="t">${esc(sessionTitle(id))}<small>${esc(sessionDesc(id))}</small></span></label>`).join('')}</details>` : ''}`;
   }
@@ -3011,10 +3435,10 @@
     openSheet(`<div class="sheet-head"><div><span class="eyebrow">Herstelplan · ${esc(injuryLabel(inj))}</span><h3>${esc(sessionTitle(id))}</h3><p>${esc(sessionDesc(id))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <p class="field-label">Elke week op</p>
       <div class="wd-pick" id="wd-pick">${WD_ORDER.map(d => `<button type="button" class="tchip ${S.ui.rehabDays.includes(d) ? 'on' : ''}" data-action="wd-toggle" data-d="${d}" aria-pressed="${S.ui.rehabDays.includes(d)}" aria-label="${DAY[d]}">${cap(DAY_S[d])}</button>`).join('')}</div>
-      <p class="label" style="margin:2px 2px 12px">Verschijnt als voorstel in je planning zolang de blessure loopt, vanaf vandaag. Verplaatsen of overslaan kan per dag.</p>
+      <p class="label" style="margin:0 0 12px">Verschijnt als voorstel in je planning zolang de blessure loopt, vanaf vandaag. Verplaatsen of overslaan kan per dag.</p>
       <label class="check ${keep ? 'on' : ''}"><input type="checkbox" id="rehab-keep" ${keep ? 'checked' : ''}><span class="box">${icon('check')}</span><span class="t">Als onderhoud houden na herstel<small>Blijft ingepland als je de blessure afrondt</small></span></label>
       <button class="btn accent block lg" data-action="rehab-save" data-id="${id}">${icon('check')} Bewaren</button>
-      <p class="field-label" style="margin-top:20px">Of één keer</p>
+      <p class="field-label mt-20">Of één keer</p>
       <div class="add-row two"><input class="input" type="date" id="rehab-date" value="${dkey(today())}" aria-label="Datum"><button class="btn" data-action="rehab-once" data-id="${id}">${icon('plus')} Inplannen</button></div>
       <details class="more"><summary>Meer opties</summary>
         <div class="menu-list">
@@ -3049,7 +3473,7 @@
       return { label: DAY_LETTER[d.getDay()], v: vals.length ? Math.max(...vals) : null };
     });
   }
-  function injuryHero(inj) {
+  function injuryHero(inj, primary = true) {
     const tk = dkey(today()), c = checkFor(tk);
     const vals = injurySides(inj).map(s => checkVal(c, inj.id, 'pain', s)).filter(v => v != null);
     const painNow = vals.length ? Math.max(...vals) : null;
@@ -3067,16 +3491,17 @@
           <span class="muted small">${esc([injurySideText(inj), inj.notes].filter(Boolean).join(' · ') || 'Tik voor details en afspraken')}</span>
         </button>
         <div class="inj-pain">
-          <div><span class="label">Pijn vandaag</span><div class="num md">${painNow == null ? '–' : painNow}<span class="unit">/ 10${lim != null ? ` · afspraak max ${lim}` : ''}</span></div></div>
-          <button class="btn ${painNow == null ? 'accent' : ''} sm" data-action="open-check">${painNow == null ? 'Invullen' : 'Aanpassen'}</button>
+          <span class="label">Pijn vandaag</span>
+          <div class="inj-pain-num"><b class="${painNow != null && lim != null && painNow > lim ? 'over' : ''}">${painNow == null ? '–' : painNow}</b><span class="unit">/10</span>${lim != null ? `<span class="inj-lim">grens ${lim}</span>` : ''}</div>
         </div>
-        <p class="label" style="margin-top:14px;margin-bottom:4px">Pijn, laatste 7 dagen</p>
-        ${has ? Charts.line({ labels: series.map(x => x.label), series: [{ color: 'var(--accent)', values: series.map(x => x.v) }], step: false, height: 96, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10] }) : '<p class="empty">Nog geen pijnscores. Vul ze in bij je dagelijkse check.</p>'}
+        <p class="label" style="margin-top:16px;margin-bottom:4px">Pijn, laatste 7 dagen</p>
+        ${has ? Charts.line({ labels: series.map(x => x.label), series: [{ color: 'var(--accent)', values: series.map(x => x.v) }], step: false, height: 96, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim }) : '<p class="empty">Nog geen pijnscores.</p>'}
+        <button class="btn ${primary ? 'accent' : ''} block lg inj-cta" data-action="open-check">${painNow == null ? 'Pijn invullen' : 'Pijn aanpassen'}</button>
       </section>
       <button class="card inj-plan" data-action="open-injury" data-id="${inj.id}">
         <span class="label">Herstelplan</span><b>${esc(plan || 'Nog geen plan')}</b><span class="muted small">${esc(planSub)}</span>
       </button>
-      ${agr ? `<section class="card quote-card"><span class="label">Afspraak met je kinesist</span><p class="quote-text">“${esc(agr.text)}”</p><span class="label">${esc(fmtFull(agr.date))}</span></section>` : ''}`;
+      ${agr ? `<section class="card quote-card kine"><span class="label">Afspraak met je kinesist</span><p class="quote-text">“${esc(agr.text)}”</p><span class="label">${esc(fmtFull(agr.date))}</span></section>` : ''}`;
   }
 
   function renderInjuries() {
@@ -3084,25 +3509,21 @@
     const act = list.filter(i => i.status !== 'afgerond'), past = list.filter(i => i.status === 'afgerond');
     const maint = past.flatMap(i => (i.maintenance || []).filter(id => C.sessions[id] || String(id).includes(':')));
     main.innerHTML = `
-      <header class="page-head"><div><span class="eyebrow">Zorg voor je basis</span><h1>Herstel is progressie.</h1><p>Luister naar je lichaam. Bouw bewust op.</p></div>
+      <header class="page-head"><div><span class="eyebrow">Preventie en herstel</span><h1>Lichaam.</h1><p>Luister naar je lichaam. Bouw bewust op.</p></div>
         <button class="icon-btn" data-action="inj-new" aria-label="Blessure toevoegen">${icon('plus')}</button></header>
-      ${act.map(injuryHero).join('')}
-      ${!list.length ? `<section class="card empty-state">
-          <span class="es-ico">${icon('shield')}</span>
-          <h2>Nog geen blessures.</h2>
-          <p>Houden zo. Je kunt hier klachten en je herstel bijhouden.</p>
-          <button class="btn accent block lg" data-action="inj-new">${icon('plus')} Blessure toevoegen</button>
-        </section>` : !act.length ? `<section class="card empty-state">
-          <span class="es-ico">${icon('check')}</span>
-          <h2>Geen actieve blessure.</h2>
-          <p>Je traint zonder blessure. ${maint.length ? `${maint.length} oefening${maint.length === 1 ? '' : 'en'} blijf${maint.length === 1 ? 't' : 'en'} als onderhoud in je planning.` : 'Vandaag toont geen blessurevragen.'}</p>
-          <button class="btn block" data-action="inj-new">${icon('plus')} Nieuwe blessure</button>
+      ${act.map((inj, i) => injuryHero(inj, i === 0)).join('')}
+      ${!list.length ? `<section class="card empty-row">
+          <p>Nog geen blessures.</p>
+          <button class="btn sm" data-action="inj-new">${icon('plus')} Blessure toevoegen</button>
+        </section>` : !act.length ? `<section class="card empty-row">
+          <p>Geen actieve blessure.${maint.length ? ` ${maint.length} onderhoudsoefening${maint.length === 1 ? '' : 'en'} in je planning.` : ''}</p>
+          <button class="btn sm" data-action="inj-new">${icon('plus')} Nieuwe blessure</button>
         </section>` : ''}
-      ${past.length ? `<div class="section"><span>Hersteld</span><span>${past.length}</span></div>
-        <section class="card">${past.map(i => `<button class="list-row tap row-btn" data-action="open-injury" data-id="${i.id}">
+      ${past.length ? `<details class="card fold past-fold"><summary><span>Hersteld</span><span class="label">${past.length}</span></summary>
+        ${past.map(i => `<button class="list-row tap row-btn" data-action="open-injury" data-id="${i.id}">
           <span class="body"><b>${esc(injuryLabel(i))}</b><span>${esc([injurySideText(i), `${fmtShort(i.start)} – ${i.end ? fmtFull(i.end) : '?'}`].filter(Boolean).join(' · '))}</span></span>
-          <span class="end"><span class="tag">Hersteld</span>${icon('chevR')}</span></button>`).join('')}</section>` : ''}
-      ${act.length > 0 ? `<button class="btn ghost block" style="margin-top:6px" data-action="inj-none">Geen actieve blessure meer</button>` : ''}
+          <span class="end">${icon('chevR')}</span></button>`).join('')}</details>` : ''}
+      ${act.length > 0 ? `<button class="btn ghost block mt-8" data-action="inj-none">Geen actieve blessure meer</button>` : ''}
       <p class="footer-note">Pijngrenzen, fases en evaluatiedata zijn persoonlijke afspraken. De app geeft geen medische vrijgave.</p>`;
   }
 
@@ -3140,9 +3561,9 @@
 
       <div class="section"><span>Afspraken met je kinesist</span></div>
       <section class="card">
-        ${(inj.agreements || []).slice().sort((a, b) => b.date.localeCompare(a.date)).map(a => `<div class="list-row"><div class="body"><b>${esc(a.text)}</b><span>Afgesproken op ${fmtFull(a.date)}</span></div><div class="end"><button class="icon-btn" style="width:36px;height:36px;background:transparent" data-action="agr-del" data-id="${a.id}" aria-label="Afspraak verwijderen">${icon('x')}</button></div></div>`).join('') || '<p class="empty">Nog geen afspraken vastgelegd.</p>'}
+        ${(inj.agreements || []).slice().sort((a, b) => b.date.localeCompare(a.date)).map(a => `<div class="list-row"><div class="body"><b>${esc(a.text)}</b><span>Afgesproken op ${fmtFull(a.date)}</span></div><div class="end"><button class="icon-btn ghost" data-action="agr-del" data-id="${a.id}" aria-label="Afspraak verwijderen">${icon('x')}</button></div></div>`).join('') || '<p class="empty">Nog geen afspraken vastgelegd.</p>'}
         <div class="add-row"><input class="input" type="date" id="agr-date" value="${dkey(today())}" aria-label="Datum van de afspraak"><input class="input" id="agr-text" placeholder="Bv. hops pas na controle" aria-label="Afspraak"><button class="btn" data-action="agr-add">${icon('plus')}<span class="sr">Toevoegen</span></button></div>
-        <label class="field" style="margin-top:12px"><span>Afgesproken maximale pijn tijdens oefenen (0–10)</span><input class="input" inputmode="numeric" data-change="inj" name="painLimit" value="${inj.painLimit ?? ''}" placeholder="Leeg = geen afspraak"></label>
+        <label class="field mt-12"><span>Afgesproken maximale pijn tijdens oefenen (0–10)</span><input class="input" inputmode="numeric" data-change="inj" name="painLimit" value="${inj.painLimit ?? ''}" placeholder="Leeg = geen afspraak"></label>
         <p class="label">De app gebruikt deze grens alleen om je eraan te herinneren. Het is geen medische regel.</p>
       </section>
 
@@ -3151,8 +3572,8 @@
           <input type="radio" name="phase" value="${f.id}" data-change="phase" ${f.id === currentPhase() ? 'checked' : ''}>
           <div class="body"><b>${esc(f.label)} · ${esc(f.title)}</b><span>Oorspronkelijke evaluatiedatum: ${fmtFull(f.start)}</span><p>${esc(f.summary)}</p></div>
           <span class="mark"></span></label>`).join('')}
-        <p class="label" style="margin:6px 2px 0">Je wisselt zelf van fase, na overleg. Een datum is een evaluatiemoment, geen toestemming om zwaarder te trainen.</p>
-        ${currentPhase() === 'f3' ? `<label class="field" style="margin-top:12px"><span>Stap voor veerkracht & sprint</span>
+        <p class="label" style="margin:8px 0 0">Je wisselt zelf van fase, na overleg. Een datum is een evaluatiemoment, geen toestemming om zwaarder te trainen.</p>
+        ${currentPhase() === 'f3' ? `<label class="field mt-12"><span>Stap voor veerkracht & sprint</span>
           <select class="select" data-change="plyo-step">
             <option value="auto" ${!S.settings.plyoStep || S.settings.plyoStep === 'auto' ? 'selected' : ''}>Elke week één stap (nu stap ${plyoStep()})</option>
             ${C.sessions.PLYO.steps.map((s, i) => `<option value="${i + 1}" ${String(S.settings.plyoStep) === String(i + 1) ? 'selected' : ''}>Stap ${i + 1}: ${esc(s.title)}</option>`).join('')}
@@ -3160,7 +3581,7 @@
 
       <div class="section"><span>Evaluatiemomenten</span></div>
       <section class="card">
-        ${(inj.evals || []).slice().sort((a, b) => a.date.localeCompare(b.date)).map(e => `<div class="list-row"><div class="body"><b>${esc(e.label || 'Evaluatie')}</b><span>${cap(fmtDay(e.date))}${e.date < dkey(today()) ? ' · voorbij' : ''}</span></div><div class="end"><button class="icon-btn" style="width:36px;height:36px;background:transparent" data-action="eval-del" data-id="${e.id}" aria-label="Evaluatiemoment verwijderen">${icon('x')}</button></div></div>`).join('') || '<p class="empty">Nog geen evaluatiemomenten.</p>'}
+        ${(inj.evals || []).slice().sort((a, b) => a.date.localeCompare(b.date)).map(e => `<div class="list-row"><div class="body"><b>${esc(e.label || 'Evaluatie')}</b><span>${cap(fmtDay(e.date))}${e.date < dkey(today()) ? ' · voorbij' : ''}</span></div><div class="end"><button class="icon-btn ghost" data-action="eval-del" data-id="${e.id}" aria-label="Evaluatiemoment verwijderen">${icon('x')}</button></div></div>`).join('') || '<p class="empty">Nog geen evaluatiemomenten.</p>'}
         <div class="add-row"><input class="input" type="date" id="eval-date" aria-label="Datum"><input class="input" id="eval-label" placeholder="Bv. controle kinesist" aria-label="Omschrijving"><button class="btn" data-action="eval-add">${icon('plus')}<span class="sr">Toevoegen</span></button></div>
       </section>
 
@@ -3172,20 +3593,20 @@
           <span class="t">${esc(c.text)}${c.done ? `<small>Afgevinkt op ${fmtFull(c.done)}</small>` : ''}</span>
         </label>`).join('') || '<p class="empty">Nog geen punten.</p>'}
         <div class="add-row two"><input class="input" id="chk-text" placeholder="Nieuw punt om te evalueren" aria-label="Nieuw punt"><button class="btn" data-action="chk-add">${icon('plus')}<span class="sr">Toevoegen</span></button></div>
-        <p class="label" style="margin-top:8px">Afvinken is een notitie voor jezelf. Het is geen medische vrijgave om (volledig) te spelen.</p>
+        <p class="label mt-8">Afvinken is een notitie voor jezelf. Het is geen medische vrijgave om (volledig) te spelen.</p>
       </section>
 
       <div class="section"><span>Herstelplan</span></div>
       <section class="card">
-        ${inj.program ? `<p class="small muted" style="margin-bottom:8px">${done ? 'Kies welke hersteloefeningen je als onderhoud in je schema houdt.' : 'Deze oefeningen staan in je schema zolang dit traject loopt. Vink aan wat je na afronden als onderhoud wil houden.'}</p>
+        ${inj.program ? `<p class="small muted mb-8">${done ? 'Kies welke hersteloefeningen je als onderhoud in je schema houdt.' : 'Deze oefeningen staan in je schema zolang dit traject loopt. Vink aan wat je na afronden als onderhoud wil houden.'}</p>
           ${maintenanceOptions(inj).map(o => `<label class="check ${(inj.maintenance || []).includes(o.id) ? 'on' : ''}"><input type="checkbox" data-change="inj-maint" value="${esc(o.id)}" ${(inj.maintenance || []).includes(o.id) ? 'checked' : ''}><span class="box">${icon('check')}</span><span class="t">${esc(o.label)}</span></label>`).join('')}`
         : rehabPlanHtml(inj)}
       </section>
 
-      <div style="margin-top:18px">
+      <div style="margin-top:16px">
         ${done ? `<button class="btn block" data-action="inj-reopen" data-id="${inj.id}">${icon('undo')} Traject heropenen</button>`
           : `<button class="btn primary block lg" data-action="inj-finish" data-id="${inj.id}">${icon('check')} Traject afronden</button>
-             <p class="label" style="margin:8px 2px 0">Je metingen en afspraken blijven bewaard. De dagelijkse blessurevragen en de herstelkaart verdwijnen van Home.</p>`}
+             <p class="label" style="margin:8px 0 0">Je metingen en afspraken blijven bewaard. De dagelijkse blessurevragen en de herstelkaart verdwijnen van Home.</p>`}
       </div>
     `;
   }
@@ -3219,12 +3640,12 @@
     </div>`;
     main.innerHTML = `
       ${subHead('Matchen', 'account', `${fx.length} matchen`)}
-      <p class="label" style="margin:0 2px 12px">Tik op een match om datum, uur, tegenstander, thuis of uit en de uitslag aan te passen. Wat je aanpast, blijft staan bij een nieuwe RBFA-import.</p>
+      <p class="label" style="margin:0 0 12px">Tik op een match om datum, uur, tegenstander, thuis of uit en de uitslag aan te passen. Wat je aanpast, blijft staan bij een nieuwe RBFA-import.</p>
       <div class="section"><span>Komend</span><span>${upcoming.length}</span></div>
       <section class="card">${upcoming.map(row).join('') || '<p class="empty">Geen komende matchen.</p>'}</section>
       <div class="section"><span>Gespeeld</span><span>${past.length}</span></div>
       <section class="card">${past.map(row).join('') || '<p class="empty">Nog geen gespeelde matchen.</p>'}</section>
-      <div class="row" style="margin-top:12px"><button class="btn" data-action="open-rbfa">${icon('download')} RBFA-import</button><button class="btn primary" data-action="edit-match" data-id="">${icon('plus')} Match toevoegen</button></div>
+      <div class="row mt-12"><button class="btn" data-action="open-rbfa">${icon('download')} RBFA-import</button><button class="btn primary" data-action="edit-match" data-id="">${icon('plus')} Match toevoegen</button></div>
     `;
   }
 
@@ -3419,11 +3840,11 @@
         <li>Kom terug en tik op <b>Plakken</b>.</li>
       </ol>
       <textarea class="input paste" id="rbfa-text" aria-label="Gekopieerde tekst" placeholder="Plak hier de tekst van de RBFA-pagina"></textarea>
-      <div class="row" style="margin-top:8px">
+      <div class="row mt-8">
         <button class="btn" data-action="paste" data-target="rbfa-text">${icon('paste')} Plakken</button>
         <button class="btn primary" data-action="rbfa-import">${icon('download')} Importeren</button>
       </div>
-      <p class="label" style="margin-top:12px">Matchen die je zelf aangepast of verwijderd hebt, blijven zoals jij ze zette.</p>`);
+      <p class="label mt-12">Matchen die je zelf aangepast of verwijderd hebt, blijven zoals jij ze zette.</p>`);
   }
 
   async function importCalendar() {
@@ -3446,18 +3867,18 @@
         <li>Plak hieronder. De app zoekt <b>${esc(profile().rbfaName)}</b> en bewaart alleen jouw minuten.</li>
       </ol>
       <textarea class="input paste" id="sheet-text" aria-label="Gekopieerde tekst" placeholder="Plak hier de matchpagina"></textarea>
-      <div class="row" style="margin-top:8px">
+      <div class="row mt-8">
         <button class="btn" data-action="paste" data-target="sheet-text">${icon('paste')} Plakken</button>
         <button class="btn primary" data-action="minutes-parse">${icon('clock')} Berekenen</button>
       </div>
       <div id="minutes-result"></div>
-      <p class="label" style="margin-top:12px">Het wedstrijdblad staat er meestal een paar uur na de match op.</p>`);
+      <p class="label mt-12">Het wedstrijdblad staat er meestal een paar uur na de match op.</p>`);
   }
 
   function showMinutesResult() {
     const r = parseMatchSheet($('#sheet-text').value, profile().rbfaName);
     const box = $('#minutes-result');
-    if (!r.ok) { box.innerHTML = `<div class="hint warn" style="margin-top:12px">${icon('alert')}<span>${esc(r.error || 'Kon de tekst niet lezen.')}</span></div>`; return; }
+    if (!r.ok) { box.innerHTML = `<div class="hint warn mt-12">${icon('alert')}<span>${esc(r.error || 'Kon de tekst niet lezen.')}</span></div>`; return; }
     const mineHome = isMine(r.home || '');
     const opp = nice(mineHome ? r.away : r.home);
     const gf = r.hs == null ? null : mineHome ? r.hs : r.as, ga = r.hs == null ? null : mineHome ? r.as : r.hs;
@@ -3469,8 +3890,8 @@
         : `${profile().rbfaName} staat niet op dit wedstrijdblad`;
     box.innerHTML = `<div class="result">
       <span class="label">${r.date ? cap(fmtDay(r.date)) : 'Datum onbekend'} · ${mineHome ? 'thuis' : 'uit'} tegen ${esc(opp || '?')}${gf != null ? ` · ${gf}–${ga}` : ''}</span>
-      <div class="num xl" style="margin-top:8px">${r.minutes}<span class="unit">min</span></div>
-      <p class="small" style="margin-top:6px">${esc(detail)}</p>
+      <div class="num xl mt-8">${r.minutes}<span class="unit">min</span></div>
+      <p class="small mt-8">${esc(detail)}</p>
     </div>
     <form id="minutes-form">
       <input type="hidden" name="date" value="${esc(r.date || dkey(today()))}">
@@ -3545,14 +3966,14 @@
       <p class="label">Hoe heb je meegedaan?</p>
       <div class="seg">${radio('participation', 'volledig', 'Volledig', part)}${radio('participation', 'gedeeltelijk', 'Gedeeltelijk', part)}${radio('participation', 'aangepast', 'Aangepast', part)}</div>
       <p class="label">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', ex ? ex.rpe ?? null : null, 0, 10, null)}
-      ${act.map(i => `<p class="label" style="margin-top:12px">Pijn achteraf · ${esc(injuryLabel(i))}${injurySideText(i) ? ` (${esc(injurySideText(i))})` : ''}</p>${pickGroup(`painA|${i.id}`, ex && ex.pains ? ex.pains[i.id] ?? null : null, 0, 10, num(i.painLimit))}`).join('')}
+      ${act.map(i => `<p class="label mt-12">Pijn achteraf · ${esc(injuryLabel(i))}${injurySideText(i) ? ` (${esc(injurySideText(i))})` : ''}</p>${pickGroup(`painA|${i.id}`, ex && ex.pains ? ex.pains[i.id] ?? null : null, 0, 10, num(i.painLimit))}`).join('')}
       <details class="more"><summary>Meer opties <span class="label">${esc(cap(surface))} · ${esc(shoes)}</span></summary>
         <p class="label">Ondergrond</p>
         <div class="seg">${radio('surface', 'kunstgras', 'Kunstgras', surface)}${radio('surface', 'natuurgras', 'Natuurgras', surface)}</div>
         <p class="label">Schoenen</p>
         <div class="seg">${radio('shoes', 'AG', 'AG', shoes)}${radio('shoes', 'FG', 'FG', shoes)}</div>
         <p class="label">Vermoeidheid · 1 = fris, 5 = erg moe</p>${pickGroup('fatigue', ex ? ex.fatigue ?? null : null, 1, 5, null)}
-        <label class="field" style="margin-top:12px"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. stijf na de rust">${esc((ex && ex.note) || '')}</textarea></label>
+        <label class="field mt-12"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. stijf na de rust">${esc((ex && ex.note) || '')}</textarea></label>
       </details>`;
   }
 
@@ -3575,7 +3996,7 @@
         <label class="field"><span>Minuten meegedaan</span><input class="input" type="number" inputmode="numeric" id="lg-min" name="minutes" min="0" max="240" value="${minutes}" required></label>
       </div>
       <input type="hidden" name="planned" value="${planned || ''}">
-      ${planned ? `<p class="label" id="lg-planned" style="margin:-4px 2px 12px">Vooraf ingevuld met de geplande duur (${planned} min). Pas aan naar wat je echt deed.</p>` : ''}
+      ${planned ? `<p class="label" id="lg-planned" style="margin:-4px 0 12px">Vooraf ingevuld met de geplande duur (${planned} min). Pas aan naar wat je echt deed.</p>` : ''}
       ${logFields(ex, preset)}
       <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
     </form>`);
@@ -3607,6 +4028,7 @@
   }
 
   /* ---------- Aangepast uitgevoerd en meer opties ---------- */
+  const ADAPT_OPTS = ['Minder sets', 'Lichter gewicht', 'Andere oefeningen', 'Korter', 'Minder diep of minder ver', 'Door pijn of stijfheid'];
   function openAdapted(k, key) {
     const it = findItem(k, key); if (!it) return;
     if (it.type !== 'session') { openLog(it.type, k, null, { participation: 'aangepast' }); return; }
@@ -3614,11 +4036,11 @@
     openSheet(`<form id="adapted-form" data-k="${k}" data-id="${it.id}">
       <div class="sheet-head"><div><h3>Aangepast uitgevoerd</h3><p>${esc(s.name)} · ${fmtDay(k)}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       <p class="label">Wat deed je anders?</p>
-      <div class="chip-pick">${['Minder sets', 'Lichter gewicht', 'Andere oefeningen', 'Korter', 'Minder diep of minder ver', 'Door pijn of stijfheid'].map(t => `<label><input type="checkbox" name="adapt" value="${t}"><span>${t}</span></label>`).join('')}</div>
+      <div class="chip-pick">${ADAPT_OPTS.map(t => `<label><input type="checkbox" name="adapt" value="${t}"><span>${t}</span></label>`).join('')}</div>
       <label class="field"><span>Werkelijke duur (minuten)</span><input class="input" name="minutes" type="number" inputmode="numeric" min="0" max="300" value="${s.minutes}"></label>
-      <p class="label" style="margin-top:-6px">Vooraf ingevuld met de geplande duur (±${s.minutes} min).</p>
-      <p class="label" style="margin-top:12px">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', null, 0, 10, null)}
-      <label class="field" style="margin-top:12px"><span>Notitie (optioneel)</span><textarea class="input" name="note" rows="2"></textarea></label>
+      <p class="label" style="margin-top:-8px">Vooraf ingevuld met de geplande duur (±${s.minutes} min).</p>
+      <p class="label mt-12">Ervaren zwaarte · 0 = heel licht, 10 = maximaal</p>${pickGroup('rpe', null, 0, 10, null)}
+      <label class="field mt-12"><span>Notitie (optioneel)</span><textarea class="input" name="note" rows="2"></textarea></label>
       <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
     </form>`);
   }
@@ -3654,7 +4076,7 @@
     let primary = '';
     if (!done && k <= tk) {
       if (s) primary = `<button class="btn accent block lg" data-action="start-session" data-key="${it.id}">${icon('play')} ${k < tk ? 'Nu inhalen' : 'Start workout'}</button>
-        <div class="row" style="margin-top:8px"><button class="btn" data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')} Gedaan</button><button class="btn" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')} Aangepast</button></div>`;
+        <div class="row mt-8"><button class="btn" data-action="mark-done" data-k="${k}" data-key="${it.id}">${icon('check')} Gedaan</button><button class="btn" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')} Aangepast</button></div>`;
       else if (it.type === 'training' || it.type === 'match') primary = `<button class="btn accent block lg" data-action="${it.type === 'match' && it.fixture && played(it.fixture) ? 'open-minutes' : 'open-log'}" data-type="${it.type}" data-date="${k}">${icon('edit')} ${it.type === 'match' ? 'Minuten invullen' : 'Training loggen'}</button>`;
       else if (SIMPLE.includes(it.type)) primary = `<button class="btn accent block lg" data-action="mark-simple" data-k="${k}" data-key="${esc(key)}">${icon('check')} Gedaan</button>`;
     } else if (!done && !it.confirmed && it.type !== 'rest') {
@@ -3667,17 +4089,17 @@
         <button type="button" role="radio" aria-checked="${!done}" class="${done ? '' : 'on'}" ${done ? `data-action="item-undone" data-k="${k}" data-key="${esc(key)}"` : ''} ${viaOther ? 'disabled' : ''}>Nog te doen</button>
         <button type="button" role="radio" aria-checked="${done}" class="${done ? 'on' : ''}" ${done ? '' : `data-action="item-done" data-k="${k}" data-key="${esc(key)}"`} ${!done && k > tk ? 'disabled' : ''}>Afgerond</button>
       </div>
-      ${viaOther ? `<p class="label" style="margin:-6px 2px 12px">Telt als ingehaald door dezelfde workout later in de week.</p>` : !done && k > tk ? `<p class="label" style="margin:-6px 2px 12px">Afronden kan vanaf de dag zelf.</p>` : ''}`;
+      ${viaOther ? `<p class="label" style="margin:-8px 0 12px">Telt als ingehaald door dezelfde workout later in de week.</p>` : !done && k > tk ? `<p class="label" style="margin:-8px 0 12px">Afronden kan vanaf de dag zelf.</p>` : ''}`;
     openSheet(`<form id="item-form" data-k="${k}" data-key="${esc(key)}">
       <div class="sheet-head"><div><span class="eyebrow">${esc(actKind(it))}  ·  ${esc(st.label)}</span><h3>${esc(it.type === 'session' ? sessionTitle(it.id) : m.title)}</h3><p>${cap(fmtDay(k))}${it.note ? ` · ${esc(it.note)}` : ''}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
       ${statusSeg}
       ${primary}
       ${rec ? `<button type="button" class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : ''}
-      ${fixed ? `<p class="label" style="margin:14px 2px 0">Deze match komt uit de RBFA-kalender. Datum en uur pas je aan via Account → Matchen beheren.</p>` : `
+      ${fixed ? `<p class="label" style="margin:16px 0 0">Deze match komt uit de RBFA-kalender. Datum en uur pas je aan via Account → Matchen beheren.</p>` : `
       <p class="field-label">Sessietype</p>
       <div class="type-chips">${TYPE_CHIPS.map(([t, l]) => `<button type="button" class="tchip ${curType === t ? 'on' : ''}" ${curType === t ? 'aria-pressed="true"' : `data-action="replace-type" data-k="${k}" data-key="${esc(key)}" data-type="${t}"`}>${l}</button>`).join('')}
         <button type="button" class="tchip ${curType === 'custom' ? 'on' : ''}" data-action="replace-type" data-k="${k}" data-key="${esc(key)}" data-type="custom">${curType === 'custom' ? esc(it.label) : 'Eigen…'}</button></div>
-      <p class="label" style="margin:-4px 2px 14px">Een ander type kiezen vervangt deze sessie alleen op deze dag.</p>`}
+      <p class="label" style="margin:-4px 0 16px">Een ander type kiezen vervangt deze sessie alleen op deze dag.</p>`}
       ${it.type === 'rest' || fixed ? '' : `
       <p class="field-label">Dag en uur</p>
       <div class="form-grid">
@@ -3685,12 +4107,12 @@
         <label class="field"><span class="sr">Uur</span><input class="input" type="time" name="time" value="${esc(/^\d{1,2}:\d{2}$/.test(startTime) ? startTime.padStart(5, '0') : '')}"></label>
       </div>
       ${it.type === 'session' ? '' : `<label class="field"><span>Duur (minuten)</span><input class="input" type="number" inputmode="numeric" min="0" max="300" name="min" value="${esc(it.min || (it.type === 'training' ? plannedMinutes(it) || '' : ''))}" placeholder="Optioneel"></label>`}
-      ${done ? '' : `<button type="button" class="btn block" style="margin:-4px 0 14px" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('magic')} Verplaatsen met advies</button>`}`}
+      ${done ? '' : `<button type="button" class="btn block" style="margin:-4px 0 16px" data-action="open-move" data-k="${k}" data-key="${esc(key)}">${icon('magic')} Verplaatsen met advies</button>`}`}
       <label class="field"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. focus op techniek, kuit rustig opbouwen">${esc(it.userNote || '')}</textarea></label>
-      <button class="btn primary block lg" type="submit">${icon('check')} Wijzigingen opslaan</button>
-      ${!done && it.type !== 'rest' ? `<p class="field-label" style="margin-top:20px">Overslaan met reden</p>
+      <button class="btn ${primary ? '' : 'primary'} block lg" type="submit">${icon('check')} Wijzigingen opslaan</button>
+      ${!done && it.type !== 'rest' ? `<p class="field-label mt-20">Overslaan met reden</p>
       <div class="chip-pick">${SKIP_REASONS.map(r => `<button type="button" class="tchip" data-action="skip-reason" data-k="${k}" data-key="${esc(key)}" data-reason="${r}">${r}</button>`).join('')}</div>
-      <p class="label" style="margin:-6px 2px 0">Overslaan telt niet als gemist, ook niet in je streak.</p>` : ''}
+      <p class="label" style="margin:-8px 0 0">Overslaan telt niet als gemist, ook niet in je streak.</p>` : ''}
       <details class="more"><summary>Meer opties</summary>
         <div class="menu-list">
           ${!done && k <= tk && it.type !== 'session' && it.type !== 'rest' && !SIMPLE.includes(it.type) ? `<button type="button" class="menu-btn" data-action="adapted" data-k="${k}" data-key="${esc(key)}">${icon('edit')}<span><b>Aangepast uitgevoerd</b><small>Anders gedaan dan gepland</small></span></button>` : ''}
@@ -3805,7 +4227,7 @@
   async function exportData() {
     closeSheet();
     const data = {
-      app: 'comeback', version: 3, exportedAt: new Date().toISOString(),
+      app: 'comeback', version: 4, exportedAt: new Date().toISOString(),
       checks: S.raw.checks, workouts: S.raw.workouts, activities: S.raw.activities, settings: S.settings
     };
     const name = `comeback-backup-${dkey(today())}.json`;
@@ -3898,9 +4320,21 @@
     },
     'adapted': el => openAdapted(el.dataset.k, el.dataset.key),
     'item-actions': el => openItemActions(el.dataset.k, el.dataset.key),
+    'item-menu': el => openItemMenu(el.dataset.k, el.dataset.key),
+    'log-menu': () => openLogMenu(),
+    'log-new': el => logNew(el.dataset.type),
+    'train-seg': el => { S.ui.trainSeg = el.dataset.s; S.ui.timelineAll = false; if (el.dataset.s === 'kracht') S.ui.woView = null; render(); },
+    'timeline-all': () => { S.ui.timelineAll = !S.ui.timelineAll; render({ keepScroll: true }); },
     'wo-leave': openLeave,
     'undo-del': async () => { const u = S.ui.undoRec; if (!u) return; await DB.put(u.store, u.rec); S[u.store].push(u.rec); S.ui.undoRec = null; $('#toast').hidden = true; render({ keepScroll: true }); toast('Teruggezet'); },
-    'edit-entry': el => el.dataset.store === 'workouts' ? openWorkoutEdit(+el.dataset.id) : openLog(null, null, +el.dataset.id),
+    'edit-entry': el => {
+      const id = +el.dataset.id;
+      if (el.dataset.store === 'workouts') return openWorkoutEdit(id);
+      const a = S.activities.find(x => x.id === id) || {};
+      if (a.type === 'run') return openRunLog(id);
+      if (a.type === 'training' || a.type === 'match') return openLog(null, null, id);
+      return openSimpleLog(a.type, id);
+    },
     'stats-inj': el => { S.ui.statsInjury = el.dataset.id; render({ keepScroll: true }); },
     'open-injury': el => { S.ui.injuryId = el.dataset.id; go('blessure'); },
     'inj-new': openNewInjury,
@@ -3928,7 +4362,7 @@
     'score-pick': el => { el.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === el)); },
     'home-day': el => { S.ui.homeDay = el.dataset.k; render({ keepScroll: true }); },
     'cal-open': el => openDay(el.dataset.k),
-    'start-session': el => startSession(el.dataset.key),
+    'start-session': el => { S.ui.trainSeg = 'kracht'; startSession(el.dataset.key); },
     'open-log': el => openLog(el.dataset.type, el.dataset.date || undefined),
     'open-day': el => openDay(el.dataset.k),
     'open-move': el => openMoveSheet(el.dataset.k, el.dataset.key),
@@ -3969,6 +4403,11 @@
     'plan-once-add': el => { const v = ($('#plan-once') || {}).value; if (!v) { toast('Kies eerst een datum'); return; } if (v < dkey(today())) { toast('Kies vandaag of later'); return; } if (!S.ui.planOnce.includes(v)) S.ui.planOnce.push(v); S.ui.planOnce.sort(); const box = $('#plan-once-list'); if (box) box.innerHTML = S.ui.planOnce.map(d => `<button class="loc-chip on" data-action="plan-once-del" data-d="${d}" aria-label="${fmtDay(d)} weghalen">${esc(cap(fmtDay(d)))} ${icon('x')}</button>`).join(''); },
     'plan-once-del': el => { S.ui.planOnce = S.ui.planOnce.filter(d => d !== el.dataset.d); el.remove(); },
     'plan-save': el => saveWorkoutPlan(el.dataset.key),
+    'rp-wd': el => { const d = +el.dataset.d, l = S.ui.rp.days, i = l.indexOf(d); if (i >= 0) l.splice(i, 1); else l.push(d); el.classList.toggle('on', i < 0); el.setAttribute('aria-pressed', String(i < 0)); },
+    'rp-preset': el => { S.ui.rp.days = el.dataset.p.split(',').map(Number); document.querySelectorAll('[data-action="rp-wd"]').forEach(b => { const on = S.ui.rp.days.includes(+b.dataset.d); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); },
+    'rp-edit': el => { const r = ruleById(el.dataset.id); if (r) openRepeat(r.since || dkey(today()), r.item, r.id); },
+    'rp-stop': el => stopRule(el.dataset.id, el.dataset.k),
+    'rp-delete': el => deleteRule(el.dataset.id),
     'edit-custom': el => openBuilder(null, el.dataset.key),
     'delete-custom': el => deleteCustom(el.dataset.key),
     'b-step': el => builderStep(+el.dataset.i, el.dataset.f, +el.dataset.d),
@@ -4076,6 +4515,9 @@
   document.addEventListener('change', async e => {
     const el = e.target;
     const kind = el.dataset.change;
+    if (el.form && el.form.id === 'repeat-form' && el.name === 'rpmode') { S.ui.rp.mode = el.value; const b = document.getElementById('rp-repeat'); if (b) b.hidden = el.value !== 'repeat'; }
+    // Workout bewerken: bij "Aangepast" verschijnt wat je anders deed
+    if (el.form && el.form.id === 'wedit-form' && el.name === 'mode') { const a = document.getElementById('wedit-adapt'); if (a) a.hidden = el.value !== 'aangepast'; }
     if (el.form && el.form.id === 'log-form' && el.name === 'type') {
       $('#log-title').textContent = el.value === 'match' ? 'Match' : 'Training';
       const pl = plannedFor(el.value, el.form.date.value) || '';
@@ -4143,6 +4585,14 @@
     }
   });
 
+  // Live tempo in het loopformulier
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (!el.form || el.form.id !== 'run-form' || (el.name !== 'km' && el.name !== 'minutes')) return;
+    const o = document.getElementById('run-pace');
+    if (o) o.textContent = `${paceText(String(el.form.km.value).replace(',', '.'), String(el.form.minutes.value).replace(',', '.'))} /km`;
+  });
+
   const EXT_SUBMIT = {};
   document.addEventListener('submit', e => {
     e.preventDefault();
@@ -4150,6 +4600,10 @@
     if (e.target.id === 'login-form') submitLogin(e.target);
     if (e.target.id === 'password-form') submitPassword(e.target);
     if (e.target.id === 'log-form') saveLog(e.target);
+    if (e.target.id === 'run-form') saveRun(e.target);
+    if (e.target.id === 'repeat-form') saveRepeat(e.target);
+    if (e.target.id === 'simple-form') saveSimple(e.target);
+    if (e.target.id === 'rpe-form') saveRpe(e.target);
     if (e.target.id === 'minutes-form') saveMinutes(e.target);
     if (e.target.id === 'match-form') saveMatch(e.target);
     if (e.target.id === 'finish-form') saveFinish(e.target);
@@ -4198,7 +4652,7 @@
           <label class="field"><span>Nieuw wachtwoord</span>
             <div class="pw-wrap"><input class="input" type="password" name="password" id="auth-pw" autocomplete="new-password" minlength="8" required aria-describedby="pw-hint">
             <button type="button" class="pw-toggle" data-action="pw-toggle" aria-label="Wachtwoord tonen" aria-pressed="false">${icon('eye')}</button></div></label>
-          <p class="label" id="pw-hint" style="margin:-6px 2px 16px">Minstens 8 tekens.</p>
+          <p class="label" id="pw-hint" style="margin:-8px 0 16px">Minstens 8 tekens.</p>
           <button class="btn accent block lg" type="submit" ${a.busy ? 'disabled' : ''}>${a.busy ? 'Bewaren…' : 'Wachtwoord bewaren'}</button>
         </form>`;
     } else {
@@ -4302,18 +4756,18 @@
     }
     const u = Sync.user(), st = Sync.state(), last = Sync.lastSyncAt();
     if (!u) return `<p class="small warn-text">Je sessie is verlopen. Wijzigingen blijven bewaard op dit toestel.</p>
-      <button class="btn accent block" style="margin-top:12px" data-action="auth-relogin">Opnieuw inloggen</button>`;
+      <button class="btn accent block mt-12" data-action="auth-relogin">Opnieuw inloggen</button>`;
     const line = st.status === 'syncing' ? 'Bezig met synchroniseren…'
       : st.status === 'offline' ? 'Offline. Je wijzigingen worden verstuurd zodra je weer verbinding hebt.'
         : st.status === 'error' ? st.error
           : last ? `Gesynchroniseerd ${relDay(dkey(new Date(last)))} om ${fmtTime(last)}.` : 'Nog niet gesynchroniseerd.';
     return `<div class="list-row" style="padding-top:0"><div class="ico">${icon('user')}</div><div class="body"><b>${esc(u.email)}</b><span id="sync-line" class="${st.status === 'error' ? 'warn-text' : ''}">${esc(line)}${st.pending ? ` ${st.pending} wijziging${st.pending === 1 ? '' : 'en'} wacht${st.pending === 1 ? '' : 'en'}.` : ''}</span></div></div>
-      <div class="row" style="margin-top:12px"><button class="btn" data-action="sync-now" ${st.status === 'syncing' ? 'disabled' : ''}>${icon('sync')} Synchroniseren</button><button class="btn" data-action="sign-out">Uitloggen</button></div>`;
+      <div class="row mt-12"><button class="btn" data-action="sync-now" ${st.status === 'syncing' ? 'disabled' : ''}>${icon('sync')} Synchroniseren</button><button class="btn" data-action="sign-out">Uitloggen</button></div>`;
   }
 
   /* ================= Migraties ================= */
   // Zet bestaande data om wanneer het datamodel verandert. Er gaat niets verloren.
-  const DATA_VERSION = 4;
+  const DATA_VERSION = 6;
   async function migrate() {
     const v = S.settings.dataVersion || 1;
     if (v >= DATA_VERSION) return;
@@ -4350,6 +4804,23 @@
       if (conv.length) await DB.bulkPut('checks', conv);
       await setSetting('goal', goal());
       if (S.settings.demo === undefined) await setSetting('demo', false);
+    }
+    if (v < 5) {
+      // v5: lopen en andere sport erbij (alleen nieuwe velden). Eerst een lokale kopie, er verandert geen bestaand record.
+      const real = l => (l || []).filter(x => !x.sample);
+      await setSetting('backupBeforeV5', { at: Date.now(), workouts: real(S.raw.workouts), activities: real(S.raw.activities), checks: real(S.raw.checks) });
+    }
+    if (v < 6) {
+      // v6: de kalender start leeg. Eerst een lokale kopie; daarna je vaste planning, de weekplanning van
+      // herstelplannen en je eigen planningswijzigingen vanaf vandaag weg. Gelogde gegevens blijven.
+      const tk = dkey(today());
+      await setSetting('backupBeforeV6', { at: Date.now(), workoutSchedule: S.settings.workoutSchedule || [], schedule: S.settings.schedule || [], overrides: S.settings.overrides || {}, injuries: injuries() });
+      const ov = { ...(S.settings.overrides || {}) };
+      Object.keys(ov).forEach(k => { if (k >= tk) delete ov[k]; });
+      await setSetting('overrides', ov);
+      await setSetting('workoutSchedule', []);
+      await setSetting('schedule', []);
+      if (injuries().some(i => (i.schedule || []).length)) await setSetting('injuries', injuries().map(i => ({ ...i, schedule: [] })));
     }
     await setSetting('dataVersion', DATA_VERSION);
     await loadAll();
