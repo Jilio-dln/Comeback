@@ -1200,6 +1200,12 @@ code { font-size: var(--fs-small); padding: 1px 4px; border-radius: var(--r-chip
 .act.has-photo p, .act.has-photo .act-kind, .act.has-photo .act-time span, .act.has-photo .act-meta { color: var(--photo-text-2); }
 .act.has-photo .tag { background: var(--photo-chip); color: var(--photo-text); box-shadow: none; }
 .act.has-photo .act-more { background: var(--photo-chip); border-color: var(--photo-chip-line); color: var(--photo-text); }
+/* Vaste opbouw van elke fotokaart met knop: titel (max 2 regels), één regel info, knop */
+.act.has-photo h3 { margin-top: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.act.has-photo .act-info { margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.act.has-photo .btn.lg { margin-top: 16px; }
+/* Cijferkaart: label linksboven, zoals de fotokaarten met knop */
+.stats-kind { position: absolute; top: var(--pad); left: var(--pad); font-size: var(--fs-label); font-weight: 600; letter-spacing: var(--caps-track); text-transform: uppercase; color: var(--photo-text-2); }
 /* Uitsnede per foto: het focuspunt (speler, bal, actie) in het bovenste deel van de kaart, boven de tekst */
 .act-img[src$="run.jpg"] { object-position: 45% 40%; }
 .act-img[src$="training.jpg"] { object-position: 50% 62%; }
@@ -1326,8 +1332,6 @@ body { font-variant-numeric: tabular-nums; }
 .run-stats { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 12px; margin: 4px 0 16px; }
 .run-stats > div { display: flex; flex-direction: column; gap: 8px; }
 .run-pace { display: flex; align-items: center; color: var(--muted); }
-.run-plan { margin: 0 4px 12px; font-size: var(--fs-small); color: var(--muted); }
-.run-plan b { font-family: var(--font-display); font-stretch: var(--display-stretch); font-size: var(--fs-title); color: var(--text); margin-right: 4px; }
 
 /* Tijdlijn per dag */
 .tl-day { margin: 12px 0 0; font-size: var(--fs-label); font-weight: 600; letter-spacing: var(--caps-track); text-transform: uppercase; color: var(--muted); }

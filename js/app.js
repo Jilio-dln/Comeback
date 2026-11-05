@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '5.7.1';
+  const APP_VERSION = '5.8.0';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -985,10 +985,10 @@
   function trainOverview() {
     const w = draft();
     return `${statsHero()}
+      <button class="btn ${w ? '' : 'accent'} block lg mb-12" data-action="log-menu">${icon('plus')} Loggen</button>
       ${w ? `<section class="card resume"><div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
         <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)}</p>
         <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div></section>` : ''}
-      <button class="btn ${w ? '' : 'accent'} block lg mb-12" data-action="log-menu">${icon('plus')} Loggen</button>
       <div class="section"><span>Tijdlijn</span><button class="link-btn" data-action="go" data-to="statistieken">Alle voortgang ${icon('chevR')}</button></div>
       ${timelineHtml(entries())}`;
   }
@@ -999,17 +999,17 @@
     const thisWeek = runs.filter(a => inWeek(a.date, wk)), thisMonth = runs.filter(a => a.date >= mStart);
     const ws = startOfWeek(t); let planned = 0, ran = 0;
     for (let i = 0; i < 7; i++) { const d = addDays(ws, i), k = dkey(d); planFor(d).filter(it => it.type === 'run').forEach(it => { planned++; if (doneOrCaughtUp(it, k)) ran++; }); }
-    return `${photoStats('assets/lopen-card.jpg', [[km(thisWeek), 'km', 'Deze week'], [km(thisMonth), 'km', 'Deze maand'], [thisMonth.length, '', 'Loopjes · maand']], 'Lopen')}
-      ${planned ? `<p class="run-plan"><b>${ran}/${planned}</b> geplande loopjes deze week gelopen</p>` : ''}
+    return `${photoStats('assets/lopen-card.jpg', [[km(thisWeek), 'km', 'Deze week'], [km(thisMonth), 'km', 'Deze maand'], planned ? [`${ran}/${planned}`, '', 'Gepland'] : [thisMonth.length, '', 'Loopjes']], 'Lopen')}
       <button class="btn accent block lg mb-12" data-action="log-new" data-type="run">${icon('plus')} Loop loggen</button>
+      <div class="section"><span>Loopjes</span></div>
       ${runs.length ? timelineHtml(entries().filter(x => x.store === 'activities' && x.type === 'run')) : `<section class="card"><p class="empty">Nog geen loopjes gelogd.</p></section>`}`;
   }
   function footballHtml() {
     const acts = S.activities.filter(a => a.type === 'training' || a.type === 'match');
     const since = dkey(addDays(today(), -29));
     const tr = acts.filter(a => a.type === 'training' && a.date >= since), ma = acts.filter(a => a.type === 'match' && a.date >= since);
-    return `${photoStats('assets/voetbal-card.jpg', [[tr.length, '', 'Trainingen'], [ma.length, '', 'Matchen'], [sum([...tr, ...ma].map(a => +a.minutes || 0)), '', 'Min · 30 d']], 'Voetbal, laatste 30 dagen')}
-      <div class="row mb-12"><button class="btn" data-action="log-new" data-type="training">${icon('plus')} Training</button><button class="btn" data-action="log-new" data-type="match">${icon('plus')} Match</button></div>
+    return `${photoStats('assets/voetbal-card.jpg', [[tr.length, '', 'Trainingen'], [ma.length, '', 'Matchen'], [sum([...tr, ...ma].map(a => +a.minutes || 0)), '', 'Min · 30 d']], 'Voetbal')}
+      <button class="btn accent block lg mb-12" data-action="log-new" data-type="training">${icon('plus')} Training of match loggen</button>
       <div class="section"><span>Gelogd</span><button class="link-btn" data-action="go" data-to="matchen">Matchen beheren ${icon('chevR')}</button></div>
       ${timelineHtml(entries().filter(x => x.store === 'activities' && (x.type === 'training' || x.type === 'match')))}`;
   }
@@ -1226,7 +1226,7 @@
   const quickSlide = q => `<section class="act is-hero has-photo">
       <img src="${q.photo}" alt="" class="act-img" decoding="async" onerror="this.remove()"><div class="act-shade"></div>
       <div class="act-top"><span class="act-kind t-${q.t}">${esc(q.kind)}</span></div>
-      <h3>${esc(q.title)}</h3><p>${esc(q.sub)}</p>
+      <h3>${esc(q.title)}</h3><p class="act-info">${esc(q.sub)}</p>
       <button class="btn accent block lg" data-action="${q.action}" data-type="${q.type}">${icon(q.ic)} ${esc(q.btn)}</button>
     </section>`;
   function sliderHtml(slides) {
@@ -1358,11 +1358,21 @@
     const doneLine = rec ? `<button class="done-line" data-action="show-entry" data-store="${rec.store}" data-id="${rec.r.id}">${icon('check')}<span>${esc(recStatus(rec).label)} · ${esc(recordLine(rec))}</span>${icon('chevR')}</button>` : '';
     // Sfeerfoto in de herokaart, alleen als ze bij het type past
     const photo = hero && opts.photo !== false && (opts.photoSrc || photoFor(it) || (opts.slide ? 'assets/stats.jpg' : null));
+    if (photo) {
+      // In een fotokaart: geen grote tijd of meta-rij, alles in één regel info
+      const s0 = it.type === 'session' ? sessInfo(it.id) : null, f0 = it.fixture;
+      const title = s0 ? s0.name : it.type === 'training' ? 'Voetbaltraining' : it.type === 'match' ? (f0 ? f0.opponent : 'Match') : it.type === 'run' ? 'Lopen' : itemMeta(it).title;
+      const info = (s0 ? [it.time, `±${s0.minutes} min`, `${s0.exercises} oefeningen`, s0.place && cap(s0.place)]
+        : it.type === 'training' ? [it.time, plannedMinutes(it) && `${plannedMinutes(it)} min`, 'Met de ploeg']
+        : it.type === 'match' ? [f0 && f0.time, f0 ? (f0.home ? 'Thuis' : 'Uit') : '', f0 && f0.comp]
+        : [it.time, it.min && `${it.min} min`]).filter(Boolean).join(' · ') || itemMeta(it).sub || '';
+      body = `<h3>${esc(title)}</h3><p class="act-info">${esc(info)}</p>`;
+    }
     const menuBtn = hero ? `<button class="icon-btn act-more" data-action="item-menu" data-k="${k}" data-key="${esc(key)}" aria-label="Meer acties voor ${esc(actKind(it))}">${icon('more')}</button>` : '';
     return `<section class="act ${done ? 'is-done' : ''} ${hero ? 'is-main is-hero' : ''} ${photo ? 'has-photo' : ''} ${!done && !it.confirmed && k >= tk && !hero ? 'is-suggested' : ''}">
       ${photo ? `<img src="${photo}" alt="" class="act-img" decoding="async" onerror="this.remove()"><div class="act-shade"></div>` : ''}
       <div class="act-top"><span class="act-kind t-${itemType(it)}">${esc(actKind(it))}</span><span class="act-top-end"><span class="tag ${st.cls}">${st.label}</span>${menuBtn}</span></div>
-      ${body}${userBits(it)}${doneLine}${actions}
+      ${body}${photo ? '' : userBits(it) + doneLine}${actions}
     </section>`;
   }
   // Geplande duur van een clubtraining uit het uur (19:45–21:30 = 105 min)
@@ -2510,16 +2520,21 @@
     const rising = activeInjuries().some(i => checkRise(i).length);
     const groups = [['Kracht', id => !C.sessions[id].program && !C.sessions[id].custom], ['Herstel', id => !!C.sessions[id].program]];
     const own = Object.keys(C.sessions).filter(id => C.sessions[id].custom);
+    const since30 = dkey(addDays(t, -29));
+    const kr30 = S.workouts.filter(x => x.date >= since30 && !(C.sessions[x.sessionKey] || {}).program);
 
     return `
       ${sm ? `<div class="hint">${icon('check')}<span><b>${esc(sm.title)} opgeslagen.</b> ${sm.sets} set${sm.sets === 1 ? "" : "s"} in ${sm.minutes} min${sm.rpe != null ? `, zwaarte ${sm.rpe}/10` : ''}.</span></div>` : ''}
       ${rising ? `<div class="hint warn">${icon('alert')}<span>Je dagelijkse check is hoger dan de vorige meting. Volg je afspraak met je kinesist.</span></div>` : ''}
+      ${rec && !w ? actCard(rec, k, true, { photoSrc: 'assets/kracht-hero.jpg' })
+        : `${photoStats('assets/kracht-hero.jpg', [[kr30.length, '', 'Sessies · 30 d'], [sum(kr30.map(woMinutes)), '', 'Min · 30 d'], [own.length, '', 'Eigen workouts']], 'Kracht')}
+      <button class="btn ${w ? '' : 'accent'} block lg mb-12" data-action="new-workout">${icon('plus')} Nieuwe workout</button>`}
       ${w ? `<section class="card resume">
         <div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
         <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)} om ${fmtTime(w.startedAt)} · ${w.exercises.flatMap(x => x.sets).filter(s => s.done).length} sets gedaan</p>
         <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div>
-      </section>` : rec ? actCard(rec, k, true, { photoSrc: 'assets/kracht-hero.jpg' }) : ''}
-      <div class="section"><span>Mijn workouts</span>${own.length ? `<button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button>` : ''}</div>
+      </section>` : ''}
+      <div class="section"><span>Mijn workouts</span>${own.length && rec && !w ? `<button class="link-btn" data-action="new-workout">${icon('plus')} Nieuwe workout</button>` : ''}</div>
       ${own.length ? `<section class="card">${own.map(key => {
         const s = sessInfo(key);
         return `<div class="list-row">
@@ -3041,6 +3056,7 @@
   const photoStats = (src, stats, label) => `<section class="stats-hero" aria-label="${esc(label)}">
       <img src="${src}" alt="" class="stats-img" decoding="async" onerror="this.remove()">
       <div class="stats-shade"></div>
+      <span class="stats-kind">${esc(label)}</span>
       <div class="stats-row">${stats.map(([v, u, l]) => `<div class="stat"><b>${v}${u ? `<span class="unit">${u}</span>` : ''}</b><span>${l}</span></div>`).join('')}</div>
     </section>`;
   function statsHero() {
@@ -3048,11 +3064,7 @@
     const mins = sum(S.workouts.filter(w => w.date >= since).map(woMinutes)) + sum(S.activities.filter(a => a.date >= since).map(a => +a.minutes || 0));
     const matches = S.activities.filter(a => a.type === 'match').length;
     const stats = [[s.days, 'd', 'Streak'], [totalDone(), '', 'Sessies'], [mins, '', 'Min · 30 d'], [matches, '', 'Matchen']];
-    return `<section class="stats-hero" aria-label="Kerncijfers">
-      <img src="assets/stats.jpg" alt="" class="stats-img" decoding="async" onerror="this.remove()">
-      <div class="stats-shade"></div>
-      <div class="stats-row">${stats.map(([v, u, l]) => `<div class="stat"><b>${v}${u ? `<span class="unit">${u}</span>` : ''}</b><span>${l}</span></div>`).join('')}</div>
-    </section>`;
+    return photoStats('assets/stats.jpg', stats, 'Voortgang');
   }
   function statsOverviewBody() {
     const t = today();
