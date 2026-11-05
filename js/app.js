@@ -3,7 +3,7 @@
   'use strict';
 
   const C = window.APP_CONFIG;
-  const APP_VERSION = '4.6.0-dev';
+  const APP_VERSION = '5.0.0-dev';
   const S = {
     checks: [], workouts: [], activities: [], settings: {},
     ui: { woView: null, statsWeek: 7, calMonth: null, lineRange: 30, weightEx: null, summary: null, undo: null }, raw: { checks: [], workouts: [], activities: [] }
@@ -561,6 +561,7 @@
     render({ keepScroll: true });
     toast(`${sessionTitle(id)}: gedaan zonder details`, { action: 'undo-done', label: 'Ongedaan' });
     checkMilestones();
+    askRpe('workouts', rec.id);
   }
 
   // Kine, herstel of een eigen type afvinken: één tik, duur vooraf ingevuld
@@ -575,6 +576,7 @@
     render({ keepScroll: true });
     toast(`${itemMeta(it).title}: gedaan`, { action: 'undo-done', label: 'Ongedaan' });
     checkMilestones();
+    askRpe('activities', rec.id);
   }
 
   // Verwijderen: weg uit de planning (telt niet als gemist). Terugzetten kan in de planning.
@@ -689,13 +691,12 @@
   const ROUTES = {
     vandaag: { label: 'Vandaag', icon: 'home', render: () => renderToday() },
     planning: { label: 'Planning', icon: 'calendar', render: () => renderPlanning() },
-    workout: { label: 'Workout', icon: 'dumbbell', render: () => renderWorkout() },
-    statistieken: { label: 'Voortgang', icon: 'chart', render: () => renderStats() },
-    blessures: { label: 'Blessures', icon: 'heart', render: () => renderInjuries() }
+    workout: { label: 'Training', icon: 'dumbbell', render: () => renderTraining() },
+    blessures: { label: 'Lichaam', icon: 'heart', render: () => renderLichaam() }
   };
   // Account open je via je avatar op Vandaag (geen eigen tab)
-  const SUBS = { account: { parent: null, render: () => renderAccount() }, matchen: { parent: 'account', render: () => renderMatches() }, blessure: { parent: 'blessures', render: () => renderInjury() } };
-  const ALIASES = { profiel: 'account', kalender: 'planning', voortgang: 'statistieken' };
+  const SUBS = { statistieken: { parent: 'workout', render: () => renderStats() }, account: { parent: null, render: () => renderAccount() }, matchen: { parent: 'account', render: () => renderMatches() }, blessure: { parent: 'blessures', render: () => renderInjury() } };
+  const ALIASES = { profiel: 'account', kalender: 'planning', voortgang: 'statistieken', training: 'workout', lichaam: 'blessures' };
   let lastRoute = null;
   const currentRoute = () => {
     const r = location.hash.slice(1);
@@ -743,12 +744,15 @@
   function renderTabbar(active) {
     const keys = Object.keys(ROUTES);
     const bar = $('#tabbar');
-    bar.style.gridTemplateColumns = `repeat(${keys.length}, 1fr)`;
-    bar.innerHTML = keys.map(key => {
+    bar.style.gridTemplateColumns = `repeat(${keys.length + 1}, 1fr)`;
+    const tabs = keys.map(key => {
       const r = ROUTES[key];
       // Alleen het icoon is zichtbaar; de naam blijft voor schermlezers en als tooltip
       return `<a class="tab ${key === active ? 'active' : ''}" href="#${key}" aria-label="${r.label}" title="${r.label}" ${key === active ? 'aria-current="page"' : ''}><span class="box">${icon(r.icon)}</span></a>`;
-    }).join('');
+    });
+    // Centrale "+" om alle sport te loggen
+    tabs.splice(2, 0, `<button class="tab tab-plus" data-action="log-menu" aria-label="Loggen" title="Loggen"><span class="box">${icon('plus')}</span></button>`);
+    bar.innerHTML = tabs.join('');
   }
 
   // Kop voor een hoofdtab (geen terugknop) en voor een subscherm (wel een terugknop)
@@ -756,6 +760,284 @@
     `<header class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right}</header>`;
   const subHead = (title, back, sub = '', right = '') =>
     `<header class="sub-head">${iconBtn('back', 'go', 'Terug', `data-to="${back}"`)}<div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right || '<span></span>'}</header>`;
+
+
+  /* ================= Preventie: belasting, zones en readiness ================= */
+  // Belasting per sessie = zwaarte (0–10) × minuten (sRPE, Foster).
+  // Ontbreekt de zwaarte (oude registraties, snelle "Gedaan"), dan schatten we per type.
+  const RPE_EST = { kracht: 6, herstel: 3, training: 6, match: 8, run: 6, kine: 3, recovery: 2, sport: 6, custom: 5 };
+  function loadsBetween(fromK, toK) {
+    const out = [];
+    S.workouts.forEach(w => {
+      if (w.date < fromK || w.date > toK) return;
+      const est = C.sessions[w.sessionKey] && C.sessions[w.sessionKey].program ? RPE_EST.herstel : RPE_EST.kracht;
+      const r = num(w.rpe);
+      out.push({ date: w.date, load: (r ?? est) * woMinutes(w), est: r == null });
+    });
+    S.activities.forEach(a => {
+      if (a.date < fromK || a.date > toK) return;
+      const r = num(a.rpe);
+      out.push({ date: a.date, load: (r ?? (RPE_EST[a.type] ?? 5)) * (+a.minutes || 0), est: r == null });
+    });
+    return out;
+  }
+  // Zones op basis van de acute:chronische verhouding (ACWR, Gabbett 2016):
+  //   acuut   = belasting van de laatste 7 dagen (vandaag inbegrepen)
+  //   chronisch = gemiddelde weekbelasting van de 4 weken daarvoor (dag 8 t/m 35)
+  //   < 0,8 te laag · 0,8–1,3 optimaal · 1,3–1,5 let op · > 1,5 piek
+  //   Minder dan 14 dagen geschiedenis of geen chronische belasting: nog te weinig gegevens.
+  const ZONES = { laag: 'Te laag', optimaal: 'Optimaal', letop: 'Let op', piek: 'Piek', onbekend: 'Nog te weinig gegevens' };
+  function loadInfo() {
+    const t = today(), tk = dkey(t);
+    const acuteL = loadsBetween(dkey(addDays(t, -6)), tk), chronL = loadsBetween(dkey(addDays(t, -34)), dkey(addDays(t, -7)));
+    const acute = Math.round(sum(acuteL.map(x => x.load))), chronic = Math.round(sum(chronL.map(x => x.load)) / 4);
+    const all = [...S.workouts, ...S.activities].map(x => x.date).filter(Boolean).sort();
+    const history = all.length ? daysBetween(parseKey(all[0]), t) : 0;
+    const ratio = chronic > 0 ? acute / chronic : null;
+    const zone = history < 14 || ratio == null ? 'onbekend' : ratio < 0.8 ? 'laag' : ratio <= 1.3 ? 'optimaal' : ratio <= 1.5 ? 'letop' : 'piek';
+    const est = [...acuteL, ...chronL].filter(x => x.est).length;
+    return { acute, chronic, ratio, zone, est };
+  }
+  function weeklyLoads(n = 6) {
+    const ws0 = startOfWeek(today()), out = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const ws = addDays(ws0, -7 * i);
+      out.push({ label: `W${isoWeek(ws)}`, value: Math.round(sum(loadsBetween(dkey(ws), dkey(addDays(ws, 6))).map(x => x.load))) });
+    }
+    return out;
+  }
+  // Readiness: Rust (pijn boven grens, vermoeidheid 5 of piek), Opletten (stijging, pijn op de grens,
+  // vermoeidheid 4 of let op), anders Klaar. Zonder check van vandaag telt alleen de belasting.
+  function readiness() {
+    const c = checkFor(dkey(today())), act = activeInjuries(), L = loadInfo();
+    const fat = c && c.fatigue != null ? c.fatigue : null;
+    const painToday = inj => { const v = injurySides(inj).map(s => checkVal(c, inj.id, 'pain', s)).filter(x => x != null); return v.length ? Math.max(...v) : null; };
+    const over = act.filter(i => { const p = painToday(i), l = num(i.painLimit); return p != null && l != null && p > l; });
+    const atLim = act.filter(i => { const p = painToday(i), l = num(i.painLimit); return p != null && l != null && p === l; });
+    const rise = act.filter(i => checkRise(i).length);
+    const has = act.length ? act.every(i => checkEntry(c, i.id)) : fat != null;
+    const why = [];
+    let state = 'klaar';
+    if (over.length || fat === 5 || L.zone === 'piek') {
+      state = 'rust';
+      if (over.length) why.push(`pijn boven je grens (${over.map(injuryLabel).join(', ')})`);
+      if (fat === 5) why.push('erg moe');
+      if (L.zone === 'piek') why.push('piek in je belasting');
+    } else if (rise.length || atLim.length || fat === 4 || L.zone === 'letop') {
+      state = 'opletten';
+      if (rise.length) why.push('hoger dan je vorige check');
+      if (atLim.length) why.push('pijn op je grens');
+      if (fat === 4) why.push('vermoeid');
+      if (L.zone === 'letop') why.push('belasting hoger dan gewoonlijk');
+    } else why.push(L.zone === 'optimaal' ? 'belasting in balans' : L.zone === 'laag' ? 'belasting lager dan gewoonlijk' : 'niets bijzonders');
+    if (!has) why.push('check nog niet ingevuld');
+    return { state, label: { klaar: 'Klaar', opletten: 'Opletten', rust: 'Rust' }[state], why: cap(why.join(' · ')) };
+  }
+  function readinessTile() {
+    const r = readiness();
+    return `<button class="card readiness ${r.state}" data-action="go" data-to="blessures" aria-label="Readiness: ${r.label}. ${esc(r.why)}. Naar Lichaam">
+      <span class="label">Readiness</span><b>${r.label}</b><span class="rd-why">${esc(r.why)}</span>${icon('chevR')}</button>`;
+  }
+  // Belastingsmeter: vier zones op een balk, met een markering op de verhouding
+  function loadCard() {
+    const L = loadInfo();
+    const pos = L.ratio == null ? null : Math.max(0, Math.min(1, L.ratio / 2));
+    const warn = L.zone === 'letop' || L.zone === 'piek';
+    return `<section class="card load-card">
+      <div class="card-head"><h2>Belasting</h2><span class="label">7 d tegenover 4 weken</span></div>
+      <div class="load-zone ${warn ? 'warn' : L.zone}"><b>${ZONES[L.zone]}</b>${L.ratio != null ? `<span>${fmtNum(Math.round(L.ratio * 100) / 100)}</span>` : ''}</div>
+      <div class="load-meter" aria-hidden="true"><i class="z-laag"></i><i class="z-optimaal"></i><i class="z-letop"></i><i class="z-piek"></i>${pos != null ? `<em style="left:${(pos * 100).toFixed(1)}%"></em>` : ''}</div>
+      <div class="load-nums"><div><b>${L.acute}</b><span>deze 7 dagen</span></div><div><b>${L.chronic}</b><span>gemiddeld per week</span></div></div>
+      ${L.est ? `<p class="label mt-8">${L.est} registratie${L.est === 1 ? '' : 's'} zonder zwaarte: geschat.</p>` : ''}
+    </section>`;
+  }
+  // Trend van de dagelijkse check (14 dagen): pijn per lopend traject, anders vermoeidheid
+  function checkTrendCard() {
+    const t = today(), days = [], labels = [];
+    for (let i = 13; i >= 0; i--) { const d = addDays(t, -i); days.push(dkey(d)); labels.push(fmtShort(d)); }
+    const act = activeInjuries();
+    let body;
+    if (act.length) {
+      const inj = act[0], lim = num(inj.painLimit);
+      const vals = days.map(k => { const c = checkFor(k); const v = injurySides(inj).map(s => checkVal(c, inj.id, 'pain', s)).filter(x => x != null); return v.length ? Math.max(...v) : null; });
+      body = vals.some(v => v != null) ? `<p class="label">Pijn · ${esc(injuryLabel(inj))}</p>${Charts.line({ labels, series: [{ color: 'var(--accent)', values: vals }], step: true, height: 110, yMin: 0, yMax: 10, ticks: lim != null ? [0, lim, 10] : [0, 5, 10], warnAbove: lim })}` : '<p class="empty">Nog geen checks in deze periode.</p>';
+    } else {
+      const vals = days.map(k => { const c = checkFor(k); return c && c.fatigue != null ? c.fatigue : null; });
+      body = vals.some(v => v != null) ? `<p class="label">Vermoeidheid (1–5)</p>${Charts.line({ labels, series: [{ color: 'var(--accent)', values: vals }], step: true, height: 110, yMin: 1, yMax: 5, ticks: [1, 3, 5] })}` : '<p class="empty">Nog geen checks in deze periode.</p>';
+    }
+    return `<section class="card"><div class="card-head"><h2>Dagelijkse check</h2><span class="label">14 dagen</span></div>${body}</section>`;
+  }
+
+  /* ================= Alle sport loggen ================= */
+  const RUN_TYPES = { duurloop: 'Duurloop', interval: 'Interval', herstel: 'Herstelloop', sprint: 'Sprint' };
+  const RUN_SURF = { gras: 'Gras', asfalt: 'Asfalt', piste: 'Piste', loopband: 'Loopband' };
+  // Tempo in min/km als tekst (bv. 5:12), of '–'
+  function paceText(km, min) {
+    const k = num(km), m = num(min);
+    if (!k || !m) return '–';
+    const s = Math.round((m * 60) / k);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+  function openLogMenu() {
+    const tiles = [['kracht', 'dumbbell', 'Kracht', 'Workout starten'], ['run', 'bolt', 'Lopen', 'Afstand en tempo'], ['training', 'whistle', 'Voetbaltraining', 'Met de ploeg'],
+      ['match', 'ball', 'Match', 'Minuten en gevoel'], ['kine', 'heart', 'Kine', 'Sessie bij je kinesist'], ['sport', 'pulse', 'Andere sport', 'Padel, fietsen, zwemmen…']];
+    openSheet(`<div class="sheet-head"><div><h3>Loggen</h3><p>Wat heb je gedaan?</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <div class="type-grid">${tiles.map(([t, ic, l, s]) => `<button class="type-tile" data-action="log-new" data-type="${t}">${icon(ic)}<b>${l}</b><span>${s}</span></button>`).join('')}</div>`);
+  }
+  function logNew(type) {
+    if (type === 'kracht') { closeSheet(); S.ui.trainSeg = 'kracht'; S.ui.woView = 'picker'; go('workout'); return; }
+    if (type === 'run') return openRunLog();
+    if (type === 'training' || type === 'match') return openLog(type);
+    return openSimpleLog(type);
+  }
+  function openRunLog(id = null) {
+    const ex = id ? S.activities.find(a => a.id === id) : null;
+    const rt = (ex && ex.runType) || 'duurloop', sf = (ex && ex.surface && RUN_SURF[ex.surface] ? ex.surface : null) || (S.settings.runPrefs || {}).surface || 'gras';
+    openSheet(`<form id="run-form" data-id="${ex ? ex.id : ''}">
+      <div class="sheet-head"><h3>${ex ? 'Bewerken: ' : ''}Lopen</h3>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      <div class="form-grid">
+        <label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${ex ? ex.date : dkey(today())}" max="${dkey(today())}" required></label>
+        <label class="field"><span>Afstand (km)</span><input class="input" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" name="km" value="${ex && ex.distanceKm != null ? String(ex.distanceKm).replace('.', ',') : ''}" placeholder="bv. 6,5" required></label>
+        <label class="field"><span>Duur (min)</span><input class="input" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" name="minutes" value="${ex && ex.minutes != null ? String(ex.minutes).replace('.', ',') : ''}" placeholder="bv. 35" required></label>
+        <div class="field"><span>Tempo</span><output class="input run-pace" id="run-pace">${ex ? paceText(ex.distanceKm, ex.minutes) : '–'} /km</output></div>
+      </div>
+      <p class="label">Type</p><div class="seg">${Object.entries(RUN_TYPES).map(([v, l]) => radio('runType', v, l, rt)).join('')}</div>
+      <p class="label">Ondergrond</p><div class="seg">${Object.entries(RUN_SURF).map(([v, l]) => radio('surface', v, l, sf)).join('')}</div>
+      <p class="label">Zwaarte · 1 = heel licht, 10 = maximaal</p>${pickGroup('rpe', ex ? ex.rpe ?? null : null, 1, 10, null)}
+      <label class="field mt-12"><span>Notitie</span><textarea class="input" name="note" rows="2" placeholder="Bv. rustig tempo, kuit voelde goed">${esc((ex && ex.note) || '')}</textarea></label>
+      <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
+    </form>`);
+  }
+  async function saveRun(form) {
+    const f = new FormData(form), id = form.dataset.id ? +form.dataset.id : null;
+    const old = id ? S.activities.find(a => a.id === id) : null;
+    const rec = { ...(old || {}), type: 'run', date: f.get('date') || dkey(today()), distanceKm: num(String(f.get('km')).replace(',', '.')),
+      minutes: num(String(f.get('minutes')).replace(',', '.')) || 0, runType: f.get('runType') || 'duurloop', surface: f.get('surface') || 'gras',
+      rpe: padValue('rpe'), note: (f.get('note') || '').trim(), participation: 'volledig', createdAt: old ? old.createdAt : Date.now(), sample: false };
+    rec.id = await DB.put('activities', rec);
+    S.activities = S.activities.filter(a => a.id !== rec.id).concat(rec);
+    await setSetting('runPrefs', { surface: rec.surface });
+    closeSheet(); render({ keepScroll: true });
+    toast(old ? 'Wijzigingen opgeslagen' : `Loop opgeslagen · ${fmtNum(rec.distanceKm || 0)} km`);
+    checkMilestones();
+  }
+  // Kine, herstel, eigen activiteit of andere sport: datum, minuten, zwaarte, notitie
+  function openSimpleLog(type, id = null) {
+    const ex = id ? S.activities.find(a => a.id === id) : null;
+    if (ex) type = ex.type;
+    const title = type === 'kine' ? 'Kine' : type === 'recovery' ? 'Herstel & mobiliteit' : type === 'sport' ? 'Andere sport' : 'Activiteit';
+    openSheet(`<form id="simple-form" data-id="${ex ? ex.id : ''}" data-type="${type}">
+      <div class="sheet-head"><h3>${ex ? 'Bewerken: ' : ''}${title}</h3>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${type === 'sport' || type === 'custom' ? `<label class="field"><span>${type === 'sport' ? 'Sport' : 'Naam'}</span><input class="input" name="label" value="${esc((ex && ex.label) || '')}" placeholder="Bv. padel" required></label>` : ''}
+      <div class="form-grid">
+        <label class="field"><span>Datum</span><input class="input" type="date" name="date" value="${ex ? ex.date : dkey(today())}" max="${dkey(today())}" required></label>
+        <label class="field"><span>Duur (min)</span><input class="input" type="number" inputmode="numeric" min="0" max="600" name="minutes" value="${ex ? ex.minutes ?? '' : type === 'kine' ? 30 : ''}" required></label>
+      </div>
+      <p class="label">Zwaarte · 1 = heel licht, 10 = maximaal</p>${pickGroup('rpe', ex ? ex.rpe ?? null : null, 1, 10, null)}
+      <label class="field mt-12"><span>Notitie</span><textarea class="input" name="note" rows="2">${esc((ex && ex.note) || '')}</textarea></label>
+      <button class="btn accent block lg" type="submit">${icon('check')} Opslaan</button>
+    </form>`);
+  }
+  async function saveSimple(form) {
+    const f = new FormData(form), id = form.dataset.id ? +form.dataset.id : null;
+    const old = id ? S.activities.find(a => a.id === id) : null;
+    const rec = { ...(old || {}), type: form.dataset.type, date: f.get('date') || dkey(today()), minutes: +f.get('minutes') || 0,
+      rpe: padValue('rpe'), note: (f.get('note') || '').trim(), participation: (old && old.participation) || 'volledig', createdAt: old ? old.createdAt : Date.now(), sample: false };
+    if (f.has('label')) rec.label = (f.get('label') || '').trim() || null;
+    rec.id = await DB.put('activities', rec);
+    S.activities = S.activities.filter(a => a.id !== rec.id).concat(rec);
+    closeSheet(); render({ keepScroll: true });
+    toast(old ? 'Wijzigingen opgeslagen' : `${actTitle(rec)} opgeslagen`);
+    checkMilestones();
+  }
+  // Na een snelle "Gedaan": kort de zwaarte vragen (overslaan mag)
+  function askRpe(store, id) {
+    const rec = S[store].find(x => x.id === id); if (!rec) return;
+    openSheet(`<form id="rpe-form" data-store="${store}" data-id="${id}">
+      <div class="sheet-head"><div><h3>Hoe zwaar was het?</h3><p>${esc(store === 'workouts' ? woTitle(rec) : actTitle(rec))} · nodig voor je belasting</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+      ${pickGroup('rpe', null, 1, 10, null)}
+      <div class="row mt-16"><button type="button" class="btn" data-action="close-sheet">Overslaan</button><button class="btn accent" type="submit">Opslaan</button></div>
+    </form>`);
+  }
+  async function saveRpe(form) {
+    const store = form.dataset.store, rec = S[store].find(x => x.id === +form.dataset.id), v = padValue('rpe');
+    closeSheet();
+    if (!rec || v == null) return;
+    rec.rpe = v; await DB.put(store, rec);
+    render({ keepScroll: true });
+    toast(`Zwaarte ${v}/10 opgeslagen`);
+  }
+
+  /* ================= Training: Overzicht, Kracht, Lopen, Voetbal ================= */
+  const TRAIN_SEGS = [['overzicht', 'Overzicht'], ['kracht', 'Kracht'], ['lopen', 'Lopen'], ['voetbal', 'Voetbal']];
+  function renderTraining() {
+    const w = draft();
+    const seg = S.ui.trainSeg || 'overzicht';
+    if (w && (S.ui.woView === 'active' || (seg === 'kracht' && S.ui.woView !== 'picker'))) return renderActive(w);
+    const body = { overzicht: trainOverview, kracht: krachtHtml, lopen: runsHtml, voetbal: footballHtml }[seg]();
+    main.innerHTML = `
+      ${pageHead('Training', activeInjuries().length ? `${esc(phaseObj(currentPhase()).label)} · ${esc(phaseObj(currentPhase()).title)}` : esc(GOAL_LABEL[goal().type]))}
+      <div class="seg" role="tablist">${TRAIN_SEGS.map(([k, l]) => `<button class="${k === seg ? 'on' : ''}" role="tab" aria-selected="${k === seg}" data-action="train-seg" data-s="${k}">${l}</button>`).join('')}</div>
+      ${body}`;
+  }
+  // Tijdlijn per dag
+  function timelineHtml(list, max = 12) {
+    if (!list.length) return `<section class="card"><p class="empty">Nog niets gelogd.</p></section>`;
+    const shown = S.ui.timelineAll ? list : list.slice(0, max);
+    let html = '', last = '';
+    shown.forEach(x => {
+      if (x.date !== last) { html += `<p class="tl-day">${cap(relDay(x.date))}</p>`; last = x.date; }
+      html += recentRows([x]);
+    });
+    return `<section class="card timeline">${html}
+      ${list.length > max ? `<button class="btn block sm mt-12" data-action="timeline-all">${S.ui.timelineAll ? 'Minder tonen' : `Alles tonen (${list.length})`}</button>` : ''}</section>`;
+  }
+  function trainOverview() {
+    const w = draft();
+    return `${statsHero()}
+      ${w ? `<section class="card resume"><div class="card-head"><h2>Onafgewerkte workout</h2><span class="tag adapted">Bewaard</span></div>
+        <p class="small"><b>${esc(woTitle(w))}</b> · gestart ${relDay(w.date)}</p>
+        <div class="row mt-12"><button class="btn" data-action="wo-leave">Opties</button><button class="btn accent" data-action="wo-resume">${icon('play')} Hervatten</button></div></section>` : ''}
+      <div class="section"><span>Tijdlijn</span><button class="link-btn" data-action="go" data-to="statistieken">Alle voortgang ${icon('chevR')}</button></div>
+      ${timelineHtml(entries())}`;
+  }
+  function runsHtml() {
+    const runs = S.activities.filter(a => a.type === 'run');
+    const t = today(), wk = weekKey(t), mStart = dkey(new Date(t.getFullYear(), t.getMonth(), 1));
+    const km = l => fmtNum(Math.round(sum(l.map(a => +a.distanceKm || 0)) * 10) / 10);
+    const thisWeek = runs.filter(a => inWeek(a.date, wk)), thisMonth = runs.filter(a => a.date >= mStart);
+    return `<div class="tiles">
+        <div class="tile"><span class="label">Deze week</span><div class="num">${km(thisWeek)}<span class="unit">km</span></div><p>${thisWeek.length} loop${thisWeek.length === 1 ? '' : 'jes'}</p></div>
+        <div class="tile"><span class="label">Deze maand</span><div class="num">${km(thisMonth)}<span class="unit">km</span></div><p>${thisMonth.length} loop${thisMonth.length === 1 ? '' : 'jes'}</p></div>
+      </div>
+      <button class="btn accent block lg mb-12" data-action="log-new" data-type="run">${icon('plus')} Loop loggen</button>
+      ${runs.length ? timelineHtml(entries().filter(x => x.store === 'activities' && x.type === 'run')) : `<section class="card"><p class="empty">Nog geen loopjes gelogd.</p></section>`}`;
+  }
+  function footballHtml() {
+    const acts = S.activities.filter(a => a.type === 'training' || a.type === 'match');
+    const since = dkey(addDays(today(), -29));
+    const tr = acts.filter(a => a.type === 'training' && a.date >= since), ma = acts.filter(a => a.type === 'match' && a.date >= since);
+    return `<div class="tiles">
+        <div class="tile"><span class="label">Trainingen · 30 d</span><div class="num">${tr.length}</div><p>${sum(tr.map(a => +a.minutes || 0))} min</p></div>
+        <div class="tile"><span class="label">Matchen · 30 d</span><div class="num">${ma.length}</div><p>${sum(ma.map(a => +a.minutes || 0))} min</p></div>
+      </div>
+      <div class="row mb-12"><button class="btn" data-action="log-new" data-type="training">${icon('plus')} Training</button><button class="btn" data-action="log-new" data-type="match">${icon('plus')} Match</button></div>
+      <div class="section"><span>Gelogd</span><button class="link-btn" data-action="go" data-to="matchen">Matchen beheren ${icon('chevR')}</button></div>
+      ${timelineHtml(entries().filter(x => x.store === 'activities' && (x.type === 'training' || x.type === 'match')))}`;
+  }
+
+  /* ================= Lichaam: Preventie en Herstel ================= */
+  function renderLichaam() {
+    renderInjuries();
+    const prev = `<div class="section"><span>Preventie</span></div>
+      ${loadCard()}
+      <section class="card"><div class="card-head"><h2>Belasting per week</h2><span class="label">zwaarte × minuten</span></div>${Charts.bars(weeklyLoads(), { selected: 5, action: null, height: 120 })}</section>
+      ${checkTrendCard()}
+      <div class="section"><span>Herstel</span></div>`;
+    const head = main.querySelector('.page-head');
+    if (head) head.insertAdjacentHTML('afterend', prev);
+    main.insertAdjacentHTML('beforeend', `<p class="footer-note">Indicatie, geen medisch advies.</p>`);
+  }
 
   /* ================= Home (vandaag) ================= */
   // Info over een sessie zoals de gebruiker ze ziet
@@ -786,8 +1068,9 @@
     : ({ training: 'Voetbal', match: 'Match', rest: 'Rust', kine: 'Kine', recovery: 'Herstel', custom: 'Eigen' }[it.type] || '');
   // Titel van een gelogde training, match of eenvoudige activiteit
   const actTitle = a => a.type === 'match' ? (a.opponent ? `Match tegen ${a.opponent}` : 'Match') : a.type === 'training' ? 'Voetbaltraining'
-    : a.type === 'kine' ? 'Kine' : a.type === 'recovery' ? 'Herstel & mobiliteit' : (a.label || 'Activiteit');
-  const actIcon = a => ({ match: 'ball', training: 'whistle', kine: 'heart', recovery: 'pulse' }[a.type] || 'list');
+    : a.type === 'kine' ? 'Kine' : a.type === 'recovery' ? 'Herstel & mobiliteit' : a.type === 'run' ? (RUN_TYPES[a.runType] || 'Lopen')
+    : a.type === 'sport' ? (a.label || 'Andere sport') : (a.label || 'Activiteit');
+  const actIcon = a => ({ match: 'ball', training: 'whistle', kine: 'heart', recovery: 'pulse', run: 'bolt', sport: 'pulse' }[a.type] || 'list');
 
   // De sessie die de grote startknop krijgt: eerst open krachtwerk, anders herstel
   function relevantSession(items, k) {
@@ -817,6 +1100,7 @@
     main.innerHTML = `
       ${homeHeader()}
       ${progressTiles()}
+      ${readinessTile()}
       ${resumeCard()}
       ${checkCard()}
       <div class="section"><span>${k === tk ? 'Vandaag gepland' : cap(fmtDay(k))}</span>${k !== tk ? `<button class="link-btn" data-action="home-day" data-k="${tk}">Naar vandaag</button>` : ''}</div>
@@ -950,6 +1234,7 @@
   function recordLine({ store, r }) {
     const bits = [];
     if (store === 'workouts') { bits.push(`${woMinutes(r)} min`); if (r.rpe != null) bits.push(`zwaarte ${r.rpe}/10`); }
+    else if (r.type === 'run') { bits.push(`${fmtNum(r.distanceKm || 0)} km`, `${fmtNum(r.minutes)} min`, `${paceText(r.distanceKm, r.minutes)} /km`); if (r.rpe != null) bits.push(`zwaarte ${r.rpe}/10`); }
     else { bits.push(`${r.minutes} min`); if (r.rpe != null) bits.push(`zwaarte ${r.rpe}/10`); }
     return bits.join(' · ');
   }
@@ -2090,9 +2375,9 @@
   }
 
   // Overzicht van alle sessies (hoofdtab, dus geen terugknop)
-  function renderWorkout() {
+  function renderWorkout() { S.ui.trainSeg = 'kracht'; return renderTraining(); }
+  function krachtHtml() {
     const w = draft();
-    if (w && S.ui.woView !== 'picker') return renderActive(w);
     const t = today(), k = dkey(t);
     const todays = planFor(t).filter(it => it.type === 'session' && !itemDone(it, k));
     const rec = relevantSession(todays, k);
@@ -2101,8 +2386,7 @@
     const groups = [['Kracht', id => !C.sessions[id].program && !C.sessions[id].custom], ['Herstel', id => !!C.sessions[id].program]];
     const own = Object.keys(C.sessions).filter(id => C.sessions[id].custom);
 
-    main.innerHTML = `
-      ${pageHead('Workout', activeInjuries().length ? `${esc(phaseObj(currentPhase()).label)} · ${esc(phaseObj(currentPhase()).title)}` : esc(GOAL_LABEL[goal().type]))}
+    return `
       ${sm ? `<div class="hint">${icon('check')}<span><b>${esc(sm.title)} opgeslagen.</b> ${sm.sets} set${sm.sets === 1 ? "" : "s"} in ${sm.minutes} min${sm.rpe != null ? `, zwaarte ${sm.rpe}/10` : ''}.</span></div>` : ''}
       ${rising ? `<div class="hint warn">${icon('alert')}<span>Je dagelijkse check is hoger dan de vorige meting. Volg je afspraak met je kinesist.</span></div>` : ''}
       ${w ? `<section class="card resume">
@@ -2786,7 +3070,7 @@
       });
     });
     S.activities.forEach(a => list.push({
-      store: 'activities', id: a.id, date: a.date, ts: a.createdAt || 0, icon: actIcon(a),
+      store: 'activities', id: a.id, date: a.date, ts: a.createdAt || 0, icon: actIcon(a), type: a.type,
       title: actTitle(a),
       sub: `${cap(relDay(a.date))} · ${recStatus({ store: 'activities', r: a }).label} · ${recordLine({ store: 'activities', r: a })}`, sample: a.sample
     }));
@@ -2815,6 +3099,15 @@
     const st = recStatus({ store, r: rec });
     const menu = `<details class="more"><summary>Meer opties</summary>
         <button class="btn danger block" data-action="del-entry" data-store="${store}" data-id="${rec.id}">${icon('trash')} Verwijderen</button></details>`;
+    if (store === 'activities' && rec.type === 'run') {
+      openSheet(`<div class="sheet-head"><div><h3>${esc(actTitle(rec))}</h3><p>${cap(fmtDay(rec.date))}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
+        <div class="run-stats"><div><b>${fmtNum(rec.distanceKm || 0)}</b><span>km</span></div><div><b>${paceText(rec.distanceKm, rec.minutes)}</b><span>min/km</span></div><div><b>${fmtNum(rec.minutes)}</b><span>min</span></div></div>
+        <div class="chips">${rec.surface ? `<span class="chip">${esc(RUN_SURF[rec.surface] || rec.surface)}</span>` : ''}${rec.rpe != null ? `<span class="chip">Zwaarte ${rec.rpe}/10</span>` : ''}</div>
+        ${rec.note ? `<p class="small mt-12">${esc(rec.note)}</p>` : ''}
+        <button class="btn primary block lg mt-16" data-action="edit-entry" data-store="activities" data-id="${rec.id}">${icon('edit')} Bewerken</button>
+        ${menu}`);
+      return;
+    }
     if (store === 'activities') {
       openSheet(`<div class="sheet-head"><div><h3>${esc(actTitle(rec))}</h3><p>${cap(fmtDay(rec.date))} · ${esc(st.label)}</p></div>${iconBtn('x', 'close-sheet', 'Sluiten')}</div>
         <div class="num" style="margin-bottom:14px">${rec.minutes}<span class="unit">min${rec.plannedMinutes && rec.plannedMinutes !== rec.minutes ? ` van ${rec.plannedMinutes} gepland` : ''}</span></div>
@@ -3156,7 +3449,7 @@
     const act = list.filter(i => i.status !== 'afgerond'), past = list.filter(i => i.status === 'afgerond');
     const maint = past.flatMap(i => (i.maintenance || []).filter(id => C.sessions[id] || String(id).includes(':')));
     main.innerHTML = `
-      <header class="page-head"><div><span class="eyebrow">Zorg voor je basis</span><h1>Herstel is progressie.</h1><p>Luister naar je lichaam. Bouw bewust op.</p></div>
+      <header class="page-head"><div><span class="eyebrow">Preventie en herstel</span><h1>Lichaam.</h1><p>Luister naar je lichaam. Bouw bewust op.</p></div>
         <button class="icon-btn" data-action="inj-new" aria-label="Blessure toevoegen">${icon('plus')}</button></header>
       ${act.map((inj, i) => injuryHero(inj, i === 0)).join('')}
       ${!list.length ? `<section class="card empty-row">
@@ -3873,7 +4166,7 @@
   async function exportData() {
     closeSheet();
     const data = {
-      app: 'comeback', version: 3, exportedAt: new Date().toISOString(),
+      app: 'comeback', version: 4, exportedAt: new Date().toISOString(),
       checks: S.raw.checks, workouts: S.raw.workouts, activities: S.raw.activities, settings: S.settings
     };
     const name = `comeback-backup-${dkey(today())}.json`;
@@ -3967,9 +4260,20 @@
     'adapted': el => openAdapted(el.dataset.k, el.dataset.key),
     'item-actions': el => openItemActions(el.dataset.k, el.dataset.key),
     'item-menu': el => openItemMenu(el.dataset.k, el.dataset.key),
+    'log-menu': () => openLogMenu(),
+    'log-new': el => logNew(el.dataset.type),
+    'train-seg': el => { S.ui.trainSeg = el.dataset.s; S.ui.timelineAll = false; if (el.dataset.s === 'kracht') S.ui.woView = null; render(); },
+    'timeline-all': () => { S.ui.timelineAll = !S.ui.timelineAll; render({ keepScroll: true }); },
     'wo-leave': openLeave,
     'undo-del': async () => { const u = S.ui.undoRec; if (!u) return; await DB.put(u.store, u.rec); S[u.store].push(u.rec); S.ui.undoRec = null; $('#toast').hidden = true; render({ keepScroll: true }); toast('Teruggezet'); },
-    'edit-entry': el => el.dataset.store === 'workouts' ? openWorkoutEdit(+el.dataset.id) : openLog(null, null, +el.dataset.id),
+    'edit-entry': el => {
+      const id = +el.dataset.id;
+      if (el.dataset.store === 'workouts') return openWorkoutEdit(id);
+      const a = S.activities.find(x => x.id === id) || {};
+      if (a.type === 'run') return openRunLog(id);
+      if (a.type === 'training' || a.type === 'match') return openLog(null, null, id);
+      return openSimpleLog(a.type, id);
+    },
     'stats-inj': el => { S.ui.statsInjury = el.dataset.id; render({ keepScroll: true }); },
     'open-injury': el => { S.ui.injuryId = el.dataset.id; go('blessure'); },
     'inj-new': openNewInjury,
@@ -3997,7 +4301,7 @@
     'score-pick': el => { el.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === el)); },
     'home-day': el => { S.ui.homeDay = el.dataset.k; render({ keepScroll: true }); },
     'cal-open': el => openDay(el.dataset.k),
-    'start-session': el => startSession(el.dataset.key),
+    'start-session': el => { S.ui.trainSeg = 'kracht'; startSession(el.dataset.key); },
     'open-log': el => openLog(el.dataset.type, el.dataset.date || undefined),
     'open-day': el => openDay(el.dataset.k),
     'open-move': el => openMoveSheet(el.dataset.k, el.dataset.key),
@@ -4212,6 +4516,14 @@
     }
   });
 
+  // Live tempo in het loopformulier
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (!el.form || el.form.id !== 'run-form' || (el.name !== 'km' && el.name !== 'minutes')) return;
+    const o = document.getElementById('run-pace');
+    if (o) o.textContent = `${paceText(String(el.form.km.value).replace(',', '.'), String(el.form.minutes.value).replace(',', '.'))} /km`;
+  });
+
   const EXT_SUBMIT = {};
   document.addEventListener('submit', e => {
     e.preventDefault();
@@ -4219,6 +4531,9 @@
     if (e.target.id === 'login-form') submitLogin(e.target);
     if (e.target.id === 'password-form') submitPassword(e.target);
     if (e.target.id === 'log-form') saveLog(e.target);
+    if (e.target.id === 'run-form') saveRun(e.target);
+    if (e.target.id === 'simple-form') saveSimple(e.target);
+    if (e.target.id === 'rpe-form') saveRpe(e.target);
     if (e.target.id === 'minutes-form') saveMinutes(e.target);
     if (e.target.id === 'match-form') saveMatch(e.target);
     if (e.target.id === 'finish-form') saveFinish(e.target);
@@ -4382,7 +4697,7 @@
 
   /* ================= Migraties ================= */
   // Zet bestaande data om wanneer het datamodel verandert. Er gaat niets verloren.
-  const DATA_VERSION = 4;
+  const DATA_VERSION = 5;
   async function migrate() {
     const v = S.settings.dataVersion || 1;
     if (v >= DATA_VERSION) return;
@@ -4419,6 +4734,11 @@
       if (conv.length) await DB.bulkPut('checks', conv);
       await setSetting('goal', goal());
       if (S.settings.demo === undefined) await setSetting('demo', false);
+    }
+    if (v < 5) {
+      // v5: lopen en andere sport erbij (alleen nieuwe velden). Eerst een lokale kopie, er verandert geen bestaand record.
+      const real = l => (l || []).filter(x => !x.sample);
+      await setSetting('backupBeforeV5', { at: Date.now(), workouts: real(S.raw.workouts), activities: real(S.raw.activities), checks: real(S.raw.checks) });
     }
     await setSetting('dataVersion', DATA_VERSION);
     await loadAll();

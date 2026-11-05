@@ -1285,6 +1285,7 @@ body { font-variant-numeric: tabular-nums; }
 .confirm .sheet { border-radius: var(--r-card); border-bottom: 1px solid var(--border); }
 .sheet .input, .sheet .select, .sheet .stepper input, .sheet .mini-in, .sheet .mini-row input, .sheet .seg, .sheet .score-pad button,
 .sheet .choice button, .sheet .stepper button, .sheet .mini-row button { background-color: var(--surface-3); }
+.sheet .chip, .sheet .tag { background: var(--surface-3); }
 .sheet .score-pad button.on, .sheet .choice button.on, .sheet .seg button.on, .sheet .seg input:checked + span { background-color: var(--surface); }
 
 /* Felicitatie na een sessie: ingetogen, met de hero-gradient, 1,5 s */
@@ -1314,6 +1315,48 @@ body { font-variant-numeric: tabular-nums; }
 .mt-4 { margin-top: 4px; } .mt-8 { margin-top: 8px; } .mt-12 { margin-top: 12px; } .mt-16 { margin-top: 16px; } .mt-20 { margin-top: 20px; }
 .mb-4 { margin-bottom: 4px; } .mb-8 { margin-bottom: 8px; } .mb-12 { margin-bottom: 12px; }
 .icon-btn.ghost { background: transparent; border-color: transparent; }
+
+/* ================= Stap 4: loggen, preventie, readiness ================= */
+/* Centrale "+" in de navigatie: iets groter, lichte cirkel */
+.tab-plus { border: 0; background: transparent; padding: 0; }
+.tab-plus .box { width: 52px; height: 52px; border-radius: 50%; background: var(--text); color: var(--bg); }
+.tab-plus .box .ic { width: var(--ic-nav); height: var(--ic-nav); }
+
+/* Readiness-tegel op Vandaag */
+.readiness { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "lbl go" "state go" "why go"; align-items: center; gap: 4px 12px;
+  width: 100%; text-align: left; color: var(--text); cursor: pointer; }
+.readiness .label { grid-area: lbl; text-transform: uppercase; letter-spacing: var(--caps-track); font-size: var(--fs-label); font-weight: 600; }
+.readiness b { grid-area: state; font-family: var(--font-display); font-stretch: var(--display-stretch); font-weight: 700; text-transform: uppercase; font-size: var(--fs-title); }
+.readiness .rd-why { grid-area: why; font-size: var(--fs-small); color: var(--muted); }
+.readiness > .ic { grid-area: go; color: var(--muted); width: var(--ic-btn); height: var(--ic-btn); }
+.readiness.opletten b { color: var(--warning-text); }
+.readiness.klaar b { color: var(--success-text); }
+
+/* Belastingsmeter */
+.load-zone { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.load-zone b { font-family: var(--font-display); font-stretch: var(--display-stretch); font-weight: 700; text-transform: uppercase; font-size: var(--fs-title); }
+.load-zone span { font-size: var(--fs-small); color: var(--muted); }
+.load-zone.optimaal b { color: var(--success-text); }
+.load-zone.warn b { color: var(--warning-text); }
+.load-zone.onbekend b { color: var(--muted); }
+.load-meter { position: relative; display: grid; grid-template-columns: 40fr 25fr 10fr 25fr; gap: 4px; height: 8px; margin: 4px 0 16px; }
+.load-meter i { border-radius: var(--r-hair); background: var(--surface-3); }
+.load-meter .z-optimaal { background: var(--success); opacity: .55; }
+.load-meter .z-letop, .load-meter .z-piek { background: var(--warning); opacity: .45; }
+.load-meter em { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; border-radius: var(--r-hair); background: var(--text); }
+.load-nums { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.load-nums b, .run-stats b { display: block; font-family: var(--font-display); font-stretch: var(--display-stretch); font-weight: 700; font-size: var(--fs-display); line-height: 1; }
+.load-nums span, .run-stats span { font-size: var(--fs-label); color: var(--muted); text-transform: uppercase; letter-spacing: var(--caps-track); font-weight: 600; }
+
+/* Loopdetail: grote kerncijfers */
+.run-stats { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 12px; margin: 4px 0 16px; }
+.run-stats > div { display: flex; flex-direction: column; gap: 8px; }
+.run-pace { display: flex; align-items: center; color: var(--muted); }
+
+/* Tijdlijn per dag */
+.tl-day { margin: 12px 0 0; font-size: var(--fs-label); font-weight: 600; letter-spacing: var(--caps-track); text-transform: uppercase; color: var(--muted); }
+.tl-day:first-child { margin-top: 0; }
+.timeline .list-row:first-of-type, .timeline .tl-day + .list-row { border-top: 0; }
 
 /* Kleine schermen (bv. 320–360 px breed) */
 @media (max-width: 360px) {
